@@ -18,15 +18,38 @@
 /graal/
 /src/main/resources/META-INF/services/
 
+# Exported game builds
+/export/
+/exports/
+
 # IntelliJ IDEA: the project model comes from Gradle
 .idea/
 *.iml
 /out/
 
-# Logs
+# Other editors
+.vscode/
+.vs/
+.fleet/
+
+# Logs and JVM crash/heap dumps (hs_err_pid*.log and replay_pid*.log match *.log)
 *.log
+*.hprof
+
+# Asset tool backups
+*.blend1
+*.blend2
+
+# Claude Code: per-user settings and agent worktrees; graphify's local graph
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+/graphify-out/
 
 # OS files
 .DS_Store
 Thumbs.db
+ehthumbs.db
 desktop.ini
+$RECYCLE.BIN/
+*.stackdump
