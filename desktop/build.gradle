@@ -19,14 +19,29 @@ apply plugin: 'io.github.fourlastor.construo'
 import io.github.fourlastor.construo.Target
 
 sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
-application.mainClass = 'io.github.brantunger.gamex.lwjgl3.Lwjgl3Launcher'
+application.mainClass = 'io.github.brantunger.gamex.desktop.DesktopLauncher'
 application.applicationName = appName
-eclipse.project.name = appName + '-lwjgl3'
-java.sourceCompatibility = 21
-java.targetCompatibility = 21
-if (JavaVersion.current().isJava9Compatible()) {
-        compileJava.options.release.set(21)
+
+// From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
+// The article can be helpful when using assets.txt in your project.
+// This only runs when a file is added to, removed from or changed in the assets folder.
+tasks.register('generateAssetList') {
+  // projectFolder/assets
+  File assetsFolder = rootProject.file('assets')
+  // projectFolder/assets/assets.txt
+  File assetsFile = new File(assetsFolder, 'assets.txt')
+  // all files inside that folder, other than the list itself
+  def assets = fileTree(assetsFolder) { exclude 'assets.txt' }
+  inputs.files(assets).withPathSensitivity(PathSensitivity.RELATIVE)
+  outputs.file(assetsFile)
+
+  doLast {
+    // convert each file to a relative path
+    // and write the sorted paths to the file assets.txt, one per line
+    assetsFile.setText(assets.collect { assetsFolder.relativePath(it) }.sort().collect { it + "\n" }.join(), 'UTF-8')
+  }
 }
+processResources.dependsOn 'generateAssetList'
 
 dependencies {
   implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
@@ -61,71 +76,59 @@ run {
   if (os.contains('mac')) jvmArgs += "-XstartOnFirstThread"
 }
 
-jar {
+// The setup shared by the jar task and the OS-specific jarMac, jarLinux and jarWin tasks below.
+// The suffix goes after the version in the name of the .jar file, and is empty for the cross-platform JAR.
+def configureFatJar = { Jar task, String suffix ->
 // sets the name of the .jar file this produces to the name of the game or app, with the version after.
-  archiveFileName.set("${appName}-${projectVersion}.jar")
+  task.archiveFileName.set("${appName}-${projectVersion}${suffix}.jar")
 // the duplicatesStrategy matters starting in Gradle 7.0; this setting works.
-  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-  dependsOn configurations.runtimeClasspath
-  from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
-// these "exclude" lines remove some unnecessary duplicate files in the output JAR.
-  exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
-  dependencies {
-    exclude('META-INF/INDEX.LIST', 'META-INF/maven/**')
-  }
+  task.duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+  task.dependsOn configurations.runtimeClasspath
+  task.from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+// this "exclude" line removes some unnecessary duplicate files in the output JAR.
+  task.exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/maven/**')
 // Setting the manifest makes the JAR runnable.
 // Enabling native access helps avoid a warning when Java 24 or later runs the JAR.
 // Setting Multi-Release to true allows LWJGL3 to use different classes on recent Java versions.
 // This setting for Add-Exports ensures a warning on recent JDKs is avoided by LWJGL 3.4.2 and later.
-  manifest {
+  task.manifest {
     attributes 'Main-Class': application.mainClass, 'Enable-Native-Access': 'ALL-UNNAMED', 'Multi-Release': 'true', 'Add-Exports': 'java.base/jdk.internal.misc'
   }
 // this last step may help on some OSes that need extra instruction to make runnable JARs.
-  doLast {
-    file(archiveFile).setExecutable(true, false)
+  task.doLast {
+    file(task.archiveFile).setExecutable(true, false)
   }
+}
+
+jar {
+  configureFatJar(it, '')
 }
 
 // Builds a JAR that only includes the files needed to run on macOS, not Windows or Linux.
 // The file size for a Mac-only JAR is about 7MB smaller than a cross-platform JAR.
-tasks.register("jarMac") {
-  dependsOn("jar")
-  group("build")
-  jar.archiveFileName.set("${appName}-${projectVersion}-mac.jar")
-  jar.exclude("windows/x86/**", "windows/x64/**", "linux/arm32/**", "linux/arm64/**", "linux/x64/**", "**/*.dll", "**/*.so",
-    'META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
-  dependencies {
-    jar.exclude("windows/x86/**", "windows/x64/**", "linux/arm32/**", "linux/arm64/**", "linux/x64/**",
-      'META-INF/INDEX.LIST', 'META-INF/maven/**')
-  }
+tasks.register("jarMac", Jar) {
+  group = "build"
+  from sourceSets.main.output
+  configureFatJar(it, '-mac')
+  exclude("windows/x86/**", "windows/x64/**", "linux/arm32/**", "linux/arm64/**", "linux/x64/**", "**/*.dll", "**/*.so")
 }
 
 // Builds a JAR that only includes the files needed to run on Linux, not Windows or macOS.
 // The file size for a Linux-only JAR is about 5MB smaller than a cross-platform JAR.
-tasks.register("jarLinux") {
-  dependsOn("jar")
-  group("build")
-  jar.archiveFileName.set("${appName}-${projectVersion}-linux.jar")
-  jar.exclude("windows/x86/**", "windows/x64/**", "macos/arm64/**", "macos/x64/**", "**/*.dll", "**/*.dylib",
-    'META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
-  dependencies {
-    jar.exclude("windows/x86/**", "windows/x64/**", "macos/arm64/**", "macos/x64/**",
-      'META-INF/INDEX.LIST', 'META-INF/maven/**')
-  }
+tasks.register("jarLinux", Jar) {
+  group = "build"
+  from sourceSets.main.output
+  configureFatJar(it, '-linux')
+  exclude("windows/x86/**", "windows/x64/**", "macos/arm64/**", "macos/x64/**", "**/*.dll", "**/*.dylib")
 }
 
 // Builds a JAR that only includes the files needed to run on Windows, not Linux or macOS.
 // The file size for a Windows-only JAR is about 6MB smaller than a cross-platform JAR.
-tasks.register("jarWin") {
-  dependsOn("jar")
-  group("build")
-  jar.archiveFileName.set("${appName}-${projectVersion}-win.jar")
-  jar.exclude("macos/arm64/**", "macos/x64/**", "linux/arm32/**", "linux/arm64/**", "linux/x64/**", "**/*.dylib", "**/*.so",
-    'META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
-  dependencies {
-    jar.exclude("macos/arm64/**", "macos/x64/**", "linux/arm32/**", "linux/arm64/**", "linux/x64/**",
-      'META-INF/INDEX.LIST', 'META-INF/maven/**')
-  }
+tasks.register("jarWin", Jar) {
+  group = "build"
+  from sourceSets.main.output
+  configureFatJar(it, '-win')
+  exclude("macos/arm64/**", "macos/x64/**", "linux/arm32/**", "linux/arm64/**", "linux/x64/**", "**/*.dylib", "**/*.so")
 }
 
 construo {
@@ -149,7 +152,7 @@ construo {
       architecture.set(Target.Architecture.AARCH64)
       jdkUrl.set("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.10_7.tar.gz")
       // macOS needs an identifier
-      identifier.set("io.github.brantunger.gamex." + appName)
+      identifier.set("io.github.brantunger.gamex")
       // Optional: icon for macOS, as an ICNS file
       macIcon.set(project.file("icons/logo.icns"))
     }
@@ -157,7 +160,7 @@ construo {
       architecture.set(Target.Architecture.X86_64)
       jdkUrl.set("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_x64_mac_hotspot_21.0.10_7.tar.gz")
       // macOS needs an identifier
-      identifier.set("io.github.brantunger.gamex." + appName)
+      identifier.set("io.github.brantunger.gamex")
       // Optional: icon for macOS, as an ICNS file
       macIcon.set(project.file("icons/logo.icns"))
     }
@@ -191,7 +194,7 @@ distributions {
   }
 }
 
-startScripts.dependsOn(':lwjgl3:jar')
+startScripts.dependsOn(':desktop:jar')
 startScripts.classpath = project.tasks.jar.outputs.files
 
 // Helps if debugging on Linux with an Nvidia GPU.
