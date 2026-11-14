@@ -1,0 +1,32 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+*.tmp
+
+# Gradle and Kotlin. Godot-JVM applies the Kotlin plugin, which writes .kotlin/.
+# Root-anchored so a Java package named "build" is not ignored.
+.gradle/
+.kotlin/
+/build/
+
+# Godot-JVM: installed addon, built jars, embedded JREs, generated registration.
+# Commit godot_jvm_configuration.json and any gdj/ files.
+/addons/jvm/
+/jvm/
+/jre-arm64/
+/jre-amd64/
+/graal/
+/src/main/resources/META-INF/services/
+
+# IntelliJ IDEA: the project model comes from Gradle
+.idea/
+*.iml
+/out/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

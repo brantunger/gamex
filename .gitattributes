@@ -1,0 +1,33 @@
+# Normalize EOL for all files that Git considers text files.
+* text=auto eol=lf
+
+# Windows scripts need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files.
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.bmp binary
+*.tga binary
+*.exr binary
+*.hdr binary
+*.ico binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.glb binary
+*.blend binary
+*.fbx binary
+*.res binary
+*.scn binary
+*.pck binary
+*.zip binary
