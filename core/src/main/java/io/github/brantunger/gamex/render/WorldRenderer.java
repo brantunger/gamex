@@ -14,6 +14,7 @@ import com.badlogic.gdx.graphics.g3d.decals.Decal;
 import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
@@ -26,12 +27,13 @@ import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.MapGeometry;
 import io.github.brantunger.gamex.world.Target;
+import io.github.brantunger.gamex.world.WorldModels;
 
 import java.util.Map;
 
 /**
- * Draws the 3D view: the map as a few static meshes, one per texture, and then the targets, blasts and effects as
- * billboards. The meshes are built once when the renderer is created.
+ * Draws the 3D view: the map as a few static meshes, one per texture, the targets and blast projectiles as 3D
+ * models loaded from OBJ files, and the halos and effects as billboards.
  */
 public final class WorldRenderer implements Disposable {
 
@@ -85,6 +87,48 @@ public final class WorldRenderer implements Disposable {
             + "    gl_FragColor = vec4(mix(colour, u_fogColour, v_fog), 1.0);\n"
             + "}\n";
 
+    private static final String MODEL_VERTEX_SHADER =
+        "attribute vec3 a_position;\n"
+            + "attribute vec3 a_normal;\n"
+            + "attribute vec3 a_colour;\n"
+            + "attribute float a_gloss;\n"
+            + "uniform mat4 u_projViewTrans;\n"
+            + "uniform mat4 u_model;\n"
+            + "uniform vec3 u_cameraPosition;\n"
+            + "uniform vec2 u_fogRange;\n"
+            + "uniform vec3 u_fogColour;\n"
+            + "uniform float u_light;\n"
+            + "uniform float u_hitFlash;\n"
+            + "varying vec3 v_colour;\n"
+            + "void main() {\n"
+            + "    vec4 worldPos = u_model * vec4(a_position, 1.0);\n"
+            + "    vec3 worldNormal = normalize((u_model * vec4(a_normal, 0.0)).xyz);\n"
+            + "    vec3 weight = worldNormal * worldNormal;\n"
+            + "    float shade = weight.z + weight.x * 0.72 + weight.y * (worldNormal.y > 0.0 ? 0.9 : 0.62);\n"
+            + "    vec3 lightDir = normalize(vec3(-0.3, 0.9, 0.4));\n"
+            + "    float key = 0.65 + 0.55 * max(dot(worldNormal, lightDir), 0.0);\n"
+            + "    vec3 delta = u_cameraPosition - worldPos.xyz;\n"
+            + "    float range = length(delta);\n"
+            + "    vec3 toCamera = range > 1e-4 ? delta / range : vec3(0.0, 0.0, 1.0);\n"
+            + "    vec3 halfVec = normalize(lightDir + toCamera);\n"
+            + "    float sheen = a_gloss * pow(max(dot(worldNormal, halfVec), 0.0), 12.0) * 0.35;\n"
+            + "    float rim = pow(1.0 - max(dot(worldNormal, toCamera), 0.0), 2.5) * 0.12;\n"
+            + "    vec3 lit = (a_colour * shade * key + vec3(sheen + rim)) * u_light;\n"
+            + "    lit = mix(lit, vec3(1.0, 0.25, 0.25), u_hitFlash * 0.65);\n"
+            + "    float fog = clamp((range - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
+            + "    v_colour = mix(lit, u_fogColour, fog);\n"
+            + "    gl_Position = u_projViewTrans * worldPos;\n"
+            + "}\n";
+
+    private static final String MODEL_FRAGMENT_SHADER =
+        "#ifdef GL_ES\n"
+            + "precision mediump float;\n"
+            + "#endif\n"
+            + "varying vec3 v_colour;\n"
+            + "void main() {\n"
+            + "    gl_FragColor = vec4(v_colour, 1.0);\n"
+            + "}\n";
+
     /** A static mesh and the texture it is drawn with. */
     private static final class Surface {
         final Mesh mesh;
@@ -98,19 +142,22 @@ public final class WorldRenderer implements Disposable {
 
     private final PerspectiveCamera camera;
     private final ShaderProgram shader;
+    private final ShaderProgram modelShader;
     private final Array<Surface> surfaces = new Array<>();
+    private final Mesh canisterMesh;
+    private final Mesh ringBoardMesh;
+    private final Mesh blastOrbMesh;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
     private int decalsUsed;
 
-    private final TextureRegion canister;
-    private final TextureRegion ringBoard;
     private final TextureRegion scorch;
     private final TextureRegion spark;
     private final TextureRegion orb;
     private final TextureRegion explosion;
 
+    private final Matrix4 modelTransform = new Matrix4();
     private final Vector3 direction = new Vector3();
     private final Vector3 scratch = new Vector3();
 
@@ -127,6 +174,10 @@ public final class WorldRenderer implements Disposable {
         if (!shader.isCompiled()) {
             throw new GdxRuntimeException("The world shader did not compile: " + shader.getLog());
         }
+        modelShader = new ShaderProgram(MODEL_VERTEX_SHADER, MODEL_FRAGMENT_SHADER);
+        if (!modelShader.isCompiled()) {
+            throw new GdxRuntimeException("The world model shader did not compile: " + modelShader.getLog());
+        }
 
         MapGeometry geometry = MapGeometry.build(map);
         for (Map.Entry<Character, float[]> entry : geometry.walls.entrySet()) {
@@ -135,10 +186,12 @@ public final class WorldRenderer implements Disposable {
         surfaces.add(new Surface(buildMesh(geometry.floor), textures.floor));
         surfaces.add(new Surface(buildMesh(geometry.ceiling), textures.ceiling));
 
+        canisterMesh = ModelMesh.loadMesh(WorldModels.CANISTER_PATH, "canister", WorldModels::vertices);
+        ringBoardMesh = ModelMesh.loadMesh(WorldModels.RING_BOARD_PATH, "ring board", WorldModels::vertices);
+        blastOrbMesh = ModelMesh.loadMesh(WorldModels.BLAST_ORB_PATH, "blast orb", WorldModels::vertices);
+
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
-        canister = new TextureRegion(textures.canister);
-        ringBoard = new TextureRegion(textures.ringBoard);
         scorch = new TextureRegion(textures.scorch);
         spark = new TextureRegion(textures.spark);
         orb = new TextureRegion(textures.orb);
@@ -203,23 +256,25 @@ public final class WorldRenderer implements Disposable {
         Gdx.gl.glCullFace(GL20.GL_BACK);
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        float roomLight = simulation.pistol.isFlashVisible() ? 1.3f : 1f;
         shader.bind();
         shader.setUniformMatrix("u_projViewTrans", camera.combined);
         shader.setUniformf("u_cameraPosition", camera.position);
         shader.setUniformf("u_fogRange", FOG_START, FOG_END);
         shader.setUniformf("u_fogColour", FOG_COLOUR.r, FOG_COLOUR.g, FOG_COLOUR.b);
         // The muzzle flash lights the room for a moment.
-        shader.setUniformf("u_light", simulation.pistol.isFlashVisible() ? 1.3f : 1f);
+        shader.setUniformf("u_light", roomLight);
         shader.setUniformi("u_texture", 0);
         for (Surface surface : surfaces) {
             surface.texture.bind(0);
             surface.mesh.render(shader, GL20.GL_TRIANGLES);
         }
 
+        renderWorldModels(simulation, roomLight);
+
         // Billboards are seen from both sides.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         decalsUsed = 0;
-        addTargets(simulation);
         addProjectiles(simulation);
         addEffects(simulation);
         decalBatch.flush();
@@ -230,23 +285,42 @@ public final class WorldRenderer implements Disposable {
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }
 
-    private void addTargets(GameSimulation simulation) {
+    private void renderWorldModels(GameSimulation simulation, float roomLight) {
+        modelShader.bind();
+        modelShader.setUniformMatrix("u_projViewTrans", camera.combined);
+        modelShader.setUniformf("u_cameraPosition", camera.position);
+        modelShader.setUniformf("u_fogRange", FOG_START, FOG_END);
+        modelShader.setUniformf("u_fogColour", FOG_COLOUR.r, FOG_COLOUR.g, FOG_COLOUR.b);
+
+        modelShader.setUniformf("u_light", roomLight);
         for (Target target : simulation.targets) {
             if (target.isDestroyed()) continue;
-            TextureRegion region = target.getKind() == Target.Kind.CANISTER ? canister : ringBoard;
-            float height = target.getHeight();
-            float width = height * region.getRegionWidth() / region.getRegionHeight();
-            Decal decal = nextDecal(region, width, height, false);
-            decal.setPosition(target.getX(), height * 0.5f, target.getZ());
-            // Stay upright: turn towards the camera around the vertical axis only.
-            scratch.set(camera.position.x - target.getX(), 0f, camera.position.z - target.getZ());
-            if (scratch.len2() < 1e-6f) scratch.set(0f, 0f, 1f);
-            decal.setRotation(scratch.nor(), Vector3.Y);
-            // Fade into the fog like the walls do, and flash red when hit.
-            float visible = 1f - fogAt(decal.getPosition());
-            float flash = target.getHitFlash();
-            decal.setColor(visible, visible * (1f - 0.65f * flash), visible * (1f - 0.65f * flash), 1f);
-            decalBatch.add(decal);
+            float dx = camera.position.x - target.getX();
+            float dz = camera.position.z - target.getZ();
+            if (dx * dx + dz * dz < 1e-6f) dz = 1f;
+            float yaw = MathUtils.atan2(dx, dz) * MathUtils.radiansToDegrees + 180f;
+            modelTransform.idt()
+                .translate(target.getX(), 0f, target.getZ())
+                .rotate(Vector3.Y, yaw);
+            modelShader.setUniformMatrix("u_model", modelTransform);
+            modelShader.setUniformf("u_hitFlash", target.getHitFlash());
+            Mesh mesh = target.getKind() == Target.Kind.CANISTER ? canisterMesh : ringBoardMesh;
+            mesh.render(modelShader, GL20.GL_TRIANGLES);
+        }
+
+        modelShader.setUniformf("u_light", 1.35f);
+        modelShader.setUniformf("u_hitFlash", 0f);
+        float spin = simulation.getTime() * 180f;
+        for (BlastProjectile projectile : simulation.projectiles) {
+            float pulse = 1f + 0.12f * MathUtils.sin(simulation.getTime() * 30f);
+            float scale = (1f + 0.8f * projectile.getCharge()) * pulse;
+            modelTransform.idt()
+                .translate(projectile.position)
+                .rotate(Vector3.Y, spin)
+                .rotate(Vector3.X, spin)
+                .scale(scale, scale, scale);
+            modelShader.setUniformMatrix("u_model", modelTransform);
+            blastOrbMesh.render(modelShader, GL20.GL_TRIANGLES);
         }
     }
 
@@ -333,7 +407,11 @@ public final class WorldRenderer implements Disposable {
     public void dispose() {
         for (Surface surface : surfaces) surface.mesh.dispose();
         surfaces.clear();
+        canisterMesh.dispose();
+        ringBoardMesh.dispose();
+        blastOrbMesh.dispose();
         shader.dispose();
+        modelShader.dispose();
         decalBatch.dispose();
         groupStrategy.dispose();
     }

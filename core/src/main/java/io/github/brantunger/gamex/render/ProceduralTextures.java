@@ -25,10 +25,6 @@ public final class ProceduralTextures implements Disposable {
     public final Texture ceiling;
     /** The pistol's muzzle flash. */
     public final Texture muzzleFlash;
-    /** The canister target. */
-    public final Texture canister;
-    /** The ring board target. */
-    public final Texture ringBoard;
     /** The scorch mark a pistol shot leaves. */
     public final Texture scorch;
     /** The spark of a pistol shot landing. */
@@ -50,8 +46,6 @@ public final class ProceduralTextures implements Disposable {
         floor = upload(paintFloor());
         ceiling = upload(paintCeiling());
         muzzleFlash = upload(paintMuzzleFlash());
-        canister = upload(paintCanister());
-        ringBoard = upload(paintRingBoard());
         scorch = upload(paintScorch());
         spark = upload(paintSpark());
         orb = upload(paintOrb());
@@ -121,12 +115,6 @@ public final class ProceduralTextures implements Disposable {
     private static void rect(Pixmap pixmap, int x, int y, int width, int height, int colour) {
         pixmap.setColor(colour);
         pixmap.fillRectangle(x, y, width, height);
-    }
-
-    /** A filled rectangle with a one pixel border. */
-    private static void block(Pixmap pixmap, int x, int y, int width, int height, int fill, int border) {
-        rect(pixmap, x, y, width, height, border);
-        rect(pixmap, x + 1, y + 1, width - 2, height - 2, fill);
     }
 
     private static Pixmap paintBrick() {
@@ -250,53 +238,6 @@ public final class ProceduralTextures implements Disposable {
                 float heat = 1f - distance / reach;
                 pixmap.drawPixel(x, y, rgba(255f, 190f + 65f * heat, 60f + 195f * heat * heat,
                     Math.min(1f, heat * 2.2f) * 255f));
-            }
-        }
-        return pixmap;
-    }
-
-    private static Pixmap paintCanister() {
-        Pixmap pixmap = blank(32, 44);
-        int outline = rgb(14f, 30f, 30f);
-        // Cap and body, shaded as a cylinder lit from the front.
-        block(pixmap, 12, 1, 8, 6, rgb(128f, 136f, 140f), outline);
-        rect(pixmap, 5, 6, 22, 37, outline);
-        for (int y = 7; y < 42; y++) {
-            for (int x = 6; x < 26; x++) {
-                float round = (float) Math.cos((x - 15.5f) / 10.5f * Math.PI * 0.5);
-                float light = 0.45f + 0.55f * round + (noise(x, y + 300) - 0.5f) * 0.06f;
-                boolean band = y < 10 || y > 38 || (y >= 23 && y <= 25);
-                if (band) pixmap.drawPixel(x, y, rgb(40f * light, 70f * light, 76f * light));
-                else pixmap.drawPixel(x, y, rgb(56f * light, 210f * light, 180f * light));
-            }
-        }
-        // A pale diamond emblem on the upper half.
-        for (int i = -3; i <= 3; i++) {
-            int half = 3 - Math.abs(i);
-            rect(pixmap, 16 - half, 16 + i, half * 2, 1, rgb(232f, 244f, 206f));
-        }
-        return pixmap;
-    }
-
-    private static Pixmap paintRingBoard() {
-        Pixmap pixmap = blank(32, 52);
-        int outline = rgb(20f, 16f, 30f);
-        // Post and foot.
-        block(pixmap, 14, 26, 4, 24, rgb(120f, 116f, 108f), outline);
-        block(pixmap, 8, 48, 16, 4, rgb(92f, 88f, 84f), outline);
-        // The round board with its rings.
-        for (int y = 0; y < 31; y++) {
-            for (int x = 0; x < 32; x++) {
-                float dx = x + 0.5f - 16f;
-                float dy = y + 0.5f - 15.5f;
-                float distance = (float) Math.sqrt(dx * dx + dy * dy);
-                if (distance > 15f) continue;
-                float grain = (noise(x, y + 500) - 0.5f) * 14f;
-                if (distance > 13.8f) pixmap.drawPixel(x, y, outline);
-                else if (distance > 10.5f) pixmap.drawPixel(x, y, rgb(232f + grain, 230f + grain, 218f + grain));
-                else if (distance > 7f) pixmap.drawPixel(x, y, rgb(104f + grain, 70f + grain, 196f + grain));
-                else if (distance > 3.5f) pixmap.drawPixel(x, y, rgb(232f + grain, 230f + grain, 218f + grain));
-                else pixmap.drawPixel(x, y, rgb(226f + grain, 62f + grain, 142f + grain));
             }
         }
         return pixmap;
