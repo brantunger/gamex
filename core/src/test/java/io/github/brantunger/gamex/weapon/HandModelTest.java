@@ -280,8 +280,53 @@ class HandModelTest {
             }
         }
         // Where the glove is pressed flat against the pistol a few normals turn sharply; hardly any may turn round.
-        assertTrue(against <= MODEL.getTriangleCount() * 3 / 100,
-            "corners whose normal opposes their face: " + against);
+        // The shipped model has 40 such corners, and one corner in 250 allows it 90. A model with folded quads has
+        // more: the one that had 13 of them had 101.
+        int allowed = MODEL.getTriangleCount() * 3 / 250;
+        assertTrue(against <= allowed,
+            "corners whose normal opposes their face: " + against + ", and at most " + allowed + " may");
+    }
+
+    @Test
+    void noQuadFolds() {
+        // The model holds only triangles: the parser fans a face with the corners 0, 1, 2, 3 into (0, 1, 2) and
+        // (0, 2, 3), one after the other. So two triangles in a row are put back together as a quad when they share
+        // their first corner and the second goes on from the last corner of the first. Two neighbouring triangles of
+        // the fan that closes the end of a part pair up the same way, and are checked as the quad they would make.
+        int quads = 0;
+        int folded = 0;
+        String first = "";
+        for (int triangle = 0; triangle + 1 < MODEL.getTriangleCount(); triangle++) {
+            int second = triangle + 1;
+            if (!position(triangle, 0).equals(position(second, 0))
+                || !position(triangle, 2).equals(position(second, 1))) continue;
+            quads++;
+            Vector3[] corners = {position(triangle, 0), position(triangle, 1), position(triangle, 2),
+                position(second, 2)};
+            // Newell's normal of the quad as a whole, which a quad that is not flat has too.
+            Vector3 whole = new Vector3();
+            for (int corner = 0; corner < 4; corner++) {
+                Vector3 from = corners[corner];
+                Vector3 to = corners[(corner + 1) % 4];
+                whole.add((from.y - to.y) * (from.z + to.z), (from.z - to.z) * (from.x + to.x),
+                    (from.x - to.x) * (from.y + to.y));
+            }
+            // A quad folds when one of its two triangles faces against the quad as a whole.
+            if (faceNormal(triangle).dot(whole) < 0f || faceNormal(second).dot(whole) < 0f) {
+                if (folded++ == 0) first = ", the first in " + MODEL.getGroup(triangle) + " at " + corners[0];
+            }
+            triangle = second;
+        }
+        // The count is pinned so that a pairing that has stopped working cannot pass by finding nothing to check. A
+        // change to the generator's ring counts changes it.
+        assertEquals(3675, quads, "quads found among " + MODEL.getTriangleCount() + " triangles");
+        assertEquals(0, folded, "quads that fold, of " + quads + first);
+    }
+
+    /** The normal of a triangle by the right-hand rule, as long as twice the triangle's area. */
+    private static Vector3 faceNormal(int triangle) {
+        Vector3 a = position(triangle, 0);
+        return position(triangle, 1).sub(a).crs(position(triangle, 2).sub(a));
     }
 
     @Test
