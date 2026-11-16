@@ -7,6 +7,7 @@ import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.weapon.Pistol;
+import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 import io.github.brantunger.gamex.world.Damageable;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.GameMap;
@@ -42,6 +43,8 @@ public final class GameSimulation {
     public final EnergyMeter energy = new EnergyMeter();
     /** The blast's charge state. */
     public final BlastCharger charger = new BlastCharger(energy);
+    /** The motion of the first-person pistol: recoil, bob and sway. */
+    public final ViewmodelAnimation viewmodel = new ViewmodelAnimation();
     /** The blasts in flight. */
     public final List<BlastProjectile> projectiles = new ArrayList<>();
     /** The visual effects that are still running. */
@@ -71,11 +74,18 @@ public final class GameSimulation {
         float dt = Math.max(0f, Math.min(MAX_DT, frameTime));
         time += dt;
         player.look(input.yawDelta, input.pitchDelta);
+        float beforeX = player.position.x;
+        float beforeZ = player.position.y;
         player.move(map, targets, input.moveForward, input.moveStrafe, dt);
         player.eye(eye);
         player.direction(direction);
 
-        if (pistol.update(dt, input.fire)) firePistol();
+        boolean fired = pistol.update(dt, input.fire);
+        if (fired) firePistol();
+        // The gun bobs with the distance actually covered, so it settles when the player is held up by a wall.
+        float walked = player.position.dst(beforeX, beforeZ);
+        float walkSpeed = dt > 0f ? walked / (Player.MOVE_SPEED * dt) : 0f;
+        viewmodel.update(dt, fired, walkSpeed, input.yawDelta, input.pitchDelta);
 
         float firedCharge = charger.update(dt, input.charge);
         if (firedCharge > 0f) {

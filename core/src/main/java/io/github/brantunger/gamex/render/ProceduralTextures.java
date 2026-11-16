@@ -23,8 +23,6 @@ public final class ProceduralTextures implements Disposable {
     public final Texture floor;
     /** The dark beamed ceiling. */
     public final Texture ceiling;
-    /** The first-person pistol and the hand holding it. */
-    public final Texture pistol;
     /** The pistol's muzzle flash. */
     public final Texture muzzleFlash;
     /** The canister target. */
@@ -51,7 +49,6 @@ public final class ProceduralTextures implements Disposable {
         stone = upload(paintStone());
         floor = upload(paintFloor());
         ceiling = upload(paintCeiling());
-        pistol = upload(paintPistol());
         muzzleFlash = upload(paintMuzzleFlash());
         canister = upload(paintCanister());
         ringBoard = upload(paintRingBoard());
@@ -235,35 +232,6 @@ public final class ProceduralTextures implements Disposable {
                 pixmap.drawPixel(x, y, rgb(72f + tone, 62f + tone, 58f + tone));
             }
         }
-        return pixmap;
-    }
-
-    /** The pistol seen from behind and above, held in a gloved hand, on a transparent background. */
-    private static Pixmap paintPistol() {
-        Pixmap pixmap = blank(64, 64);
-        int outline = rgb(16f, 16f, 22f);
-        // Sleeve.
-        block(pixmap, 23, 50, 22, 14, rgb(44f, 52f, 78f), outline);
-        rect(pixmap, 24, 51, 20, 2, rgb(70f, 80f, 112f));
-        // Front sight, then the slide with a highlight along its top.
-        block(pixmap, 31, 7, 4, 6, rgb(60f, 62f, 72f), outline);
-        block(pixmap, 26, 12, 14, 26, rgb(112f, 118f, 132f), outline);
-        rect(pixmap, 30, 13, 6, 24, rgb(160f, 168f, 184f));
-        rect(pixmap, 32, 13, 2, 24, rgb(204f, 210f, 222f));
-        for (int y = 26; y < 36; y += 2) {
-            rect(pixmap, 27, y, 2, 1, rgb(70f, 74f, 86f));
-            rect(pixmap, 37, y, 2, 1, rgb(70f, 74f, 86f));
-        }
-        // Rear sight posts and the hammer.
-        rect(pixmap, 27, 13, 3, 3, rgb(34f, 36f, 44f));
-        rect(pixmap, 36, 13, 3, 3, rgb(34f, 36f, 44f));
-        block(pixmap, 30, 35, 6, 6, rgb(52f, 54f, 64f), outline);
-        // Gloved hand around the grip, with finger creases and a thumb.
-        block(pixmap, 21, 38, 24, 14, rgb(202f, 122f, 54f), outline);
-        rect(pixmap, 22, 39, 22, 2, rgb(232f, 156f, 84f));
-        for (int y = 42; y < 51; y += 3) rect(pixmap, 22, y, 9, 1, rgb(140f, 78f, 32f));
-        block(pixmap, 40, 31, 6, 12, rgb(202f, 122f, 54f), outline);
-        rect(pixmap, 41, 32, 2, 9, rgb(232f, 156f, 84f));
         return pixmap;
     }
 

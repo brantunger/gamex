@@ -7,6 +7,7 @@ import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.input.InputController;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.render.ProceduralTextures;
+import io.github.brantunger.gamex.render.ViewmodelRenderer;
 import io.github.brantunger.gamex.render.WorldRenderer;
 import io.github.brantunger.gamex.world.Levels;
 
@@ -16,6 +17,7 @@ public class MainGame extends ApplicationAdapter {
     private GameSimulation simulation;
     private ProceduralTextures textures;
     private WorldRenderer worldRenderer;
+    private ViewmodelRenderer viewmodelRenderer;
     private HudRenderer hudRenderer;
     private InputController controller;
     /** The unattended screenshot run, or null in a normal game. */
@@ -26,6 +28,7 @@ public class MainGame extends ApplicationAdapter {
         simulation = new GameSimulation(Levels.first());
         textures = new ProceduralTextures();
         worldRenderer = new WorldRenderer(simulation.map, textures);
+        viewmodelRenderer = new ViewmodelRenderer(textures);
         hudRenderer = new HudRenderer(textures);
         demoRun = DemoRun.fromEnvironment();
         if (demoRun == null) controller = new InputController();
@@ -36,6 +39,7 @@ public class MainGame extends ApplicationAdapter {
         // A minimised window reports a size of zero.
         if (width <= 0 || height <= 0) return;
         worldRenderer.resize(width, height);
+        viewmodelRenderer.resize(width, height);
         hudRenderer.resize(width, height);
     }
 
@@ -60,14 +64,21 @@ public class MainGame extends ApplicationAdapter {
             if (paused) simulation.pause();
             else simulation.update(Gdx.graphics.getDeltaTime(), input);
         }
-        worldRenderer.render(simulation);
-        hudRenderer.render(simulation, paused);
+        float[] orbit = demoRun != null ? demoRun.getViewmodelOrbit() : null;
+        if (orbit != null) {
+            viewmodelRenderer.renderAlone(orbit[0], orbit[1]);
+        } else {
+            worldRenderer.render(simulation);
+            viewmodelRenderer.render(simulation);
+            hudRenderer.render(simulation, paused);
+        }
         if (demoRun != null) demoRun.frameRendered();
     }
 
     @Override
     public void dispose() {
         worldRenderer.dispose();
+        viewmodelRenderer.dispose();
         hudRenderer.dispose();
         textures.dispose();
     }

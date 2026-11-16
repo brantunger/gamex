@@ -171,6 +171,30 @@ class GameSimulationTest {
     }
 
     @Test
+    void pistolViewmodelKicksOnAShotAndBobsOnlyWhileThePlayerActuallyMoves() {
+        GameSimulation simulation = emptyCorridor();
+        PlayerInput input = new PlayerInput();
+
+        input.fire = true;
+        simulation.update(FRAME, input);
+        input.fire = false;
+        simulation.update(FRAME, input);
+        simulation.update(FRAME, input);
+        assertTrue(simulation.viewmodel.getRecoil() > 0.8f, "recoil " + simulation.viewmodel.getRecoil());
+
+        // Walk the length of the corridor and on into its end wall: the bob dies away once the wall stops the player.
+        input.moveForward = 1f;
+        float widest = 0f;
+        for (int i = 0; i < 90; i++) {
+            simulation.update(FRAME, input);
+            widest = Math.max(widest, Math.abs(simulation.viewmodel.getBobX()));
+        }
+        assertTrue(widest > 0.003f, "bobbed while walking: " + widest);
+        for (int i = 0; i < 240; i++) simulation.update(FRAME, input);
+        assertEquals(0f, simulation.viewmodel.getBobX(), 1e-5f);
+    }
+
+    @Test
     void quickTapOfTheBlastButtonFiresNothing() {
         GameSimulation simulation = emptyCorridor();
         PlayerInput input = new PlayerInput();

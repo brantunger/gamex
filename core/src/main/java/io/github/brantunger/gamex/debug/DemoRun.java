@@ -18,6 +18,9 @@ import java.util.zip.Deflater;
  *  <li>{@code GAMEX_DEMO}: set to {@code action} to play a short script instead of standing still: the player turns
  *  towards a pillar, holds the blast button, releases it, and fires the pistol. Set to {@code targets} to turn
  *  towards the nearest canister and keep firing the pistol at it.</li>
+ *  <li>{@code GAMEX_VIEWMODEL_ORBIT}: set to {@code yaw} or {@code yaw,pitch} in degrees to draw only the pistol and
+ *  hand, on a plain background, seen from outside: 0 is from behind, 90 the left side, 180 the front, and a pitch
+ *  of 90 is from above.</li>
  * </ul>
  * During such a run the real keyboard and mouse are ignored, the cursor stays free, and every frame advances the game
  * by the same {@link #FRAME_TIME}, so the saved frame is the same on every run.
@@ -41,6 +44,7 @@ public final class DemoRun {
     private final String path;
     private final int captureFrame;
     private final String script;
+    private final float[] orbit = parseOrbit(System.getenv("GAMEX_VIEWMODEL_ORBIT"));
     private int frame;
 
     private DemoRun(String path, int captureFrame, String script) {
@@ -64,6 +68,27 @@ public final class DemoRun {
             }
         }
         return new DemoRun(path, captureFrame, System.getenv("GAMEX_DEMO"));
+    }
+
+    /**
+     * Reads {@code GAMEX_VIEWMODEL_ORBIT}, which asks for the pistol and hand to be drawn alone from outside.
+     * @return the yaw and pitch of that view in degrees, or null when the variable is not set or is malformed
+     */
+    public float[] getViewmodelOrbit() {
+        return orbit;
+    }
+
+    private static float[] parseOrbit(String text) {
+        if (text == null || text.isEmpty()) return null;
+        String[] parts = text.split(",");
+        try {
+            float yaw = Float.parseFloat(parts[0].trim());
+            float pitch = parts.length > 1 ? Float.parseFloat(parts[1].trim()) : 0f;
+            return new float[] {yaw, pitch};
+        } catch (NumberFormatException e) {
+            System.err.println("GAMEX_VIEWMODEL_ORBIT is not 'yaw' or 'yaw,pitch' in degrees: '" + text + "'");
+            return null;
+        }
     }
 
     /**

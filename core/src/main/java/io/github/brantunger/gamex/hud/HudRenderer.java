@@ -2,7 +2,6 @@ package io.github.brantunger.gamex.hud;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.utils.Disposable;
@@ -12,8 +11,8 @@ import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 
 /**
- * Draws the 2D overlay on top of the finished 3D view: the pistol, the crosshair, the energy meter, the charge bar
- * and the pause screen. Sizes are in units of 1/720 of the window height, so the overlay scales with the window.
+ * Draws the 2D overlay on top of the finished 3D view: the crosshair, the energy meter, the charge bar, the status
+ * texts and the pause screen. Sizes are in units of 1/720 of the window height, so the overlay scales with the window.
  */
 public final class HudRenderer implements Disposable {
 
@@ -54,7 +53,6 @@ public final class HudRenderer implements Disposable {
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         batch.begin();
-        drawPistol(simulation);
         drawCrosshair(simulation.charger);
         drawCharge(simulation.charger);
         drawEnergy(simulation.energy, simulation.charger);
@@ -62,28 +60,6 @@ public final class HudRenderer implements Disposable {
         if (paused) drawPauseScreen();
         batch.setColor(1f, 1f, 1f, 1f);
         batch.end();
-    }
-
-    private void drawPistol(GameSimulation simulation) {
-        float size = 300f * unit;
-        float recoil = simulation.pistol.getRecoil();
-        float bob = simulation.player.getBobPhase();
-        float x = (width - size) * 0.5f + MathUtils.sin(bob * 0.5f) * 9f * unit;
-        float y = -22f * unit - Math.abs(MathUtils.cos(bob * 0.5f)) * 8f * unit + recoil * 26f * unit;
-        if (simulation.pistol.isFlashVisible()) {
-            float flash = 150f * unit;
-            batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
-            batch.setColor(1f, 1f, 1f, 1f);
-            // Centred on the muzzle, which is the top of the slide in the sprite.
-            batch.draw(textures.muzzleFlash, x + size * 0.515f - flash * 0.5f, y + size * 0.86f - flash * 0.5f, flash,
-                flash);
-            batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        }
-        batch.setColor(1f, 1f, 1f, 1f);
-        Texture pistol = textures.pistol;
-        // Recoil tips the pistol back around the wrist at the bottom of the sprite.
-        batch.draw(pistol, x, y, size * 0.5f, 0f, size, size, 1f, 1f + recoil * 0.05f, recoil * 4f, 0, 0,
-            pistol.getWidth(), pistol.getHeight(), false, false);
     }
 
     private void drawCrosshair(BlastCharger charger) {
@@ -163,8 +139,8 @@ public final class HudRenderer implements Disposable {
         float pixel = 3f * unit;
         String weapon = "PISTOL - NO AMMO LIMIT";
         batch.setColor(0.8f, 1f, 0.88f, 0.9f);
-        PixelFont.draw(batch, textures.white, weapon, width - 28f * unit - PixelFont.width(weapon, pixel),
-            28f * unit, pixel);
+        // Above the energy meter: the lower right corner belongs to the pistol and the hand holding it.
+        PixelFont.draw(batch, textures.white, weapon, 28f * unit, 88f * unit, pixel);
         String targets = "TARGETS " + simulation.getTargetsRemaining() + "/" + simulation.targets.size();
         PixelFont.draw(batch, textures.white, targets, 28f * unit, height - 28f * unit - PixelFont.height(pixel),
             pixel);

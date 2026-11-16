@@ -11,8 +11,6 @@ public final class Pistol {
     public static final float RANGE = 60f;
     /** How long the muzzle flash shows after a shot, in seconds. */
     public static final float FLASH_TIME = 0.07f;
-    /** How long the recoil animation runs after a shot, in seconds. */
-    public static final float RECOIL_TIME = 0.22f;
 
     private float cooldown;
     private float sinceShot = Float.POSITIVE_INFINITY;
@@ -44,10 +42,5 @@ public final class Pistol {
     /** @return whether the muzzle flash is showing. */
     public boolean isFlashVisible() {
         return sinceShot < FLASH_TIME;
-    }
-
-    /** @return the recoil strength, from 1 at the moment of a shot down to 0 once the pistol has settled. */
-    public float getRecoil() {
-        return Math.max(0f, 1f - sinceShot / RECOIL_TIME);
     }
 }

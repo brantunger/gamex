@@ -10,7 +10,8 @@ public class DesktopLauncher {
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setTitle("gamex");
-        config.setWindowedMode(1280, 720);
+        int[] size = windowSize(System.getenv("GAMEX_WINDOW"));
+        config.setWindowedMode(size[0], size[1]);
         // Vsync caps the frame rate at the display's refresh rate; the FPS limit is a fallback for when vsync is off.
         config.useVsync(true);
         // Some displays report no usable refresh rate; without this guard the limit could come out as 1 FPS.
@@ -23,5 +24,26 @@ public class DesktopLauncher {
         // A 24-bit depth buffer keeps marks on distant walls from flickering; anti-aliasing with 4 samples.
         config.setBackBufferConfig(8, 8, 8, 8, 24, 0, 4);
         new Lwjgl3Application(new MainGame(), config);
+    }
+
+    /**
+     * Reads a window size such as {@code 800x600}. The {@code GAMEX_WINDOW} environment variable carries one, for
+     * trying the game at other sizes.
+     * @param text the size as {@code WIDTHxHEIGHT}, or null
+     * @return the width and height in pixels; 1280 by 720 when the text is missing or malformed
+     */
+    static int[] windowSize(String text) {
+        int[] fallback = {1280, 720};
+        if (text == null || text.isEmpty()) return fallback;
+        String[] parts = text.trim().toLowerCase().split("x");
+        try {
+            int width = Integer.parseInt(parts[0].trim());
+            int height = Integer.parseInt(parts[1].trim());
+            if (width < 160 || height < 120) throw new NumberFormatException("too small");
+            return new int[] {width, height};
+        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+            System.err.println("GAMEX_WINDOW is not a size like 800x600: '" + text + "'; using 1280x720");
+            return fallback;
+        }
     }
 }

@@ -81,19 +81,4 @@ class PistolTest {
         pistol.update(Pistol.FLASH_TIME + 0.01f, false);
         assertFalse(pistol.isFlashVisible());
     }
-
-    @Test
-    void recoilStartsAtFullAndSettlesToZero() {
-        Pistol pistol = new Pistol();
-        assertEquals(0f, pistol.getRecoil(), 1e-5f);
-
-        pistol.update(0.01f, true);
-        assertEquals(1f, pistol.getRecoil(), 1e-5f);
-
-        pistol.update(Pistol.RECOIL_TIME / 2f, false);
-        assertEquals(0.5f, pistol.getRecoil(), 1e-3f);
-
-        pistol.update(Pistol.RECOIL_TIME, false);
-        assertEquals(0f, pistol.getRecoil(), 1e-5f);
-    }
 }
