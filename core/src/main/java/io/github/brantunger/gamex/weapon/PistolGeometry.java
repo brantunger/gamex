@@ -6,12 +6,12 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * The first-person pistol and the gloved right hand holding it, modelled in code as plain float arrays with no
- * graphics types, so the winding and normals can be checked without a GL context.
+ * The first-person pistol, modelled in code as plain float arrays with no graphics types, so the winding and normals
+ * can be checked without a GL context. The hand that holds it is a sculpted model: see {@link HandModel}.
  *
  * <p>Gun space: the barrel points along negative z, y is up and x is to the right of the shooter; the origin is the
  * middle of the underside of the slide. Lengths are in view units, roughly metres. Every solid is closed and convex:
- * a prism, a tapered beam between two points, or a faceted ball. Its triangles run counter-clockwise when seen from
+ * a prism. Its triangles run counter-clockwise when seen from
  * outside, and each vertex carries the flat normal of its face. A vertex is {@link #VERTEX_SIZE} floats: position
  * x, y, z, normal x, y, z, colour r, g, b, and a gloss from 0 (matt) to 1 (polished metal).
  *
@@ -31,7 +31,7 @@ public final class PistolGeometry {
 
     /** The groups the model is split into. */
     public enum Group {
-        /** The frame, barrel, grip and hand, which move together. */
+        /** The frame, barrel and grip, which move together. */
         BODY,
         /** The slide with its sights, which also travels back along z on each shot. */
         SLIDE
@@ -67,21 +67,9 @@ public final class PistolGeometry {
     private static final float[] POLYMER = {0.34f, 0.29f, 0.21f, 0f};
     private static final float[] POLYMER_DARK = {0.24f, 0.205f, 0.15f, 0f};
     private static final float[] STIPPLE = {0.41f, 0.355f, 0.26f, 0f};
-    private static final float[] GLOVE = {0.200f, 0.202f, 0.220f, 0f};
-    private static final float[] GLOVE_PAD = {0.245f, 0.247f, 0.268f, 0f};
-    private static final float[] CUFF = {0.27f, 0.27f, 0.295f, 0f};
-    private static final float[] STRAP = {0.10f, 0.10f, 0.115f, 0f};
-    private static final float[] SLEEVE = {0.33f, 0.37f, 0.22f, 0f};
-
-    /** The centre of the wrist in gun space: behind the grip, level with the middle of the palm. */
-    private static final float[] WRIST = {0.012f, -0.058f, 0.150f};
-    /** The unit direction of the forearm from the wrist: back, a little to the right and down. */
-    private static final float[] ARM = {0.157f, -0.299f, 0.941f};
 
     private static final int AXIS_X = 0;
     private static final int AXIS_Z = 2;
-    /** How much lower a point of a finger lies per unit it lies further forward: fingers cross the raked grip. */
-    private static final float FINGER_SLOPE = 0.32f;
 
     /** The triangles of the {@link Group#BODY} group. */
     public final float[] body;
@@ -98,15 +86,12 @@ public final class PistolGeometry {
         buildSlide();
         buildFrame();
         buildGrip();
-        buildFingers();
-        buildThumbAndPalm();
-        buildArm();
         body = bodyList.toArray();
         slide = slideList.toArray();
         solids = Collections.unmodifiableList(solidList);
     }
 
-    /** @return the pistol and hand, built from scratch. */
+    /** @return the pistol, built from scratch. */
     public static PistolGeometry build() {
         return new PistolGeometry();
     }
@@ -222,94 +207,9 @@ public final class PistolGeometry {
         }
     }
 
-    private void buildFingers() {
-        // Three thick fingers wrap the grip below the trigger guard: along its right side, across the front strap
-        // and back along the left side, where the fingertips rest. Together they are as tall as the grip is long.
-        float[] heights = {-0.058f, -0.0765f, -0.095f};
-        float[] sizes = {1f, 0.98f, 0.9f};
-        String[] names = {"middle", "ring", "little"};
-        for (int i = 0; i < 3; i++) {
-            float y = heights[i];
-            float[] knuckle = onGrip(0.033f, y, 0.030f);
-            float[] first = onGrip(0.0245f, y, -0.008f);
-            float[] second = onGrip(-0.016f, y, -0.013f);
-            float[] tip = onGrip(-0.0255f, y, 0.017f);
-            finger(names[i], knuckle, first, second, tip, sizes[i]);
-        }
-        // The index finger lies along the right side of the frame and curls onto the trigger.
-        finger("index", onGrip(0.033f, -0.041f, 0.030f), new float[] {0.022f, -0.030f, 0.012f},
-            new float[] {0.0160f, -0.027f, -0.018f}, new float[] {-0.004f, -0.027f, -0.020f}, 0.9f);
-    }
-
-    /**
-     * A finger of three segments with rounded joints and a rounded tip. The whole finger is one colour, so the hand
-     * reads as a single dark form; only the knuckle carries a slightly lighter pad.
-     */
-    private void finger(String name, float[] knuckle, float[] first, float[] second, float[] tip, float size) {
-        float[] up = {0f, 1f, 0f};
-        float thick = 0.0105f * size;
-        beam(Group.BODY, name + " finger base", knuckle, first, up, thick, thick, 0.97f, 8, GLOVE);
-        beam(Group.BODY, name + " finger middle", first, second, up, thick * 0.97f, thick * 0.97f, 0.96f, 8, GLOVE);
-        beam(Group.BODY, name + " finger end", second, tip, up, thick * 0.93f, thick * 0.93f, 0.88f, 8, GLOVE);
-        ball(Group.BODY, name + " knuckle", knuckle, thick * 1.12f, thick * 1.12f, thick * 1.12f, GLOVE_PAD);
-        ball(Group.BODY, name + " first joint", first, thick * 1.04f, thick * 1.04f, thick * 1.04f, GLOVE);
-        ball(Group.BODY, name + " second joint", second, thick * 1.02f, thick * 1.02f, thick * 1.02f, GLOVE);
-        ball(Group.BODY, name + " fingertip", tip, thick * 0.84f, thick * 0.84f, thick * 0.84f, GLOVE);
-    }
-
-    private void buildThumbAndPalm() {
-        float[] up = {0f, 1f, 0f};
-        // The heel of the hand: one thick, rounded mass closed round the back strap, flaring from the wrist. Seen
-        // from behind it is the back of a fist, taller than it is wide.
-        beam(Group.BODY, "heel of hand", WRIST, new float[] {0.006f, -0.064f, 0.104f}, up, 0.031f, 0.0225f, 1.28f,
-            10, GLOVE);
-        ball(Group.BODY, "wrist joint", WRIST, 0.0245f, 0.033f, 0.027f, GLOVE);
-        // The back of the hand: a rounded slab along the right side of the grip, from the heel to the knuckles.
-        beam(Group.BODY, "back of hand", new float[] {0.018f, -0.064f, 0.126f}, new float[] {0.030f, -0.060f, 0.070f},
-            up, 0.041f, 0.0140f, 1f, 10, GLOVE);
-        // The ball of the thumb on the left of the back strap, and the thumb resting forward along the frame.
-        ball(Group.BODY, "ball of thumb", new float[] {-0.013f, -0.050f, 0.100f}, 0.012f, 0.023f, 0.019f, GLOVE);
-        float[] root = {-0.009f, -0.036f, 0.108f};
-        float[] first = {-0.0215f, -0.021f, 0.074f};
-        float[] second = {-0.0230f, -0.0130f, 0.042f};
-        float[] tip = {-0.0220f, -0.0115f, 0.012f};
-        beam(Group.BODY, "thumb base", root, first, up, 0.0135f, 0.0135f, 0.88f, 8, GLOVE);
-        beam(Group.BODY, "thumb", first, second, up, 0.0116f, 0.0116f, 0.93f, 8, GLOVE);
-        beam(Group.BODY, "thumb end", second, tip, up, 0.0106f, 0.0106f, 0.86f, 8, GLOVE);
-        ball(Group.BODY, "thumb knuckle", first, 0.0124f, 0.0124f, 0.0124f, GLOVE);
-        ball(Group.BODY, "thumb joint", second, 0.0112f, 0.0112f, 0.0112f, GLOVE);
-        ball(Group.BODY, "thumb tip", tip, 0.0092f, 0.0092f, 0.0092f, GLOVE);
-    }
-
-    private void buildArm() {
-        float[] up = {0f, 1f, 0f};
-        // The forearm leaves the wrist towards the shooter's right elbow: back, to the right and down, so that from
-        // the eye it runs off the lower right corner of the view. A cuff with a dark strap closes the glove, and an
-        // olive sleeve carries on out of sight.
-        beam(Group.BODY, "wrist", WRIST, along(0.048f), up, 0.031f, 0.0225f, 0.97f, 10, GLOVE);
-        beam(Group.BODY, "cuff", along(0.040f), along(0.074f), up, 0.0335f, 0.0250f, 1f, 10, CUFF);
-        beam(Group.BODY, "cuff strap", along(0.052f), along(0.062f), up, 0.0350f, 0.0265f, 1f, 10, STRAP);
-        beam(Group.BODY, "sleeve", along(0.070f), along(0.520f), up, 0.0385f, 0.0300f, 1.3f, 10, SLEEVE);
-    }
-
-    /** @return the point of the forearm's axis at a distance from the wrist. */
-    private static float[] along(float distance) {
-        return new float[] {WRIST[0] + ARM[0] * distance, WRIST[1] + ARM[1] * distance, WRIST[2] + ARM[2] * distance};
-    }
-
     /** @return the z of the front of the grip at a height, following the grip's rake. */
     private static float frontStrap(float y) {
         return 0.022f + (-0.018f - y) * (0.050f - 0.022f) / (0.105f - 0.018f);
-    }
-
-    /**
-     * @param x the x of the point
-     * @param height the height at which the finger meets the front strap
-     * @param behind how far behind the front strap the point lies; negative is in front of it
-     * @return a point of a finger that crosses the grip square to its rake
-     */
-    private static float[] onGrip(float x, float height, float behind) {
-        return new float[] {x, height + FINGER_SLOPE * behind, frontStrap(height) + behind};
     }
 
     /** @return the corners of a regular polygon, as an outline for {@link #prism}. */
@@ -360,41 +260,6 @@ public final class PistolGeometry {
     }
 
     /**
-     * Adds a tapered beam: an elliptical cross-section of straight facets, swept from one point to another and
-     * scaled evenly on the way.
-     * @param from the centre of the starting end
-     * @param to the centre of the far end
-     * @param wideHint a direction, not along the beam, that the wide radius of the cross-section follows
-     * @param wide the radius along the hint at the starting end
-     * @param thin the radius square to the hint at the starting end
-     * @param taper the size of the far end relative to the starting end
-     * @param sides the number of facets round the beam
-     */
-    private void beam(Group group, String name, float[] from, float[] to, float[] wideHint, float wide, float thin,
-                      float taper, int sides, float[] colour) {
-        float[] along = normalised(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
-        float dot = wideHint[0] * along[0] + wideHint[1] * along[1] + wideHint[2] * along[2];
-        float[] u = normalised(wideHint[0] - dot * along[0], wideHint[1] - dot * along[1],
-            wideHint[2] - dot * along[2]);
-        // v = along x u, so that turning from u towards v is counter-clockwise seen from the far end.
-        float[] v = {along[1] * u[2] - along[2] * u[1], along[2] * u[0] - along[0] * u[2],
-            along[0] * u[1] - along[1] * u[0]};
-        float[][] lowLoop = new float[sides][3];
-        float[][] highLoop = new float[sides][3];
-        for (int i = 0; i < sides; i++) {
-            double angle = (i + 0.5) * 2.0 * Math.PI / sides;
-            float alongU = wide * (float) Math.cos(angle);
-            float alongV = thin * (float) Math.sin(angle);
-            for (int axis = 0; axis < 3; axis++) {
-                float offset = alongU * u[axis] + alongV * v[axis];
-                lowLoop[i][axis] = from[axis] + offset;
-                highLoop[i][axis] = to[axis] + offset * taper;
-            }
-        }
-        loft(group, name, lowLoop, highLoop, colour);
-    }
-
-    /**
      * Adds the solid between two flat loops of the same number of corners. Both loops must run counter-clockwise as
      * seen from beyond the high loop, looking back at the low one.
      */
@@ -414,50 +279,6 @@ public final class PistolGeometry {
             out.triangle(highLoop[i], lowLoop[next], highLoop[next], colour);
         }
         solidList.add(new Solid(name, group, first, out.size / VERTEX_SIZE - first));
-    }
-
-    /**
-     * Adds a faceted ball: an ellipsoid with its axes along x, y and z, cut into eight segments round the y axis and
-     * four bands from pole to pole.
-     */
-    private void ball(Group group, String name, float[] centre, float radiusX, float radiusY, float radiusZ,
-                      float[] colour) {
-        FloatList out = group == Group.SLIDE ? slideList : bodyList;
-        int first = out.size / VERTEX_SIZE;
-        int segments = 8;
-        int bands = 4;
-        float[][][] rings = new float[bands - 1][segments][3];
-        for (int band = 1; band < bands; band++) {
-            double latitude = -Math.PI / 2.0 + band * Math.PI / bands;
-            for (int i = 0; i < segments; i++) {
-                double longitude = (i + 0.5) * 2.0 * Math.PI / segments;
-                rings[band - 1][i][0] = centre[0] + radiusX * (float) (Math.cos(latitude) * Math.cos(longitude));
-                rings[band - 1][i][1] = centre[1] + radiusY * (float) Math.sin(latitude);
-                rings[band - 1][i][2] = centre[2] + radiusZ * (float) (Math.cos(latitude) * Math.sin(longitude));
-            }
-        }
-        float[] bottom = {centre[0], centre[1] - radiusY, centre[2]};
-        float[] top = {centre[0], centre[1] + radiusY, centre[2]};
-        float[][] lowest = rings[0];
-        float[][] highest = rings[bands - 2];
-        // Longitude runs from +x towards +z, which is clockwise seen from above.
-        for (int i = 0; i < segments; i++) {
-            int next = (i + 1) % segments;
-            out.triangle(bottom, lowest[i], lowest[next], colour);
-            out.triangle(top, highest[next], highest[i], colour);
-            for (int band = 0; band < bands - 2; band++) {
-                float[][] lower = rings[band];
-                float[][] upper = rings[band + 1];
-                out.triangle(lower[next], lower[i], upper[i], colour);
-                out.triangle(lower[next], upper[i], upper[next], colour);
-            }
-        }
-        solidList.add(new Solid(name, group, first, out.size / VERTEX_SIZE - first));
-    }
-
-    private static float[] normalised(float x, float y, float z) {
-        float length = (float) Math.sqrt(x * x + y * y + z * z);
-        return new float[] {x / length, y / length, z / length};
     }
 
     private static float signedArea(float[] outline) {

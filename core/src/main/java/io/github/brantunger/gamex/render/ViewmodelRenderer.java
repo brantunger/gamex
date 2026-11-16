@@ -18,7 +18,9 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.weapon.BlastCharger;
+import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolGeometry;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 
@@ -109,6 +111,8 @@ public final class ViewmodelRenderer implements Disposable {
     private final ShaderProgram shader;
     private final Mesh body;
     private final Mesh slide;
+    /** The sculpted hand and forearm, which move with the body of the pistol. */
+    private final Mesh hand;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
     private final Decal flash;
@@ -142,6 +146,9 @@ public final class ViewmodelRenderer implements Disposable {
         PistolGeometry geometry = PistolGeometry.build();
         body = buildMesh(geometry.body);
         slide = buildMesh(geometry.slide);
+        // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
+        String handFile = Gdx.files.internal(HandModel.ASSET_PATH).readString("UTF-8");
+        hand = buildMesh(HandModel.vertices(ObjModel.parse(handFile)));
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
@@ -279,6 +286,7 @@ public final class ViewmodelRenderer implements Disposable {
         shader.setUniformf("u_charge", charge);
         shader.setUniformMatrix("u_model", gunTransform);
         body.render(shader, GL20.GL_TRIANGLES);
+        hand.render(shader, GL20.GL_TRIANGLES);
         shader.setUniformMatrix("u_model", slideTransform);
         slide.render(shader, GL20.GL_TRIANGLES);
     }
@@ -287,6 +295,7 @@ public final class ViewmodelRenderer implements Disposable {
     public void dispose() {
         body.dispose();
         slide.dispose();
+        hand.dispose();
         shader.dispose();
         decalBatch.dispose();
         groupStrategy.dispose();

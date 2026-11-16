@@ -14,6 +14,9 @@ dependencies {
 
 test {
   useJUnitPlatform()
+  // Some tests check the shipped model files; the assets folder is an input, so editing a model reruns them.
+  inputs.dir(rootProject.file("assets/models")).withPathSensitivity(PathSensitivity.RELATIVE)
+  systemProperty "gamex.assets", rootProject.file("assets").path
 }
 
 jar {

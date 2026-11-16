@@ -1,0 +1,57 @@
+# Viewmodel hand sculpt
+
+`HandSculpt.java` generates the first-person hand, wrist, cuff and sleeve as a Wavefront OBJ file. The game loads
+that file at start-up; the pistol itself is still built in code, in `PistolGeometry`.
+
+## Regenerate the model
+
+From the repository root, with a JDK (11 or later) and nothing else:
+
+```
+java tools/viewmodel/HandSculpt.java assets/models/viewmodel-hand.obj
+```
+
+The file is written whole each time, and the same source always writes the same bytes. Commit the generator and
+the `.obj` together.
+
+## Check the result
+
+```
+./gradlew core:test
+```
+
+`HandModelTest` loads the written file and checks it against the real pistol: every part is a closed surface that
+faces outwards, no glove vertex is inside the pistol, the fingers wrap the grip and end on its left side, the index
+finger reaches the trigger, and the forearm leaves towards the lower right.
+
+To look at it, run the game's debug views (the variables are described in `DemoRun`):
+
+```
+GAMEX_SCREENSHOT=hand.png GAMEX_VIEWMODEL_ORBIT=90,10 ./gradlew desktop:run
+GAMEX_SCREENSHOT=view.png ./gradlew desktop:run
+```
+
+The first draws the pistol and hand alone from the left side; the second saves the normal first-person view.
+
+## How the sculpt is put together
+
+- Everything is in the pistol's gun space: the barrel points along negative z, y is up, x is to the shooter's right,
+  and the origin is the middle of the underside of the slide. Lengths are roughly metres.
+- The hand is posed on a skeleton: a path of joints for each finger, the thumb, and the palm-to-forearm line. Each
+  path is smoothed into a curve and skinned as a tube of elliptical cross-sections, so a finger is one surface with a
+  pinch at each crease and a rounded tip.
+- Glove vertices that would land inside the pistol are pushed back out to its surface. That is what presses the
+  fingers and the palm against the grip. The outlines of the grip, frame and slide at the top of the generator are
+  copies of the ones in `PistolGeometry`; if the pistol changes, change them too. `HandModelTest` fails if they drift.
+- Normals are smoothed within a part. Parts do not share vertices, so the edge between two parts, such as the cuff
+  against the glove, stays hard.
+- Each part is an OBJ group (`g palm`, `g thumb`, `g sleeve`, ...) with one material (`usemtl glove`, `pads`, `cuff`,
+  `strap` or `sleeve`). The colours of the materials are in `HandModel.Material`, not in the file.
+
+## Where to make changes
+
+- Finger thickness, creases and the paths round the grip: `finger`, `wrappingPath`, `indexPath`.
+- The palm, heel and wrist: the stations in `palm`.
+- The thumb: the stations in `thumb`.
+- The cuff, strap and the folds of the sleeve: `cuff`, `sleeve`.
+- The direction of the forearm: `ARM`. The first-person pose depends on it, so check the in-game view afterwards.

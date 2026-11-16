@@ -126,7 +126,7 @@ class PistolGeometryTest {
     }
 
     @Test
-    void modelHasTheRecognisablePartsOfAPistolAndAHand() {
+    void modelHasTheRecognisablePartsOfAPistol() {
         Set<String> names = new HashSet<>();
         for (PistolGeometry.Solid solid : GEOMETRY.solids) names.add(solid.name);
 
@@ -135,117 +135,6 @@ class PistolGeometryTest {
             "trigger", "hammer", "beavertail", "grip", "magazine plate", "stipple left 0/0"}) {
             assertTrue(names.contains(part), "missing " + part);
         }
-    }
-
-    @Test
-    void handHasFourJointedFingersAThumbAPalmAndAnArm() {
-        Set<String> names = new HashSet<>();
-        for (PistolGeometry.Solid solid : GEOMETRY.solids) names.add(solid.name);
-
-        for (String finger : new String[] {"index", "middle", "ring", "little"}) {
-            for (String piece : new String[] {" knuckle", " finger base", " first joint", " finger middle",
-                " second joint", " finger end", " fingertip"}) {
-                assertTrue(names.contains(finger + piece), "missing " + finger + piece);
-            }
-        }
-        for (String part : new String[] {"thumb base", "thumb knuckle", "thumb", "thumb joint", "thumb end",
-            "thumb tip", "ball of thumb", "heel of hand", "back of hand", "wrist", "cuff", "sleeve"}) {
-            assertTrue(names.contains(part), "missing " + part);
-        }
-    }
-
-    @Test
-    void fingertipsAndThumbLieOnTheLeftOfTheGripAndKnucklesOnTheRight() {
-        for (PistolGeometry.Solid solid : GEOMETRY.solids) {
-            float x = centre(GEOMETRY.body, solid).x;
-            boolean wrappingTip = solid.name.endsWith("fingertip") && !solid.name.startsWith("index");
-            if (wrappingTip || solid.name.equals("thumb tip")) {
-                assertTrue(x < -0.013f, solid.name + " is on the left side, at x = " + x);
-            }
-            if (solid.name.endsWith(" knuckle") && !solid.name.startsWith("thumb")) {
-                assertTrue(x > 0.013f, solid.name + " is on the right side, at x = " + x);
-            }
-        }
-    }
-
-    private static PistolGeometry.Solid solid(String name) {
-        for (PistolGeometry.Solid solid : GEOMETRY.solids) {
-            if (solid.name.equals(name)) return solid;
-        }
-        throw new AssertionError("no solid named " + name);
-    }
-
-    private static float[] colour(PistolGeometry.Solid solid) {
-        float[] vertices = GEOMETRY.vertices(solid.group);
-        int at = solid.firstVertex * PistolGeometry.VERTEX_SIZE;
-        return new float[] {vertices[at + 6], vertices[at + 7], vertices[at + 8]};
-    }
-
-    private static boolean isGlove(String name) {
-        return name.contains("finger") || name.contains("joint") || name.contains("thumb") || name.contains("hand")
-            || name.equals("wrist");
-    }
-
-    @Test
-    void gloveIsOneDarkColourWithOnlyTheKnucklePadsATouchLighter() {
-        float[] glove = colour(solid("heel of hand"));
-        assertTrue(glove[0] < 0.3f && glove[1] < 0.3f && glove[2] < 0.3f, "the glove is dark");
-        int gloveSolids = 0;
-        for (PistolGeometry.Solid solid : GEOMETRY.solids) {
-            float[] colour = colour(solid);
-            if (isGlove(solid.name)) {
-                gloveSolids++;
-                for (int channel = 0; channel < 3; channel++) {
-                    assertEquals(glove[channel], colour[channel], 0f, solid.name + " is the colour of the glove");
-                }
-            } else if (solid.name.endsWith(" knuckle")) {
-                for (int channel = 0; channel < 3; channel++) {
-                    float lighter = colour[channel] - glove[channel];
-                    assertTrue(lighter > 0f && lighter < 0.08f, solid.name + " is only a touch lighter: " + lighter);
-                }
-            }
-        }
-        assertTrue(gloveSolids > 30, "glove solids found: " + gloveSolids);
-    }
-
-    @Test
-    void fourFingersTogetherAreAboutAsTallAsTheGripIsLong() {
-        float fingersTop = Float.NEGATIVE_INFINITY;
-        float fingersBottom = Float.POSITIVE_INFINITY;
-        for (PistolGeometry.Solid solid : GEOMETRY.solids) {
-            if (!solid.name.endsWith("finger base")) continue;
-            for (int i = 0; i < solid.vertexCount; i++) {
-                float y = position(GEOMETRY.body, solid.firstVertex + i).y;
-                fingersTop = Math.max(fingersTop, y);
-                fingersBottom = Math.min(fingersBottom, y);
-            }
-        }
-        PistolGeometry.Solid grip = solid("grip");
-        float gripTop = Float.NEGATIVE_INFINITY;
-        float gripBottom = Float.POSITIVE_INFINITY;
-        for (int i = 0; i < grip.vertexCount; i++) {
-            float y = position(GEOMETRY.body, grip.firstVertex + i).y;
-            gripTop = Math.max(gripTop, y);
-            gripBottom = Math.min(gripBottom, y);
-        }
-
-        float ratio = (fingersTop - fingersBottom) / (gripTop - gripBottom);
-        assertTrue(ratio > 0.8f && ratio < 1.1f, "hand width over grip length: " + ratio);
-    }
-
-    @Test
-    void forearmRunsBackFromTheWristRoughlyInLineWithTheBarrel() {
-        Vector3 wrist = centre(GEOMETRY.body, solid("wrist joint"));
-        Vector3 cuff = centre(GEOMETRY.body, solid("cuff"));
-        Vector3 sleeve = centre(GEOMETRY.body, solid("sleeve"));
-        Vector3 heel = centre(GEOMETRY.body, solid("heel of hand"));
-
-        // Hand, wrist, cuff and sleeve follow one another back towards the shooter.
-        assertTrue(heel.z < wrist.z && wrist.z < cuff.z && cuff.z < sleeve.z, "order along the arm");
-        Vector3 arm = new Vector3(sleeve).sub(wrist).nor();
-        assertTrue(arm.z > (float) Math.cos(Math.toRadians(25.0)), "within 25 degrees of the barrel: " + arm);
-        assertTrue(arm.x > 0f, "towards the shooter's right: " + arm);
-        assertTrue(arm.y < 0f, "and downwards: " + arm);
     }
 
     @Test
@@ -270,7 +159,7 @@ class PistolGeometryTest {
             float gloss = GEOMETRY.vertices(solid.group)[solid.firstVertex * PistolGeometry.VERTEX_SIZE + 9];
             assertTrue(gloss >= 0f && gloss <= 1f, solid.name + " gloss " + gloss);
             if (solid.name.equals("slide top") || solid.name.equals("barrel")) assertEquals(1f, gloss, 0f);
-            if (solid.name.equals("grip") || solid.name.equals("frame") || solid.name.equals("sleeve")) {
+            if (solid.name.equals("grip") || solid.name.equals("frame")) {
                 assertEquals(0f, gloss, 0f, solid.name + " is matt");
             }
         }
