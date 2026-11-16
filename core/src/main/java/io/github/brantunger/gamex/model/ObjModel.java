@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.model;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * A triangle mesh read from Wavefront OBJ text. It has no graphics types, so it can be parsed and checked without a
@@ -11,11 +12,14 @@ import java.util.List;
  * <p>The parser understands the part of the format that a sculpted model needs: {@code v} positions, {@code vn}
  * normals, {@code f} faces of three or more corners written as {@code v}, {@code v/vt}, {@code v//vn} or
  * {@code v/vt/vn} with indices counted from 1 or, when negative, back from the latest, {@code g} and {@code o} group
- * names and {@code usemtl} material names. Faces with more than three corners are split into a fan of triangles. A
- * face without normals gets the flat normal of its first triangle. {@code vt}, {@code mtllib} and {@code s} lines
- * and comments are read past, as is a byte-order mark at the start; lines may end in LF, CRLF or a lone CR. Anything
- * else is an error, so a file that uses a feature this parser lacks is not
- * silently drawn wrong.
+ * names and {@code usemtl} material names. The three numbers of a {@code v} or {@code vn} line are plain decimals
+ * with an optional sign and exponent, such as {@code -0.5}, {@code +2} or {@code 1e-3}; any further words on the line
+ * are read past. Indices are whole numbers with an optional sign. Faces with more than three corners are split into a
+ * fan of triangles. A face has a normal on every corner or on none. A face without normals gets the flat normal of
+ * the first triangle of its fan that has an area; one with no area at all has no such normal and is an error.
+ * {@code vt}, {@code mtllib} and {@code s} lines and comments are read past, as is a byte-order mark at the start;
+ * lines may end in LF, CRLF or a lone CR. Anything else is an error, so a file that uses a feature this parser lacks
+ * is not silently drawn wrong.
  */
 public final class ObjModel {
 
@@ -25,6 +29,12 @@ public final class ObjModel {
     public static final String NO_GROUP = "";
     /** The character some editors put at the very start of a text file. */
     private static final char BYTE_ORDER_MARK = 0xFEFF;
+    /** A plain decimal number. {@code Float.parseFloat} alone would also take {@code 1f} and {@code 0x1p1}. */
+    private static final Pattern NUMBER = Pattern.compile("[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?");
+    /** A whole number. {@code Integer.parseInt} alone would also take digits of other scripts. */
+    private static final Pattern INDEX = Pattern.compile("[+-]?[0-9]+");
+    /** A vector shorter than this has no direction to speak of. */
+    private static final float ZERO_LENGTH = 1e-12f;
 
     private final int vertexCount;
     private final float[] positions;
@@ -80,8 +90,10 @@ public final class ObjModel {
      * Parses OBJ text.
      * @param text the contents of an OBJ file
      * @return the model
-     * @throws IllegalArgumentException if a line is malformed, refers to a vertex or normal that does not exist, or
-     *     uses a part of the format this parser does not support; the message names the line
+     * @throws IllegalArgumentException if a line is malformed, has among the three numbers of a {@code v} or
+     *     {@code vn} one that is not a plain decimal or is too large for a float, refers to a vertex or normal that
+     *     does not exist, is a face with normals on only some of its corners or a face without normals that has no
+     *     area, or uses a part of the format this parser does not support; the message names the line
      */
     public static ObjModel parse(String text) {
         List<float[]> vertices = new ArrayList<>();
@@ -144,12 +156,11 @@ public final class ObjModel {
         }
         float[] vector = new float[3];
         for (int i = 0; i < 3; i++) {
-            try {
-                vector[i] = Float.parseFloat(words[i + 1]);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Line " + number + ": '" + words[i + 1] + "' is not a number", e);
+            if (!NUMBER.matcher(words[i + 1]).matches()) {
+                throw new IllegalArgumentException("Line " + number + ": '" + words[i + 1] + "' is not a number");
             }
-            if (Float.isNaN(vector[i]) || Float.isInfinite(vector[i])) {
+            vector[i] = Float.parseFloat(words[i + 1]);
+            if (Float.isInfinite(vector[i])) {
                 throw new IllegalArgumentException("Line " + number + ": '" + words[i + 1] + "' is not finite");
             }
         }
@@ -157,9 +168,13 @@ public final class ObjModel {
     }
 
     private static float[] unit(float[] vector, int number) {
-        float length = (float) Math.sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
-        if (length < 1e-12f) throw new IllegalArgumentException("Line " + number + ": a normal of zero length");
+        float length = length(vector);
+        if (length < ZERO_LENGTH) throw new IllegalArgumentException("Line " + number + ": a normal of zero length");
         return new float[] {vector[0] / length, vector[1] / length, vector[2] / length};
+    }
+
+    private static float length(float[] vector) {
+        return (float) Math.sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
     }
 
     /** Reads one face and appends its fan of triangles. */
@@ -169,7 +184,7 @@ public final class ObjModel {
         if (corners < 3) throw new IllegalArgumentException("Line " + number + ": a face needs at least three corners");
         float[][] cornerPositions = new float[corners][];
         float[][] cornerNormals = new float[corners][];
-        boolean allHaveNormals = true;
+        int withNormals = 0;
         for (int i = 0; i < corners; i++) {
             String[] parts = words[i + 1].split("/", -1);
             if (parts.length > 3) {
@@ -178,14 +193,14 @@ public final class ObjModel {
             cornerPositions[i] = vertices.get(index(parts[0], vertices.size(), number, "vertex"));
             if (parts.length == 3 && !parts[2].isEmpty()) {
                 cornerNormals[i] = vertexNormals.get(index(parts[2], vertexNormals.size(), number, "normal"));
-            } else {
-                allHaveNormals = false;
+                withNormals++;
             }
         }
-        float[] flat = null;
-        if (!allHaveNormals) {
-            flat = unit(cross(cornerPositions[0], cornerPositions[1], cornerPositions[2]), number);
+        if (withNormals != 0 && withNormals != corners) {
+            throw new IllegalArgumentException("Line " + number + ": a face with normals on only " + withNormals
+                + " of its " + corners + " corners");
         }
+        float[] flat = withNormals == 0 ? flatNormal(cornerPositions, number) : null;
         for (int i = 1; i < corners - 1; i++) {
             for (int corner : new int[] {0, i, i + 1}) {
                 positions.add(cornerPositions[corner]);
@@ -194,8 +209,21 @@ public final class ObjModel {
         }
     }
 
+    /** Finds the flat normal of a face: that of the first triangle of its fan that has an area. */
+    private static float[] flatNormal(float[][] cornerPositions, int number) {
+        for (int i = 1; i < cornerPositions.length - 1; i++) {
+            float[] normal = cross(cornerPositions[0], cornerPositions[i], cornerPositions[i + 1]);
+            if (length(normal) >= ZERO_LENGTH) return unit(normal, number);
+        }
+        throw new IllegalArgumentException("Line " + number + ": a face with no area: its corners are in a line or"
+            + " coincide");
+    }
+
     /** Turns an OBJ index, counted from 1 or negative from the end, into an index counted from 0. */
     private static int index(String word, int count, int number, String what) {
+        if (!INDEX.matcher(word).matches()) {
+            throw new IllegalArgumentException("Line " + number + ": '" + word + "' is not a " + what + " index");
+        }
         int value;
         try {
             value = Integer.parseInt(word);

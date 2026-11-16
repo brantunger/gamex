@@ -1,7 +1,9 @@
 package io.github.brantunger.gamex.model;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,6 +23,12 @@ class ObjModelTest {
             + "v 0 1 0\n"
             + "vn 0 0 1\n";
 
+    /** Three vertices in a line along the x axis: a triangle of them has no area. */
+    private static final String IN_A_LINE =
+        "v 0 0 0\n"
+            + "v 1 0 0\n"
+            + "v 2 0 0\n";
+
     private static float[] corner(float[] nine, int triangle, int corner) {
         int at = (triangle * 3 + corner) * 3;
         return Arrays.copyOfRange(nine, at, at + 3);
@@ -28,6 +36,12 @@ class ObjModelTest {
 
     private static IllegalArgumentException rejects(String text) {
         return assertThrows(IllegalArgumentException.class, () -> ObjModel.parse(text));
+    }
+
+    private static void rejectsSaying(String text, String line, String wording) {
+        String message = rejects(text).getMessage();
+        assertTrue(message.contains(line), message);
+        assertTrue(message.contains(wording), message);
     }
 
     @Test
@@ -93,6 +107,45 @@ class ObjModelTest {
         for (int corner = 0; corner < 3; corner++) {
             assertArrayEquals(new float[] {0f, 0f, 1f}, corner(counterClockwise.getNormals(), 0, corner), EPSILON);
             assertArrayEquals(new float[] {0f, 0f, -1f}, corner(clockwise.getNormals(), 0, corner), EPSILON);
+        }
+    }
+
+    @Test
+    void faceWhoseFirstCornersAreInALineGetsTheFlatNormalOfItsFirstTriangleWithAnArea() {
+        ObjModel model = ObjModel.parse(IN_A_LINE + "v 1 1 0\nf 1 2 3 4\n");
+
+        // The triangle without an area is still there, so the triangles keep matching the corners of the face.
+        assertEquals(2, model.getTriangleCount());
+        assertEquals(18, model.getPositions().length);
+        assertArrayEquals(new float[] {2f, 0f, 0f}, corner(model.getPositions(), 0, 2), EPSILON);
+        assertArrayEquals(new float[] {1f, 1f, 0f}, corner(model.getPositions(), 1, 2), EPSILON);
+        for (int triangle = 0; triangle < 2; triangle++) {
+            for (int corner = 0; corner < 3; corner++) {
+                assertArrayEquals(new float[] {0f, 0f, 1f}, corner(model.getNormals(), triangle, corner), EPSILON);
+            }
+        }
+    }
+
+    @Test
+    void faceWithSeveralTrianglesThatHaveAnAreaGetsTheFlatNormalOfTheFirstOfThem() {
+        // The fan is a triangle with no area, one that faces +z, and one that faces another way.
+        ObjModel model = ObjModel.parse(IN_A_LINE + "v 1 1 0\nv 0 0 1\nf 1 2 3 4 5\n");
+
+        assertEquals(3, model.getTriangleCount());
+        for (int triangle = 0; triangle < 3; triangle++) {
+            for (int corner = 0; corner < 3; corner++) {
+                assertArrayEquals(new float[] {0f, 0f, 1f}, corner(model.getNormals(), triangle, corner), EPSILON);
+            }
+        }
+    }
+
+    @Test
+    void faceWithNoAreaIsReadWhenEveryCornerHasANormal() {
+        ObjModel model = ObjModel.parse(IN_A_LINE + "vn 0 1 0\nf 1//1 2//1 3//1\n");
+
+        assertEquals(1, model.getTriangleCount());
+        for (int corner = 0; corner < 3; corner++) {
+            assertArrayEquals(new float[] {0f, 1f, 0f}, corner(model.getNormals(), 0, corner), EPSILON);
         }
     }
 
@@ -185,10 +238,111 @@ class ObjModelTest {
     void rejectsMalformedNumbers() {
         assertTrue(rejects("v 0 zero 0\n").getMessage().contains("Line 1"));
         rejects("v 0 0\n");
-        rejects("v 0 0 NaN\n");
+        rejectsSaying("v 0 0 NaN\n", "Line 1", "'NaN' is not a number");
         rejects("vn 0 0 0\n");
         rejects(SQUARE + "f 1 two 3\n");
         rejects(SQUARE + "f 1/1/1/1 2 3\n");
+    }
+
+    @Test
+    void rejectsNumbersThatAreNotPlainDecimals() {
+        assertAll(
+            () -> rejectsSaying("v 1f 0 0\n", "Line 1", "'1f' is not a number"),
+            () -> rejectsSaying("v 0 2d 0\n", "Line 1", "'2d' is not a number"),
+            () -> rejectsSaying("v 0 0 0x1p1\n", "Line 1", "'0x1p1' is not a number"),
+            () -> rejectsSaying("v 0 0 0\nvn 1f 0 0\n", "Line 2", "'1f' is not a number"),
+            () -> rejectsSaying("v Infinity 0 0\n", "Line 1", "'Infinity' is not a number"),
+            () -> rejectsSaying("v 0 -Infinity 0\n", "Line 1", "'-Infinity' is not a number"),
+            () -> rejectsSaying("v 0 0 0\nvn 0 NaN 1\n", "Line 2", "'NaN' is not a number"));
+    }
+
+    @Test
+    void rejectsFaceIndicesWrittenInDigitsThatAreNotAscii() {
+        assertAll(
+            () -> rejectsSaying(SQUARE + "f \u0661 2 3\n", "Line 6", "is not a vertex index"),
+            () -> rejectsSaying(SQUARE + "f 1//\u0661 2//1 3//1\n", "Line 6", "is not a normal index"));
+    }
+
+    @Test
+    void readsNumbersWithAPlusSignAnExponentOrNoDigitsOnOneSideOfThePoint() {
+        ObjModel model = ObjModel.parse("v +1 .5 5.\nv 1e2 -2.5E-1 +.5e+1\nv 0 1 0\nvn 0 0 +1\nf 1//1 2//1 3//1\n");
+
+        assertArrayEquals(new float[] {1f, 0.5f, 5f}, corner(model.getPositions(), 0, 0), EPSILON);
+        assertArrayEquals(new float[] {100f, -0.25f, 5f}, corner(model.getPositions(), 0, 1), EPSILON);
+        assertArrayEquals(new float[] {0f, 0f, 1f}, corner(model.getNormals(), 0, 0), EPSILON);
+    }
+
+    @Test
+    void readsFaceIndicesWithAPlusSign() {
+        ObjModel model = ObjModel.parse(SQUARE + "f +1 2 3\nf +1//+1 +2//1 +3//1\n");
+
+        assertEquals(2, model.getTriangleCount());
+        assertArrayEquals(new float[] {0f, 0f, 0f}, corner(model.getPositions(), 0, 0), EPSILON);
+        assertArrayEquals(new float[] {1f, 1f, 0f}, corner(model.getPositions(), 1, 2), EPSILON);
+    }
+
+    @Test
+    void rejectsNumbersThatAreTooLargeOrAreNotNumbersAtAll() {
+        assertAll(
+            () -> rejectsSaying("v 1e40 0 0\n", "Line 1", "'1e40' is not finite"),
+            () -> rejects("v \u0661 0 0\n"),
+            () -> rejects("v 1e 0 0\n"),
+            () -> rejects("v . 0 0\n"));
+    }
+
+    @Test
+    void rejectsANormalOfZeroLengthAndSaysSo() {
+        rejectsSaying("v 0 0 0\nvn 0 0 0\n", "Line 2", "a normal of zero length");
+    }
+
+    @Test
+    void rejectsAFaceIndexTooLargeToCountWithAndNamesTheLine() {
+        rejectsSaying(SQUARE + "f 99999999999 2 3\n", "Line 6", "'99999999999' is not a vertex index");
+    }
+
+    @Test
+    void rejectsAFaceWithNormalsOnOnlySomeOfItsCorners() {
+        assertAll(
+            () -> rejectsSaying(SQUARE + "f 1//1 2//1 3\n", "Line 6", "normals on only 2 of its 3 corners"),
+            () -> rejectsSaying(SQUARE + "f 1//1 2//1 3//\n", "Line 6", "normals on only 2 of its 3 corners"),
+            () -> rejectsSaying(SQUARE + "f 1 2//1 3//1 4//1\n", "Line 6", "normals on only 3 of its 4 corners"),
+            () -> rejectsSaying(SQUARE + "vt 0 0\nf 1/1/1 2/1 3\n", "Line 7", "normals on only 1 of its 3 corners"));
+    }
+
+    @Test
+    void namesANormalThatDoesNotExistBeforeTheCornersThatLackOne() {
+        rejectsSaying(SQUARE + "f 1//1 2//2 3\n", "Line 6", "no normal 2");
+    }
+
+    @Test
+    void rejectsAFaceWithoutNormalsThatHasNoAreaAndSaysSo() {
+        IllegalArgumentException error = rejects(IN_A_LINE + "f 1 2 3\n");
+
+        assertTrue(error.getMessage().contains("Line 4"), error.getMessage());
+        assertTrue(error.getMessage().contains("a face with no area"), error.getMessage());
+        assertFalse(error.getMessage().contains("normal of zero length"), error.getMessage());
+        // Nor is there a triangle with an area anywhere in the fan of a longer face.
+        rejectsSaying(IN_A_LINE + "v 3 0 0\nf 1 2 3 4\n", "Line 5", "a face with no area");
+        rejectsSaying(IN_A_LINE + "f 1 1 1\n", "Line 4", "a face with no area");
+    }
+
+    @Test
+    void rejectsAFaceWithoutNormalsWhoseAreaIsTooSmallToGiveItANormal() {
+        // The same length decides that a normal on a vn line is of zero length.
+        IllegalArgumentException error = rejects("v 0 0 0\nv 1e-7 0 0\nv 0 1e-7 0\nf 1 2 3\n");
+
+        assertTrue(error.getMessage().contains("Line 4"), error.getMessage());
+        assertTrue(error.getMessage().contains("a face with no area"), error.getMessage());
+    }
+
+    @Test
+    void readsAFaceWithoutNormalsThatIsSmallButHasAnArea() {
+        ObjModel model = ObjModel.parse("v 0 0 0\nv 1e-5 0 0\nv 0 1e-5 0\nf 1 2 3\n");
+
+        assertEquals(1, model.getTriangleCount());
+        for (int corner = 0; corner < 3; corner++) {
+            assertArrayEquals(new float[] {0f, 0f, 1f}, corner(model.getNormals(), 0, corner), EPSILON);
+        }
     }
 
     @Test
