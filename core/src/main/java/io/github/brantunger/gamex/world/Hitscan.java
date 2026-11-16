@@ -32,6 +32,30 @@ public final class Hitscan {
     }
 
     /**
+     * Checks whether two floor points have an unobstructed line of sight with no solid wall cells between them.
+     * @param map the map
+     * @param x0 the starting world x
+     * @param z0 the starting world z
+     * @param x1 the ending world x
+     * @param z1 the ending world z
+     * @return true if no solid wall cell blocks the straight segment from (x0, z0) to (x1, z1)
+     */
+    public static boolean hasLineOfSight(GameMap map, float x0, float z0, float x1, float z1) {
+        int startCol = (int) Math.floor(x0);
+        int startRow = (int) Math.floor(z0);
+        if (map.isSolid(startCol, startRow)) return false;
+        float dx = x1 - x0;
+        float dz = z1 - z0;
+        float length = (float) Math.hypot(dx, dz);
+        if (length < 1e-6f) return true;
+        Vector3 origin = new Vector3(x0, 0.5f, z0);
+        Vector3 dir = new Vector3(dx / length, 0f, dz / length);
+        RayHit hit = new RayHit();
+        castGrid(map, origin, dir, length - 1e-4f, hit);
+        return hit.kind != RayHit.Kind.WALL;
+    }
+
+    /**
      * Walks the grid cell by cell along the ray (a DDA traversal) until it enters a wall cell. Because the direction
      * is a unit vector in 3D, the crossing parameters are distances along the ray itself.
      */

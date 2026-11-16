@@ -16,6 +16,12 @@ public final class WorldModels {
     public static final String RING_BOARD_PATH = "models/ring-board.obj";
     /** The path of the blast projectile model file inside the assets folder. */
     public static final String BLAST_ORB_PATH = "models/blast-orb.obj";
+    /** The path of the medkit pickup model file inside the assets folder. */
+    public static final String MEDKIT_PATH = "models/pickup-medkit.obj";
+    /** The path of the armor pickup model file inside the assets folder. */
+    public static final String ARMOR_PATH = "models/pickup-armor.obj";
+    /** The path of the energy cell pickup model file inside the assets folder. */
+    public static final String ENERGY_CELL_PATH = "models/pickup-energy.obj";
     /** The number of floats per vertex. */
     public static final int VERTEX_SIZE = ModelVertices.VERTEX_SIZE;
 
@@ -32,7 +38,15 @@ public final class WorldModels {
         BOARD_VIOLET("board_violet", 0.41f, 0.27f, 0.77f, 0.2f),
         BOARD_BULLSEYE("board_bullseye", 0.89f, 0.24f, 0.56f, 0.3f),
         ORB_CORE("orb_core", 0.95f, 0.85f, 1.00f, 1.0f),
-        ORB_SHELL("orb_shell", 0.62f, 0.32f, 1.00f, 0.8f);
+        ORB_SHELL("orb_shell", 0.62f, 0.32f, 1.00f, 0.8f),
+        MEDKIT_CASE("medkit_case", 0.90f, 0.92f, 0.90f, 0.35f),
+        MEDKIT_TRIM("medkit_trim", 0.30f, 0.35f, 0.38f, 0.5f),
+        MEDKIT_CROSS("medkit_cross", 0.92f, 0.20f, 0.26f, 0.4f),
+        ARMOR_PLATE("armor_plate", 0.18f, 0.52f, 0.86f, 0.65f),
+        ARMOR_TRIM("armor_trim", 0.42f, 0.48f, 0.56f, 0.75f),
+        ARMOR_CORE("armor_core", 0.45f, 0.92f, 1.00f, 0.9f),
+        CELL_CAP("cell_cap", 0.32f, 0.28f, 0.42f, 0.6f),
+        CELL_CORE("cell_core", 0.76f, 0.42f, 1.00f, 0.95f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;

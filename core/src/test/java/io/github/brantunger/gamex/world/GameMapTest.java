@@ -119,4 +119,54 @@ class GameMapTest {
             assertTrue(reached[(int) spawn.z][(int) spawn.x], "target at " + spawn.x + ", " + spawn.z);
         }
     }
+
+    @Test
+    void parsesPickupsAndExitAndRejectsDuplicateExits() {
+        GameMap map = GameMap.parse(
+            "#######",
+            "#>+aeX#",
+            "#######");
+
+        assertEquals(3, map.getPickupSpawns().size());
+        assertEquals(Pickup.Kind.MEDKIT, map.getPickupSpawns().get(0).kind);
+        assertEquals(Pickup.Kind.ARMOR, map.getPickupSpawns().get(1).kind);
+        assertEquals(Pickup.Kind.ENERGY_CELL, map.getPickupSpawns().get(2).kind);
+        assertTrue(map.hasExit());
+        assertEquals(5.5f, map.getExitX(), EPSILON);
+        assertEquals(1.5f, map.getExitZ(), EPSILON);
+
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse("#>XX#"));
+    }
+
+    @Test
+    void trainingRangeAndOuterBreachHaveReachableTargetsPickupsAndExit() {
+        Levels.Stage[] stages = {Levels.trainingRange(), Levels.outerBreach()};
+        for (Levels.Stage stage : stages) {
+            GameMap map = stage.map;
+            assertFalse(Collision.overlapsWall(map, map.getSpawnX(), map.getSpawnZ(), Player.RADIUS));
+            boolean[][] reached = new boolean[map.getHeight()][map.getWidth()];
+            ArrayDeque<int[]> open = new ArrayDeque<>();
+            open.add(new int[] {(int) map.getSpawnX(), (int) map.getSpawnZ()});
+            while (!open.isEmpty()) {
+                int[] cell = open.poll();
+                int col = cell[0];
+                int row = cell[1];
+                if (map.isSolid(col, row) || reached[row][col]) continue;
+                reached[row][col] = true;
+                open.add(new int[] {col + 1, row});
+                open.add(new int[] {col - 1, row});
+                open.add(new int[] {col, row + 1});
+                open.add(new int[] {col, row - 1});
+            }
+            for (GameMap.TargetSpawn t : map.getTargetSpawns()) {
+                assertTrue(reached[(int) t.z][(int) t.x], stage.id + " unreachable target at " + t.x + "," + t.z);
+            }
+            for (GameMap.PickupSpawn p : map.getPickupSpawns()) {
+                assertTrue(reached[(int) p.z][(int) p.x], stage.id + " unreachable pickup at " + p.x + "," + p.z);
+            }
+            if (map.hasExit()) {
+                assertTrue(reached[(int) map.getExitZ()][(int) map.getExitX()], stage.id + " unreachable exit");
+            }
+        }
+    }
 }
