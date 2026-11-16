@@ -1,20 +1,22 @@
-# Viewmodel hand sculpt
+# Viewmodel sculpts
 
-`HandSculpt.java` generates the first-person hand, wrist, cuff and sleeve as a Wavefront OBJ file. The game loads
-that file at start-up; the pistol itself is still built in code, in `PistolGeometry`.
+`HandSculpt.java` generates the first-person hand, wrist, cuff and sleeve as `assets/models/viewmodel-hand.obj`, and
+`PistolSculpt.java` generates the first-person pistol as `assets/models/viewmodel-pistol.obj`. The game loads both `.obj`
+files at start-up (into `HandModel` and `PistolModel`).
 
-## Regenerate the model
+## Regenerate the models
 
 From the repository root, with a JDK (11 or later) and nothing else:
 
 ```
 java tools/viewmodel/HandSculpt.java assets/models/viewmodel-hand.obj
+java tools/viewmodel/PistolSculpt.java assets/models/viewmodel-pistol.obj
 ```
 
-The file is written whole each time, and the same source always writes the same bytes. Commit the generator and
-the `.obj` together.
+Each file is written whole each time, and the same source always writes the same bytes. Commit the generators and
+the `.obj` files together.
 
-If the generator cannot uncross the rings of a part (see "How the sculpt is put together"), it stops with
+If `HandSculpt.java` cannot uncross the rings of a part (see "How the sculpt is put together"), it stops with
 `The rings of <part> are still crossed after 2000 sweeps` and leaves the file as it was.
 
 ## Check the result
@@ -23,7 +25,8 @@ If the generator cannot uncross the rings of a part (see "How the sculpt is put 
 ./gradlew core:test
 ```
 
-`HandModelTest` loads the written file and checks it against the real pistol: every part is a closed surface that
+`PistolModelTest` checks that every solid in `viewmodel-pistol.obj` is closed, convex, and faces outwards.
+`HandModelTest` loads both written files and checks the hand against the real pistol: every part is a closed surface that
 faces outwards, no quad folds when it is split into two triangles, no glove vertex is inside the pistol, the fingers
 and the palm lie on the grip's surface, the fingers wrap the grip and end on its left side, the index finger reaches
 the trigger, and the forearm leaves towards the lower right.
@@ -45,11 +48,11 @@ The first draws the pistol and hand alone from the left side; the second saves t
   path is smoothed into a curve and skinned as a tube of elliptical cross-sections, so a finger is one surface with a
   pinch at each crease and a rounded tip.
 - Glove vertices that would land inside the pistol are pushed back out to its surface. That is what presses the
-  fingers and the palm against the grip. The outlines of the grip, frame and slide at the top of the generator are
-  copies of the ones in `PistolGeometry`; if the pistol changes, change them too. `HandModelTest` measures the written
-  file against the real grip, and fails if the grip has grown into the glove or shrunk away from it: on either side,
-  at the front strap or at the back strap. It does not notice a change to a part of the pistol that the hand does not
-  touch, or a change smaller than about 2 mm.
+  fingers and the palm against the grip. The outlines of the grip, frame and slide at the top of `HandSculpt.java`
+  are copies of the ones in `PistolSculpt.java`; if the pistol changes, change them too. `HandModelTest` measures the
+  written file against the real grip from `viewmodel-pistol.obj`, and fails if the grip has grown into the glove or
+  shrunk away from it: on either side, at the front strap or at the back strap. It does not notice a change to a part
+  of the pistol that the hand does not touch, or a change smaller than about 2 mm.
 - Each cross-section is set square to its path, and corner i of one ring is joined to corner i of the next. On the
   inside of a tight bend, and where the push moves one ring further than the next, a corner can end up behind the same
   corner of the ring before it, and the quad between the two folds or faces inwards. So after the push, the rings of

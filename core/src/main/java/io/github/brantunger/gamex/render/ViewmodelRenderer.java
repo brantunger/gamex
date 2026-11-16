@@ -4,8 +4,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Mesh;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
-import com.badlogic.gdx.graphics.VertexAttribute;
-import com.badlogic.gdx.graphics.VertexAttributes;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.g3d.decals.CameraGroupStrategy;
 import com.badlogic.gdx.graphics.g3d.decals.Decal;
@@ -18,10 +16,9 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
-import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.HandModel;
-import io.github.brantunger.gamex.weapon.PistolGeometry;
+import io.github.brantunger.gamex.weapon.PistolModel;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 
 /**
@@ -143,33 +140,16 @@ public final class ViewmodelRenderer implements Disposable {
         if (!shader.isCompiled()) {
             throw new GdxRuntimeException("The viewmodel shader did not compile: " + shader.getLog());
         }
-        PistolGeometry geometry = PistolGeometry.build();
-        body = buildMesh(geometry.body);
-        slide = buildMesh(geometry.slide);
+        PistolModel pistol = ModelMesh.load(PistolModel.ASSET_PATH, "pistol", PistolModel::from);
+        body = ModelMesh.build(pistol.body);
+        slide = ModelMesh.build(pistol.slide);
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
-        String handFile = Gdx.files.internal(HandModel.ASSET_PATH).readString("UTF-8");
-        try {
-            hand = buildMesh(HandModel.vertices(ObjModel.parse(handFile)));
-        } catch (IllegalArgumentException e) {
-            // The parser names the line; say which file it was reading as well.
-            throw new GdxRuntimeException("The hand model " + HandModel.ASSET_PATH + " could not be read: "
-                + e.getMessage(), e);
-        }
+        hand = ModelMesh.loadMesh(HandModel.ASSET_PATH, "hand", HandModel::vertices);
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
         flash = Decal.newDecal(1f, 1f, new TextureRegion(textures.muzzleFlash), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
         glow = Decal.newDecal(1f, 1f, new TextureRegion(textures.orb), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
-    }
-
-    private static Mesh buildMesh(float[] vertices) {
-        Mesh mesh = new Mesh(true, vertices.length / PistolGeometry.VERTEX_SIZE, 0,
-            new VertexAttribute(VertexAttributes.Usage.Position, 3, ShaderProgram.POSITION_ATTRIBUTE),
-            new VertexAttribute(VertexAttributes.Usage.Normal, 3, ShaderProgram.NORMAL_ATTRIBUTE),
-            new VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_colour"),
-            new VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_gloss"));
-        mesh.setVertices(vertices);
-        return mesh;
     }
 
     /**
@@ -227,7 +207,7 @@ public final class ViewmodelRenderer implements Disposable {
 
         // The flash and the charge glow sit just ahead of the muzzle, wherever the animation has put it.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        muzzle.set(PistolGeometry.MUZZLE_X, PistolGeometry.MUZZLE_Y, PistolGeometry.MUZZLE_Z - 0.012f)
+        muzzle.set(PistolModel.MUZZLE_X, PistolModel.MUZZLE_Y, PistolModel.MUZZLE_Z - 0.012f)
             .mul(gunTransform);
         if (flashing) {
             float size = 0.085f;

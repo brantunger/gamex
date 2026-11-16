@@ -25,10 +25,10 @@ import java.util.Set;
 /** Checks the shipped hand model file, and how it is turned into vertices. */
 class HandModelTest {
 
-    private static final ObjModel MODEL = load();
-    private static final PistolGeometry PISTOL = PistolGeometry.build();
+    private static final ObjModel MODEL = load(HandModel.ASSET_PATH);
+    private static final PistolModel PISTOL = PistolModel.from(load(PistolModel.ASSET_PATH));
     /** The pistol's grip, the solid the hand is wrapped round. Every grip measurement below is read off it. */
-    private static final PistolGeometry.Solid GRIP = pistolSolid("grip");
+    private static final PistolModel.Solid GRIP = pistolSolid("grip");
     /** The half-width of the grip with its stippling, which is the widest thing a finger lies against. */
     private static final float GRIP_HALF_WIDTH = gripHalfWidth();
     /** How far a glove vertex may be from the grip's own surface and still count as lying on it. */
@@ -43,16 +43,16 @@ class HandModelTest {
     private static final String[] WRAPPING_FINGERS = {"middle_finger", "ring_finger", "little_finger"};
 
     /**
-     * Reads the model from the assets folder. The build passes the folder in as {@code gamex.assets}; a run from an
+     * Reads a model from the assets folder. The build passes the folder in as {@code gamex.assets}; a run from an
      * IDE has no such property, so the folder is then looked for from the working directory, which may be the
      * {@code core} project or the root project.
      */
-    private static ObjModel load() {
+    private static ObjModel load(String assetPath) {
         List<Path> candidates = new ArrayList<>();
         String assets = System.getProperty("gamex.assets");
-        if (assets != null) candidates.add(Paths.get(assets, HandModel.ASSET_PATH));
-        candidates.add(Paths.get("..", "assets", HandModel.ASSET_PATH));
-        candidates.add(Paths.get("assets", HandModel.ASSET_PATH));
+        if (assets != null) candidates.add(Paths.get(assets, assetPath));
+        candidates.add(Paths.get("..", "assets", assetPath));
+        candidates.add(Paths.get("assets", assetPath));
         for (Path candidate : candidates) {
             if (!Files.isRegularFile(candidate)) continue;
             try {
@@ -63,27 +63,27 @@ class HandModelTest {
         }
         List<Path> tried = new ArrayList<>();
         for (Path candidate : candidates) tried.add(candidate.toAbsolutePath().normalize());
-        throw new IllegalStateException("The hand model was not found. Set the system property gamex.assets to the "
-            + "assets folder, or run from the root project or the core project. Tried: " + tried);
+        throw new IllegalStateException("The model " + assetPath + " was not found. Set the system property "
+            + "gamex.assets to the assets folder, or run from the root project or the core project. Tried: " + tried);
     }
 
-    private static PistolGeometry.Solid pistolSolid(String name) {
-        for (PistolGeometry.Solid solid : PISTOL.solids) {
+    private static PistolModel.Solid pistolSolid(String name) {
+        for (PistolModel.Solid solid : PISTOL.solids) {
             if (solid.name.equals(name)) return solid;
         }
         throw new IllegalStateException("The pistol has no solid named " + name);
     }
 
     /** A corner of one of the pistol's solids. */
-    private static Vector3 pistolCorner(PistolGeometry.Solid solid, int corner) {
-        int at = (solid.firstVertex + corner) * PistolGeometry.VERTEX_SIZE;
+    private static Vector3 pistolCorner(PistolModel.Solid solid, int corner) {
+        int at = (solid.firstVertex + corner) * PistolModel.VERTEX_SIZE;
         float[] vertices = PISTOL.vertices(solid.group);
         return new Vector3(vertices[at], vertices[at + 1], vertices[at + 2]);
     }
 
     private static float gripHalfWidth() {
         float widest = 0f;
-        for (PistolGeometry.Solid solid : PISTOL.solids) {
+        for (PistolModel.Solid solid : PISTOL.solids) {
             if (solid != GRIP && !solid.name.startsWith("stipple")) continue;
             for (int i = 0; i < solid.vertexCount; i++) widest = Math.max(widest, Math.abs(pistolCorner(solid, i).x));
         }
@@ -107,11 +107,11 @@ class HandModelTest {
      *     furthest in front of. Negative inside. Beyond an edge or a corner this is a little less than the true
      *     distance.
      */
-    private static float outside(Vector3 point, PistolGeometry.Solid solid) {
+    private static float outside(Vector3 point, PistolModel.Solid solid) {
         float[] vertices = PISTOL.vertices(solid.group);
         float furthest = -Float.MAX_VALUE;
         for (int i = 0; i < solid.vertexCount; i += 3) {
-            int at = (solid.firstVertex + i) * PistolGeometry.VERTEX_SIZE;
+            int at = (solid.firstVertex + i) * PistolModel.VERTEX_SIZE;
             float ahead = (point.x - vertices[at]) * vertices[at + 3] + (point.y - vertices[at + 1]) * vertices[at + 4]
                 + (point.z - vertices[at + 2]) * vertices[at + 5];
             furthest = Math.max(furthest, ahead);
@@ -198,9 +198,9 @@ class HandModelTest {
     void verticesAreLaidOutLikeThePistolsWithUnitNormalsAndTheMaterialsColours() {
         float[] vertices = HandModel.vertices(MODEL);
 
-        assertEquals(MODEL.getTriangleCount() * 3 * PistolGeometry.VERTEX_SIZE, vertices.length);
+        assertEquals(MODEL.getTriangleCount() * 3 * PistolModel.VERTEX_SIZE, vertices.length);
         Set<String> colours = new LinkedHashSet<>();
-        for (int at = 0; at < vertices.length; at += PistolGeometry.VERTEX_SIZE) {
+        for (int at = 0; at < vertices.length; at += PistolModel.VERTEX_SIZE) {
             float length = new Vector3(vertices[at + 3], vertices[at + 4], vertices[at + 5]).len();
             assertEquals(1f, length, 1e-3f, "normal length at float " + at);
             for (int channel = 6; channel < 10; channel++) {
@@ -335,7 +335,7 @@ class HandModelTest {
         for (String group : GLOVE_GROUPS) {
             for (Vector3 corner : corners(group)) {
                 if (!seen.add(key(corner))) continue;
-                for (PistolGeometry.Solid solid : PISTOL.solids) {
+                for (PistolModel.Solid solid : PISTOL.solids) {
                     assertFalse(isInside(corner, solid), group + " has a vertex at " + corner + " inside the pistol's "
                         + solid.name);
                 }
@@ -344,7 +344,7 @@ class HandModelTest {
     }
 
     /** Whether a point lies more than a hair inside a convex solid: behind every one of its faces. */
-    private static boolean isInside(Vector3 point, PistolGeometry.Solid solid) {
+    private static boolean isInside(Vector3 point, PistolModel.Solid solid) {
         return outside(point, solid) <= -2e-4f;
     }
 

@@ -1,10 +1,11 @@
 package io.github.brantunger.gamex.weapon;
 
+import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 
 /**
  * The sculpted first-person hand, wrist, cuff and sleeve. The shape lives in a model file, in the same gun space as
- * {@link PistolGeometry}; this class knows where that file is and gives each of its materials a colour, turning the
+ * {@link PistolModel}; this class knows where that file is and gives each of its materials a colour, turning the
  * model into the vertex layout the pistol uses. It has no graphics types.
  */
 public final class HandModel {
@@ -52,7 +53,7 @@ public final class HandModel {
     private HandModel() {}
 
     /**
-     * Turns the hand model into triangles in the layout of {@link PistolGeometry}: {@link PistolGeometry#VERTEX_SIZE}
+     * Turns the hand model into triangles in the layout of {@link PistolModel}: {@link PistolModel#VERTEX_SIZE}
      * floats per vertex, being position, normal, colour and gloss. The normals are the model's own, so its smooth
      * surfaces stay smooth.
      * @param model the parsed model file
@@ -60,26 +61,6 @@ public final class HandModel {
      * @throws IllegalArgumentException if a face of the model has a material that {@link Material} does not list
      */
     public static float[] vertices(ObjModel model) {
-        float[] positions = model.getPositions();
-        float[] normals = model.getNormals();
-        float[] out = new float[model.getTriangleCount() * 3 * PistolGeometry.VERTEX_SIZE];
-        int at = 0;
-        for (int triangle = 0; triangle < model.getTriangleCount(); triangle++) {
-            float[] colour = Material.named(model.getMaterial(triangle)).colour;
-            for (int corner = 0; corner < 3; corner++) {
-                int from = (triangle * 3 + corner) * 3;
-                out[at++] = positions[from];
-                out[at++] = positions[from + 1];
-                out[at++] = positions[from + 2];
-                out[at++] = normals[from];
-                out[at++] = normals[from + 1];
-                out[at++] = normals[from + 2];
-                out[at++] = colour[0];
-                out[at++] = colour[1];
-                out[at++] = colour[2];
-                out[at++] = colour[3];
-            }
-        }
-        return out;
+        return ModelVertices.pack(model, name -> Material.named(name).colour);
     }
 }

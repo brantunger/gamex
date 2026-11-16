@@ -4,9 +4,9 @@ An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.
 
 This is the first playable version. You are "gamerx", in a level of four rooms joined in a loop, with a pistol, a
 charged blast and 11 destructible targets to practise on. There are no enemies yet, and no win or restart state:
-the HUD only counts the targets left. Every texture is painted in code at start-up, and the pistol is a 3D model
-built in code. The gloved hand holding it is a mesh loaded from `assets/models/viewmodel-hand.obj`, the only art
-file the game loads apart from the window icons.
+the HUD only counts the targets left. Surface and effect textures are painted in code at start-up, while every 3D
+graphical object — the pistol, the gloved hand holding it, both target types and the blast projectile — is loaded from
+a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
 
@@ -120,22 +120,28 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `MainGame`: the libGDX entry point; it reads input, advances the simulation and draws each frame.
   - `GameSimulation`: the whole game state and its rules. It uses no graphics types, so it runs without a window.
   - `world`: the level grid and its layouts, collision with walls and targets, hitscan ray casting, map
-    geometry, targets and effects.
+    geometry, targets, world object models (`WorldModels`) and effects.
   - `player`: the player's position, view angles and movement, and the per-frame input record.
   - `weapon`: the pistol, the energy meter, the blast's charge logic, its projectile and its explosion damage, the
-    pistol's 3D model built in code, the colours for the hand's mesh (`HandModel`) and the numbers that animate
-    both.
-  - `model`: a parser for Wavefront OBJ model files (`ObjModel`). It uses no graphics types.
+    pistol's 3D model and materials (`PistolModel`), the colours for the hand's mesh (`HandModel`) and the numbers
+    that animate both.
+  - `model`: a parser for Wavefront OBJ model files (`ObjModel`) and vertex packing (`ModelVertices`). Neither uses
+    graphics types.
   - `render`: the 3D view, the pass that draws the pistol and hand over it, and the textures painted in code.
   - `hud`: the 2D overlay (crosshair, energy meter, charge bar, status texts, pause screen) and its built-in pixel font.
   - `input`: reads the keyboard and mouse, adds up mouse movement for looking around (`LookAccumulator`), and
     handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings and the window icons.
-- `assets`: the files the game loads at start-up: `models/viewmodel-hand.obj`, the mesh of the hand, wrist, cuff
-  and sleeve.
-- `tools/viewmodel`: `HandSculpt.java`, the single-file Java program that generates that mesh. To regenerate it,
-  see [tools/viewmodel/README.md](tools/viewmodel/README.md).
+- `assets`: the files the game loads at start-up:
+  - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
+  - `models/viewmodel-pistol.obj`: the mesh of the first-person pistol (body and animated slide).
+  - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`: the 3D meshes for targets and blast
+    projectiles.
+- `tools`: standalone single-file Java generators that build the `.obj` models:
+  - `tools/viewmodel/HandSculpt.java` and `tools/viewmodel/PistolSculpt.java` (see
+    [tools/viewmodel/README.md](tools/viewmodel/README.md)).
+  - `tools/world/WorldSculpt.java` (`java tools/world/WorldSculpt.java assets/models`).
 
 ## Tests
 
@@ -143,18 +149,19 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ./gradlew test
 ```
 
-The tests are JUnit Jupiter tests in `core/src/test`. They need no window or graphics context. One class,
-`HandModelTest`, reads the hand's mesh from the `assets` folder; the `core` test task tells it where that folder
-is and runs again when a model file changes. They cover:
+The tests are JUnit Jupiter tests in `core/src/test`. They need no window or graphics context. Three test classes
+(`HandModelTest`, `PistolModelTest` and `WorldModelsTest`) read `.obj` models from the `assets` folder; the `core`
+test task tells them where that folder is and runs again when a model file changes. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, a pause dropping a charge, targets
   blocking the player, and the clamp on long frames.
 - `world`: layout parsing, the first level (the spawn is clear of walls and every target can be reached),
-  collision, hitscan, map geometry and targets.
+  collision, hitscan, map geometry, targets and the shipped world object `.obj` models (closed outward manifolds matching
+  collision dimensions).
 - `player`: view angles and movement.
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
 - `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the projectile and its explosion
-  damage, the pistol model (every solid is closed, convex and faces outwards), the shipped hand mesh (every part
+  damage, the shipped pistol model (every solid is closed, convex and faces outwards), the shipped hand mesh (every part
   is closed and faces outwards, unit normals, the fingers wrap the grip, no glove vertex is inside the pistol),
   and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser, including the files it must reject.
