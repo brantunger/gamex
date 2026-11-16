@@ -29,7 +29,10 @@ class WorldModelsTest {
     private static final ObjModel CANISTER = load(WorldModels.CANISTER_PATH);
     private static final ObjModel RING_BOARD = load(WorldModels.RING_BOARD_PATH);
     private static final ObjModel BLAST_ORB = load(WorldModels.BLAST_ORB_PATH);
-    private static final ObjModel[] ALL_MODELS = {CANISTER, RING_BOARD, BLAST_ORB};
+    private static final ObjModel MEDKIT = load(WorldModels.MEDKIT_PATH);
+    private static final ObjModel ARMOR = load(WorldModels.ARMOR_PATH);
+    private static final ObjModel ENERGY_CELL = load(WorldModels.ENERGY_CELL_PATH);
+    private static final ObjModel[] ALL_MODELS = {CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL};
 
     private static ObjModel load(String assetPath) {
         List<Path> candidates = new ArrayList<>();
@@ -167,6 +170,27 @@ class WorldModelsTest {
         assertEquals(BlastProjectile.RADIUS, maxY, 1e-5f);
         assertEquals(-BlastProjectile.RADIUS, minZ, 1e-5f);
         assertEquals(BlastProjectile.RADIUS, maxZ, 1e-5f);
+    }
+
+    @Test
+    void pickupModelsStandOnTheFloorAndFitWithinPickupRadius() {
+        ObjModel[] pickups = {MEDKIT, ARMOR, ENERGY_CELL};
+        for (ObjModel pickup : pickups) {
+            float minY = Float.POSITIVE_INFINITY;
+            float maxY = Float.NEGATIVE_INFINITY;
+            float maxRadius = 0f;
+            for (int triangle = 0; triangle < pickup.getTriangleCount(); triangle++) {
+                for (int corner = 0; corner < 3; corner++) {
+                    Vector3 p = position(pickup, triangle, corner);
+                    minY = Math.min(minY, p.y);
+                    maxY = Math.max(maxY, p.y);
+                    maxRadius = Math.max(maxRadius, (float) Math.hypot(p.x, p.z));
+                }
+            }
+            assertEquals(0f, minY, 1e-5f);
+            assertTrue(maxY > 0.2f && maxY <= 0.4f, "pickup height " + maxY);
+            assertTrue(maxRadius <= Pickup.RADIUS + 1e-4f, "pickup radius " + maxRadius);
+        }
     }
 
     @Test

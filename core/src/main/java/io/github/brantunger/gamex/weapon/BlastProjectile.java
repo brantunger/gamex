@@ -1,6 +1,7 @@
 package io.github.brantunger.gamex.weapon;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
 import io.github.brantunger.gamex.world.GameMap;
@@ -9,7 +10,8 @@ import java.util.List;
 
 /**
  * The slow, glowing ball that a charged blast fires. It flies in a straight line and explodes on the first wall,
- * floor, ceiling or live {@link Damageable} it touches, damaging everything within its blast radius.
+ * floor, ceiling or live {@link Damageable} it touches, damaging unobstructed targets (and optionally the player)
+ * within its blast radius.
  */
 public final class BlastProjectile {
 
@@ -17,6 +19,8 @@ public final class BlastProjectile {
     public static final float SPEED = 6f;
     /** The collision radius of the ball. */
     public static final float RADIUS = 0.1f;
+    /** Share of blast damage dealt to the player who fired it. */
+    public static final float SELF_DAMAGE_SCALE = 0.5f;
     /** The longest distance the ball moves between two collision checks. */
     private static final float MAX_STEP = 0.08f;
 
@@ -64,15 +68,29 @@ public final class BlastProjectile {
     }
 
     /**
-     * Flies for one time step. The step is walked in pieces shorter than the ball, so it cannot pass through a wall
-     * or a target however long the step is. On contact the ball stops at its last free position, explodes there and
-     * applies its area damage.
+     * Flies for one time step without a player target.
      * @param dt the time step in seconds
      * @param map the map to collide with
      * @param targets the objects the ball can hit and its explosion can damage
      * @return whether the ball exploded during this step
      */
     public boolean update(float dt, GameMap map, List<? extends Damageable> targets) {
+        return update(dt, map, targets, null, 0f);
+    }
+
+    /**
+     * Flies for one time step. The step is walked in pieces shorter than the ball, so it cannot pass through a wall
+     * or a target however long the step is. On contact the ball stops at its last free position, explodes there and
+     * applies its wall-occluded area damage.
+     * @param dt the time step in seconds
+     * @param map the map to collide with
+     * @param targets the objects the ball can hit and its explosion can damage
+     * @param player optional player to take scaled splash self-damage, or null
+     * @param playerDamageScale multiplier applied to splash damage on {@code player}
+     * @return whether the ball exploded during this step
+     */
+    public boolean update(float dt, GameMap map, List<? extends Damageable> targets, Player player,
+                          float playerDamageScale) {
         if (exploded) return false;
         float distance = SPEED * dt;
         int steps = Math.max(1, (int) Math.ceil(distance / MAX_STEP));
@@ -83,7 +101,8 @@ public final class BlastProjectile {
             float z = position.z + direction.z * step;
             if (touches(x, y, z, map, targets)) {
                 exploded = true;
-                Explosion.apply(position.x, position.z, blastRadius(charge), blastDamage(charge), targets);
+                Explosion.apply(map, position.x, position.z, blastRadius(charge), blastDamage(charge), targets,
+                    player, playerDamageScale);
                 return true;
             }
             position.set(x, y, z);

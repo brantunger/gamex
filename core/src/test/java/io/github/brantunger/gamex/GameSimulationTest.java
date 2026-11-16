@@ -4,8 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
+import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.world.Effect;
@@ -260,5 +262,73 @@ class GameSimulationTest {
         }
 
         assertTrue(simulation.effects.isEmpty());
+    }
+
+    @Test
+    void canisterExplosionChainsIntoAdjacentCanisterAndDamagesClosePlayer() {
+        GameMap chainMap = GameMap.parse(
+            "##########",
+            "#>.oo....#",
+            "##########");
+        GameSimulation simulation = new GameSimulation(chainMap);
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+
+        for (int i = 0; i < 45; i++) simulation.update(FRAME, input);
+
+        assertTrue(simulation.targets.get(0).isDestroyed(), "first canister shot");
+        assertTrue(simulation.targets.get(1).isDestroyed(), "second canister destroyed by chain blast");
+        assertTrue(simulation.player.getHealth() < Player.MAX_HEALTH, "close blast splashed the player");
+        assertTrue(simulation.getDamageTaken() > 0f);
+    }
+
+    @Test
+    void dashCancelsChargingBlastAndCollectsPickupsAlongTheWay() {
+        GameMap pickupHall = GameMap.parse(
+            "##########",
+            "#>+aeX...#",
+            "##########");
+        GameSimulation simulation = new GameSimulation(pickupHall, new PlayerLoadout(60f, 0f, Difficulty.EASY), false);
+        simulation.energy.setEnergy(60f);
+        PlayerInput input = new PlayerInput();
+
+        // Start charging, then cancel with a dash.
+        input.charge = true;
+        for (int i = 0; i < 20; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.charger.isCharging());
+
+        input.dash = true;
+        input.moveForward = 1f;
+        simulation.update(FRAME, input);
+        input.dash = false;
+        input.charge = false;
+        assertFalse(simulation.charger.isCharging(), "dash cancelled blast charge");
+        assertTrue(simulation.projectiles.isEmpty(), "cancelled charge fired nothing");
+
+        for (int i = 0; i < 90; i++) simulation.update(FRAME, input);
+
+        // Easy pickup scale is 1.25x: +31 health, +31 armor, and reaching X clears the stage.
+        assertEquals(91f, simulation.player.getHealth(), 1f);
+        assertEquals(31f, simulation.player.getArmor(), 1f);
+        assertEquals(3, simulation.getPickupsCollected());
+        assertTrue(simulation.isLevelCleared());
+    }
+
+    @Test
+    void completeOnAllTargetsClearsStageOnceLastTargetBreaks() {
+        GameMap tinyRange = GameMap.parse(
+            "#######",
+            "#>.o..#",
+            "#######");
+        GameSimulation simulation = new GameSimulation(tinyRange, PlayerLoadout.fresh(), true);
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+
+        for (int i = 0; i < 50; i++) simulation.update(FRAME, input);
+
+        assertTrue(simulation.isLevelCleared());
+        float clearTime = simulation.getTime();
+        simulation.update(FRAME, input);
+        assertEquals(clearTime, simulation.getTime(), 1e-6f, "timer locks once cleared");
     }
 }

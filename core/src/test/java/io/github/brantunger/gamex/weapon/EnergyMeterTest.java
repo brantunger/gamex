@@ -60,4 +60,16 @@ class EnergyMeterTest {
 
         assertEquals(80f, meter.getEnergy(), EPSILON);
     }
+
+    @Test
+    void addRestoresUpToCapacityAndIgnoresNonPositiveAmounts() {
+        EnergyMeter meter = new EnergyMeter(100f, 10f);
+        meter.spend(60f);
+
+        assertEquals(0f, meter.add(-10f), EPSILON);
+        assertEquals(35f, meter.add(35f), EPSILON);
+        assertEquals(75f, meter.getEnergy(), EPSILON);
+        assertEquals(25f, meter.add(50f), EPSILON);
+        assertEquals(100f, meter.getEnergy(), EPSILON);
+    }
 }

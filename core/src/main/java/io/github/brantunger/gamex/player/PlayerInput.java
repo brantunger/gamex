@@ -15,6 +15,10 @@ public final class PlayerInput {
     public boolean fire;
     /** Whether the blast charge button is held. */
     public boolean charge;
+    /** Whether a horizontal energy dash was requested this frame. */
+    public boolean dash;
+    /** Whether the interact action was requested this frame. */
+    public boolean interact;
 
     /** Resets every field to "nothing asked for". */
     public void clear() {
@@ -24,5 +28,7 @@ public final class PlayerInput {
         pitchDelta = 0f;
         fire = false;
         charge = false;
+        dash = false;
+        interact = false;
     }
 }

@@ -22,18 +22,20 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.player.Player;
+import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.MapGeometry;
+import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
 
 import java.util.Map;
 
 /**
- * Draws the 3D view: the map as a few static meshes, one per texture, the targets and blast projectiles as 3D
- * models loaded from OBJ files, and the halos and effects as billboards.
+ * Draws the 3D view: the map as a few static meshes, one per texture, the targets, pickups and blast projectiles as
+ * 3D models loaded from OBJ files, and the halos, exit pad and effects as billboards.
  */
 public final class WorldRenderer implements Disposable {
 
@@ -141,12 +143,17 @@ public final class WorldRenderer implements Disposable {
     }
 
     private final PerspectiveCamera camera;
+    private final ProceduralTextures textures;
     private final ShaderProgram shader;
     private final ShaderProgram modelShader;
     private final Array<Surface> surfaces = new Array<>();
+    private GameMap currentMap;
     private final Mesh canisterMesh;
     private final Mesh ringBoardMesh;
     private final Mesh blastOrbMesh;
+    private final Mesh medkitMesh;
+    private final Mesh armorMesh;
+    private final Mesh energyCellMesh;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
@@ -156,16 +163,18 @@ public final class WorldRenderer implements Disposable {
     private final TextureRegion spark;
     private final TextureRegion orb;
     private final TextureRegion explosion;
+    private final TextureRegion exitPad;
 
     private final Matrix4 modelTransform = new Matrix4();
     private final Vector3 direction = new Vector3();
     private final Vector3 scratch = new Vector3();
 
     /**
-     * @param map the map to build the static meshes from
+     * @param map the initial map to build the static meshes from
      * @param textures the textures to draw with; the caller keeps ownership of them
      */
     public WorldRenderer(GameMap map, ProceduralTextures textures) {
+        this.textures = textures;
         camera = new PerspectiveCamera(FIELD_OF_VIEW, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.near = NEAR;
         camera.far = FAR;
@@ -179,16 +188,14 @@ public final class WorldRenderer implements Disposable {
             throw new GdxRuntimeException("The world model shader did not compile: " + modelShader.getLog());
         }
 
-        MapGeometry geometry = MapGeometry.build(map);
-        for (Map.Entry<Character, float[]> entry : geometry.walls.entrySet()) {
-            surfaces.add(new Surface(buildMesh(entry.getValue()), textures.wall(entry.getKey())));
-        }
-        surfaces.add(new Surface(buildMesh(geometry.floor), textures.floor));
-        surfaces.add(new Surface(buildMesh(geometry.ceiling), textures.ceiling));
+        setMap(map);
 
         canisterMesh = ModelMesh.loadMesh(WorldModels.CANISTER_PATH, "canister", WorldModels::vertices);
         ringBoardMesh = ModelMesh.loadMesh(WorldModels.RING_BOARD_PATH, "ring board", WorldModels::vertices);
         blastOrbMesh = ModelMesh.loadMesh(WorldModels.BLAST_ORB_PATH, "blast orb", WorldModels::vertices);
+        medkitMesh = ModelMesh.loadMesh(WorldModels.MEDKIT_PATH, "medkit", WorldModels::vertices);
+        armorMesh = ModelMesh.loadMesh(WorldModels.ARMOR_PATH, "armor", WorldModels::vertices);
+        energyCellMesh = ModelMesh.loadMesh(WorldModels.ENERGY_CELL_PATH, "energy cell", WorldModels::vertices);
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
@@ -196,6 +203,21 @@ public final class WorldRenderer implements Disposable {
         spark = new TextureRegion(textures.spark);
         orb = new TextureRegion(textures.orb);
         explosion = new TextureRegion(textures.explosion);
+        exitPad = new TextureRegion(textures.exitPad);
+    }
+
+    /** Rebuilds the static map geometry when loading a different stage. */
+    public void setMap(GameMap map) {
+        if (map == currentMap) return;
+        for (Surface surface : surfaces) surface.mesh.dispose();
+        surfaces.clear();
+        currentMap = map;
+        MapGeometry geometry = MapGeometry.build(map);
+        for (Map.Entry<Character, float[]> entry : geometry.walls.entrySet()) {
+            surfaces.add(new Surface(buildMesh(entry.getValue()), textures.wall(entry.getKey())));
+        }
+        surfaces.add(new Surface(buildMesh(geometry.floor), textures.floor));
+        surfaces.add(new Surface(buildMesh(geometry.ceiling), textures.ceiling));
     }
 
     /** Turns quads from {@link MapGeometry} into an indexed mesh of two triangles per quad. */
@@ -234,20 +256,71 @@ public final class WorldRenderer implements Disposable {
         camera.viewportHeight = height;
     }
 
+    /** Draws the world using default camera settings. */
+    public void render(GameSimulation simulation) {
+        render(simulation, null);
+    }
+
     /**
      * Clears the screen and draws the world from the player's eyes.
      * @param simulation the game state to draw
+     * @param settings optional live gameplay settings (FOV, view bob), or null
      */
-    public void render(GameSimulation simulation) {
+    public void render(GameSimulation simulation, GameSettings settings) {
+        setMap(simulation.map);
         Player player = simulation.player;
-        // The view is rebuilt from the yaw and pitch every frame; nothing is accumulated on the camera.
+        camera.fieldOfView = settings != null ? settings.getFov() : FIELD_OF_VIEW;
         player.eye(camera.position);
-        camera.position.y += MathUtils.sin(player.getBobPhase()) * BOB_HEIGHT;
+        if ((settings == null || settings.isViewBob()) && !player.isDead()) {
+            camera.position.y += MathUtils.sin(player.getBobPhase()) * BOB_HEIGHT;
+        }
         camera.direction.set(player.direction(direction));
         camera.up.set(Vector3.Y);
         camera.update();
 
-        // A batch may have left depth writes off, and the depth clear obeys that switch.
+        beginWorldPass(simulation.pistol.isFlashVisible() ? 1.3f : 1f);
+        renderWorldModels(simulation, simulation.pistol.isFlashVisible() ? 1.3f : 1f);
+
+        // Billboards are seen from both sides.
+        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+        decalsUsed = 0;
+        addExitPad(simulation.map, simulation.getTime());
+        addPickupGlows(simulation);
+        addProjectiles(simulation);
+        addEffects(simulation);
+        decalBatch.flush();
+
+        endWorldPass();
+    }
+
+    /**
+     * Draws a gentle panning camera preview of {@code simulation} for the Title and Briefing backdrops.
+     */
+    public void renderBackdrop(GameSimulation simulation, GameSettings settings, float previewTime) {
+        setMap(simulation.map);
+        camera.fieldOfView = settings != null ? settings.getFov() : FIELD_OF_VIEW;
+        camera.position.set(simulation.map.getSpawnX(), Player.EYE_HEIGHT + 0.05f, simulation.map.getSpawnZ());
+        float yaw = simulation.map.getSpawnYaw() + MathUtils.sin(previewTime * 0.35f) * 26f;
+        float pitch = MathUtils.sin(previewTime * 0.22f) * 4f - 2f;
+        double yawRad = Math.toRadians(yaw);
+        double pitchRad = Math.toRadians(pitch);
+        double flat = Math.cos(pitchRad);
+        camera.direction.set((float) (Math.sin(yawRad) * flat), (float) Math.sin(pitchRad),
+            (float) (-Math.cos(yawRad) * flat));
+        camera.up.set(Vector3.Y);
+        camera.update();
+
+        beginWorldPass(0.92f);
+        renderWorldModels(simulation, 0.92f);
+        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+        decalsUsed = 0;
+        addExitPad(simulation.map, previewTime);
+        addPickupGlows(simulation);
+        decalBatch.flush();
+        endWorldPass();
+    }
+
+    private void beginWorldPass(float roomLight) {
         Gdx.gl.glDepthMask(true);
         ScreenUtils.clear(FOG_COLOUR, true);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
@@ -256,30 +329,20 @@ public final class WorldRenderer implements Disposable {
         Gdx.gl.glCullFace(GL20.GL_BACK);
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        float roomLight = simulation.pistol.isFlashVisible() ? 1.3f : 1f;
         shader.bind();
         shader.setUniformMatrix("u_projViewTrans", camera.combined);
         shader.setUniformf("u_cameraPosition", camera.position);
         shader.setUniformf("u_fogRange", FOG_START, FOG_END);
         shader.setUniformf("u_fogColour", FOG_COLOUR.r, FOG_COLOUR.g, FOG_COLOUR.b);
-        // The muzzle flash lights the room for a moment.
         shader.setUniformf("u_light", roomLight);
         shader.setUniformi("u_texture", 0);
         for (Surface surface : surfaces) {
             surface.texture.bind(0);
             surface.mesh.render(shader, GL20.GL_TRIANGLES);
         }
+    }
 
-        renderWorldModels(simulation, roomLight);
-
-        // Billboards are seen from both sides.
-        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        decalsUsed = 0;
-        addProjectiles(simulation);
-        addEffects(simulation);
-        decalBatch.flush();
-
-        // Leave a plain state for the 2D pass.
+    private void endWorldPass() {
         Gdx.gl.glDepthMask(true);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDisable(GL20.GL_BLEND);
@@ -308,6 +371,21 @@ public final class WorldRenderer implements Disposable {
             mesh.render(modelShader, GL20.GL_TRIANGLES);
         }
 
+        // Hovering and spinning 3D pickups.
+        modelShader.setUniformf("u_light", 1.2f);
+        modelShader.setUniformf("u_hitFlash", 0f);
+        float pickupSpin = simulation.getTime() * 95f;
+        for (Pickup pickup : simulation.pickups) {
+            if (pickup.isCollected()) continue;
+            float hover = 0.08f + 0.035f * MathUtils.sin(simulation.getTime() * 3.5f + pickup.getX() + pickup.getZ());
+            modelTransform.idt()
+                .translate(pickup.getX(), hover, pickup.getZ())
+                .rotate(Vector3.Y, pickupSpin + (pickup.getX() + pickup.getZ()) * 45f);
+            modelShader.setUniformMatrix("u_model", modelTransform);
+            Mesh mesh = pickupMesh(pickup.getKind());
+            mesh.render(modelShader, GL20.GL_TRIANGLES);
+        }
+
         modelShader.setUniformf("u_light", 1.35f);
         modelShader.setUniformf("u_hitFlash", 0f);
         float spin = simulation.getTime() * 180f;
@@ -321,6 +399,56 @@ public final class WorldRenderer implements Disposable {
                 .scale(scale, scale, scale);
             modelShader.setUniformMatrix("u_model", modelTransform);
             blastOrbMesh.render(modelShader, GL20.GL_TRIANGLES);
+        }
+    }
+
+    private Mesh pickupMesh(Pickup.Kind kind) {
+        switch (kind) {
+            case MEDKIT:
+                return medkitMesh;
+            case ARMOR:
+                return armorMesh;
+            case ENERGY_CELL:
+            default:
+                return energyCellMesh;
+        }
+    }
+
+    private void addExitPad(GameMap map, float animTime) {
+        if (!map.hasExit()) return;
+        float pulse = 0.82f + 0.14f * MathUtils.sin(animTime * 4.5f);
+        Decal pad = nextDecal(exitPad, 0.86f, 0.86f, true);
+        pad.setPosition(map.getExitX(), FLOOR_GLOW_HEIGHT, map.getExitZ());
+        pad.setRotation(Vector3.Y, Vector3.Z);
+        pad.setColor(0.55f, 1f, 0.95f, pulse);
+        decalBatch.add(pad);
+
+        Decal beacon = nextDecal(orb, 0.42f * pulse, 0.62f, true);
+        beacon.setPosition(map.getExitX(), 0.36f, map.getExitZ());
+        beacon.lookAt(camera.position, camera.up);
+        beacon.setColor(0.45f, 1f, 0.92f, 0.55f * pulse);
+        decalBatch.add(beacon);
+    }
+
+    private void addPickupGlows(GameSimulation simulation) {
+        for (Pickup pickup : simulation.pickups) {
+            if (pickup.isCollected()) continue;
+            Decal halo = nextDecal(orb, 0.42f, 0.42f, true);
+            halo.setPosition(pickup.getX(), FLOOR_GLOW_HEIGHT, pickup.getZ());
+            halo.setRotation(Vector3.Y, Vector3.Z);
+            switch (pickup.getKind()) {
+                case MEDKIT:
+                    halo.setColor(1f, 0.35f, 0.4f, 0.4f);
+                    break;
+                case ARMOR:
+                    halo.setColor(0.3f, 0.78f, 1f, 0.45f);
+                    break;
+                case ENERGY_CELL:
+                default:
+                    halo.setColor(0.75f, 0.42f, 1f, 0.48f);
+                    break;
+            }
+            decalBatch.add(halo);
         }
     }
 
@@ -360,12 +488,9 @@ public final class WorldRenderer implements Disposable {
                     break;
                 case EXPLOSION:
                 default: {
-                    // Grows quickly to its full size, then fades.
                     float grown = 0.2f + 0.8f * (1f - (1f - progress) * (1f - progress));
                     float alpha = 1f - progress * progress;
-                    // The fireball stays small enough to fit under the ceiling.
                     addGlow(explosion, effect.position, Math.min(effect.size * 2f, MAX_FIREBALL_SIZE) * grown, alpha);
-                    // A glow spreads over the floor to the full radius, showing the area that took damage.
                     if (effect.size >= MIN_FLOOR_GLOW_RADIUS) {
                         float span = effect.size * 2f * grown;
                         Decal glow = nextDecal(explosion, span, span, true);
@@ -380,7 +505,6 @@ public final class WorldRenderer implements Disposable {
         }
     }
 
-    /** Adds a camera-facing sprite that brightens what is behind it. */
     private void addGlow(TextureRegion region, Vector3 position, float size, float alpha) {
         Decal decal = nextDecal(region, size, size, true);
         decal.setPosition(position);
@@ -389,7 +513,6 @@ public final class WorldRenderer implements Disposable {
         decalBatch.add(decal);
     }
 
-    /** Takes a decal from the pool, growing the pool when needed, and sets its sprite, size and blending. */
     private Decal nextDecal(TextureRegion region, float width, float height, boolean additive) {
         if (decalsUsed == decals.size) decals.add(Decal.newDecal(width, height, region, true));
         Decal decal = decals.get(decalsUsed++);
@@ -410,6 +533,9 @@ public final class WorldRenderer implements Disposable {
         canisterMesh.dispose();
         ringBoardMesh.dispose();
         blastOrbMesh.dispose();
+        medkitMesh.dispose();
+        armorMesh.dispose();
+        energyCellMesh.dispose();
         shader.dispose();
         modelShader.dispose();
         decalBatch.dispose();

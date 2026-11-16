@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Target;
 import org.junit.jupiter.api.Test;
@@ -168,5 +169,28 @@ class BlastProjectileTest {
 
         assertTrue(reachedByFull.getHealth() < 120f);
         assertEquals(120f, missedByMinimum.getHealth(), EPSILON);
+    }
+
+    @Test
+    void solidWallShieldsTargetAndPlayerOnTheOtherSideOfABlast() {
+        GameMap splitRooms = GameMap.parse(
+            "#########",
+            "#>..#...#",
+            "#########");
+        Target shielded = new Target(Target.Kind.CANISTER, 5.5f, 1.5f);
+        Target exposed = new Target(Target.Kind.CANISTER, 3.2f, 1.5f);
+        Player shieldedPlayer = new Player(5.5f, 1.5f, 0f);
+        Player closePlayer = new Player(3.2f, 1.5f, 0f);
+
+        // Explodes against the dividing wall at x = 3.9; radius 3 easily spans x = 5.5 geometrically,
+        // but the wall at column 4 blocks line of sight.
+        Explosion.apply(splitRooms, 3.85f, 1.5f, 3f, 100f, Arrays.asList(shielded, exposed), shieldedPlayer, 0.5f);
+        assertEquals(50f, shielded.getHealth(), EPSILON, "wall blocks target damage");
+        assertTrue(exposed.isDestroyed(), "target on same side of wall is destroyed");
+        assertEquals(100f, shieldedPlayer.getHealth(), EPSILON, "wall blocks player splash damage");
+
+        Explosion.apply(splitRooms, 3.85f, 1.5f, 3f, 100f, NO_TARGETS, closePlayer, 0.5f);
+        assertTrue(closePlayer.getHealth() < 100f && closePlayer.getHealth() > 50f,
+            "close player takes 50%-scaled splash damage: " + closePlayer.getHealth());
     }
 }

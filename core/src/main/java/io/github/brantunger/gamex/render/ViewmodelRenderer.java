@@ -16,6 +16,7 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
@@ -166,16 +167,29 @@ public final class ViewmodelRenderer implements Disposable {
     }
 
     /**
-     * Draws the pistol over the finished world.
+     * Draws the pistol over the finished world using default viewmodel settings.
      * @param simulation the game state to draw
      */
     public void render(GameSimulation simulation) {
+        render(simulation, null);
+    }
+
+    /**
+     * Draws the pistol over the finished world.
+     * @param simulation the game state to draw
+     * @param settings optional gameplay settings (view bob), or null
+     */
+    public void render(GameSimulation simulation, GameSettings settings) {
+        if (simulation.player.isDead()) return;
         ViewmodelAnimation animation = simulation.viewmodel;
         float recoil = animation.getRecoil();
+        boolean bobEnabled = settings == null || settings.isViewBob();
+        float bobX = bobEnabled ? animation.getBobX() : 0f;
+        float bobY = bobEnabled ? animation.getBobY() : 0f;
 
         // Place the gun: at rest lower right, moved by the bob and the kick, and turned about the grip.
         gunTransform.idt()
-            .translate(restX + animation.getBobX(), REST_Y + animation.getBobY() + recoil * KICK_UP,
+            .translate(restX + bobX, REST_Y + bobY + recoil * KICK_UP,
                 REST_Z + recoil * KICK_BACK)
             .translate(0f, PIVOT_Y, PIVOT_Z)
             // A positive turn about y swings the muzzle left, so a lag to the left (negative sway) adds to it.

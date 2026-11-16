@@ -33,6 +33,8 @@ public final class ProceduralTextures implements Disposable {
     public final Texture orb;
     /** The fireball of an explosion. */
     public final Texture explosion;
+    /** The glowing extraction pad on exit cells. */
+    public final Texture exitPad;
     /** A single white pixel, for drawing flat rectangles. */
     public final Texture white;
 
@@ -50,6 +52,7 @@ public final class ProceduralTextures implements Disposable {
         spark = upload(paintSpark());
         orb = upload(paintOrb());
         explosion = upload(paintExplosion());
+        exitPad = upload(paintExitPad());
         Pixmap pixel = blank(1, 1);
         pixel.drawPixel(0, 0, 0xFFFFFFFF);
         white = upload(pixel);
@@ -312,6 +315,27 @@ public final class ProceduralTextures implements Disposable {
                 float step = (float) Math.floor(heat * 5f) / 4f;
                 pixmap.drawPixel(x, y, rgba(110f + 145f * step, 40f + 215f * step * step, 200f + 55f * step,
                     Math.min(1f, 0.45f + heat * 1.6f) * 255f));
+            }
+        }
+        return pixmap;
+    }
+
+    private static Pixmap paintExitPad() {
+        int size = 32;
+        Pixmap pixmap = blank(size, size);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                float dx = (x + 0.5f - size / 2f) / (size / 2f);
+                float dy = (y + 0.5f - size / 2f) / (size / 2f);
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                if (distance >= 1f) continue;
+                float ringA = Math.max(0f, 1f - Math.abs(distance - 0.82f) * 9f);
+                float ringB = Math.max(0f, 1f - Math.abs(distance - 0.52f) * 9f);
+                float core = distance < 0.28f ? 1f - distance / 0.28f : 0f;
+                float glow = Math.max(Math.max(ringA, ringB), core * 1.1f);
+                float base = (1f - distance) * 0.35f;
+                float alpha = Math.min(1f, glow + base);
+                pixmap.drawPixel(x, y, rgba(90f + 150f * glow, 220f + 35f * core, 255f, alpha * 255f));
             }
         }
         return pixmap;

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
 import org.junit.jupiter.api.Test;
@@ -203,5 +204,12 @@ class HitscanTest {
         assertEquals(RayHit.Kind.WALL, cast(1f, 0.2f, 0f, targets).kind);
         // Half a unit north per unit east: the ray passes 0.45 from the canister's axis.
         assertEquals(RayHit.Kind.WALL, cast(1f, 0f, -0.5f, targets).kind);
+    }
+
+    @Test
+    void lineOfSightSeesOpenFloorAndStopsAtSolidPillar() {
+        assertTrue(Hitscan.hasLineOfSight(MAP, 2.5f, 2.5f, 2.5f, 1.2f));
+        assertTrue(Hitscan.hasLineOfSight(MAP, 2.5f, 1.5f, 5.5f, 1.5f));
+        assertFalse(Hitscan.hasLineOfSight(MAP, 2.5f, 2.5f, 5.5f, 2.5f), "blocked by panel pillar at (4,2)");
     }
 }

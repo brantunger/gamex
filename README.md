@@ -2,11 +2,12 @@
 
 An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.14.2 on the LWJGL3 desktop backend.
 
-This is the first playable version. You are "gamerx", in a level of four rooms joined in a loop, with a pistol, a
-charged blast and 11 destructible targets to practise on. There are no enemies yet, and no win or restart state:
-the HUD only counts the targets left. Surface and effect textures are painted in code at start-up, while every 3D
-graphical object — the pistol, the gloved hand holding it, both target types and the blast projectile — is loaded from
-a Wavefront `.obj` model in `assets/models/`.
+This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
+blast, and a horizontal energy dash. Fight through explosive coolant canisters, collect 3D health, armor and energy
+pickups, and reach the extraction pad in **01: Outer Breach** (across Easy, Normal or Hard difficulty), or practise in
+the **Training Range**. Surface and effect textures are painted in code at start-up, while every 3D graphical object —
+the pistol, the gloved hand holding it, both target types, pickups and the blast projectile — is loaded from a
+Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
 
@@ -26,12 +27,13 @@ The game opens in a 1280x720 window and starts with the mouse cursor captured.
 | Input | Action |
 | --- | --- |
 | `W` `A` `S` `D` | Move forward, left, back, right |
+| `Shift` / `Space` | Horizontal energy dash (`25` energy) |
 | Mouse | Look around |
 | Left mouse button | Fire the pistol; hold to keep firing |
 | Right mouse button | Hold to charge the blast, release to fire it |
-| `Esc` | Pause and free the cursor; `Esc` again resumes |
-| Click in the window | Resume while paused (that click neither fires the pistol nor starts a charge) |
-| `Q` | Quit, only while paused |
+| `R` | Quick-restart the current stage from your entry state |
+| `Esc` | Open the pause menu and free the cursor; `Esc` again resumes |
+| `Q` | Quit while on the Title or Pause screen |
 
 The game also pauses and frees the cursor when the window loses the focus or is minimised. It stays paused until
 you click or press `Esc`. Pausing cancels a blast charge that is building, at no energy cost.
@@ -46,7 +48,8 @@ the player stands against never cuts it off. It kicks back on each shot with a f
 player walks, lags a little behind turns, and glows violet towards the muzzle while a blast is charging.
 
 **Blast.** A slow glowing ball that explodes on the first wall, floor, ceiling or target it touches and damages
-every target in its radius. Walls do not shield a target from the explosion.
+every unobstructed target in its radius. Solid walls shield targets and the player from explosions, while close-range
+blasts within line of sight deal 50%-scaled splash damage to the player.
 
 - Holding the button builds a charge from 0 to 1 over 1.2 seconds.
 - Releasing below a charge of 0.25 (about 0.3 seconds of holding) fires nothing and costs nothing.
@@ -61,9 +64,9 @@ every target in its radius. Walls do not shield a target from the explosion.
 - With less than 20 energy a charge cannot start. The HUD shows `LOW ENERGY`, and the meter keeps refilling even
   while the button is held.
 
-**Targets.** The level has 7 canisters (50 health, three pistol shots) and 4 ring boards (120 health, six pistol
-shots). A target blocks the player's way until it is destroyed. A destroyed target no longer stops shots, blasts
-or the player.
+**Targets & Pickups.** Levels contain coolant canisters (50 health, three pistol shots) that detonate in chain-reacting
+area explosions when destroyed, and ring boards (120 health, six pistol shots). Medkits, armor vests (absorbing 50% of
+incoming damage) and energy cells hover on the floor and scale with the chosen difficulty.
 
 ## Debug screenshot mode
 

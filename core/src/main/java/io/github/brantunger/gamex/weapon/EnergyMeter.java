@@ -69,4 +69,24 @@ public final class EnergyMeter {
     public void regenerate(float dt) {
         energy = Math.min(capacity, energy + regenPerSecond * dt);
     }
+
+    /**
+     * Adds energy immediately, clamped to the capacity. Non-positive amounts do nothing.
+     * @param amount the energy to add
+     * @return the energy actually added
+     */
+    public float add(float amount) {
+        if (amount <= 0f || energy >= capacity) return 0f;
+        float before = energy;
+        energy = Math.min(capacity, energy + amount);
+        return energy - before;
+    }
+
+    /**
+     * Sets the current energy directly, clamped between 0 and the capacity.
+     * @param value the desired energy
+     */
+    public void setEnergy(float value) {
+        energy = Math.max(0f, Math.min(capacity, value));
+    }
 }

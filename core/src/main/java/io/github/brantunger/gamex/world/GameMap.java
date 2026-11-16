@@ -10,13 +10,16 @@ import java.util.List;
  * so the layout reads like a top-down view with north (negative z) at the top.
  *
  * <p>Layout characters: {@code .} is open floor, {@code #}, {@code %} and {@code &} are the three wall types,
- * {@code o} and {@code O} are open floor with a canister or a ring board on it, and one of {@code ^ > v <} is the
- * player spawn, facing north, east, south or west.
+ * {@code o} and {@code O} are open floor with a canister or a ring board on it, {@code +}, {@code a} and {@code e}
+ * are medkit, armor and energy cell pickups, {@code X} is an optional level exit pad, and one of {@code ^ > v <} is
+ * the player spawn, facing north, east, south or west.
  */
 public final class GameMap {
 
     /** The height of every wall, and so the height of the ceiling above the floor. */
     public static final float WALL_HEIGHT = 1f;
+    /** Trigger radius of an exit pad on the XZ plane. */
+    public static final float EXIT_RADIUS = 0.35f;
     /** The cell value of open floor. */
     public static final char FLOOR = '.';
     /** The wall types a layout may use, in a fixed order. */
@@ -38,30 +41,55 @@ public final class GameMap {
         }
     }
 
+    /** Where a pickup item starts. */
+    public static final class PickupSpawn {
+        /** The kind of pickup to create. */
+        public final Pickup.Kind kind;
+        /** The world x coordinate, at the centre of the cell. */
+        public final float x;
+        /** The world z coordinate, at the centre of the cell. */
+        public final float z;
+
+        PickupSpawn(Pickup.Kind kind, float x, float z) {
+            this.kind = kind;
+            this.x = x;
+            this.z = z;
+        }
+    }
+
     private final char[][] cells;
     private final int width;
     private final int height;
     private final float spawnX;
     private final float spawnZ;
     private final float spawnYaw;
+    private final boolean hasExit;
+    private final float exitX;
+    private final float exitZ;
     private final List<TargetSpawn> targetSpawns;
+    private final List<PickupSpawn> pickupSpawns;
 
-    private GameMap(char[][] cells, float spawnX, float spawnZ, float spawnYaw, List<TargetSpawn> targetSpawns) {
+    private GameMap(char[][] cells, float spawnX, float spawnZ, float spawnYaw, boolean hasExit, float exitX,
+                    float exitZ, List<TargetSpawn> targetSpawns, List<PickupSpawn> pickupSpawns) {
         this.cells = cells;
         this.height = cells.length;
         this.width = cells[0].length;
         this.spawnX = spawnX;
         this.spawnZ = spawnZ;
         this.spawnYaw = spawnYaw;
+        this.hasExit = hasExit;
+        this.exitX = exitX;
+        this.exitZ = exitZ;
         this.targetSpawns = Collections.unmodifiableList(targetSpawns);
+        this.pickupSpawns = Collections.unmodifiableList(pickupSpawns);
     }
 
     /**
      * Parses a layout.
      * @param rows the rows from north to south, all of the same length
      * @return the parsed map
-     * @throws IllegalArgumentException if the layout is empty or ragged, holds an unknown character, or does not
-     *     hold exactly one player spawn
+     * @throws IllegalArgumentException if the layout is empty or ragged, holds an unknown character, holds more than
+     *     one exit, or does not hold exactly one player spawn
      */
     public static GameMap parse(String... rows) {
         if (rows == null || rows.length == 0 || rows[0].isEmpty()) {
@@ -70,10 +98,14 @@ public final class GameMap {
         int width = rows[0].length();
         char[][] cells = new char[rows.length][width];
         List<TargetSpawn> targets = new ArrayList<>();
+        List<PickupSpawn> pickups = new ArrayList<>();
         boolean hasSpawn = false;
         float spawnX = 0f;
         float spawnZ = 0f;
         float spawnYaw = 0f;
+        boolean hasExit = false;
+        float exitX = 0f;
+        float exitZ = 0f;
         for (int row = 0; row < rows.length; row++) {
             if (rows[row].length() != width) {
                 throw new IllegalArgumentException("Row " + row + " is " + rows[row].length()
@@ -99,6 +131,17 @@ public final class GameMap {
                     targets.add(new TargetSpawn(Target.Kind.CANISTER, centreX, centreZ));
                 } else if (c == 'O') {
                     targets.add(new TargetSpawn(Target.Kind.RING_BOARD, centreX, centreZ));
+                } else if (c == '+') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.MEDKIT, centreX, centreZ));
+                } else if (c == 'a') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.ARMOR, centreX, centreZ));
+                } else if (c == 'e') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.ENERGY_CELL, centreX, centreZ));
+                } else if (c == 'X') {
+                    if (hasExit) throw new IllegalArgumentException("The layout has more than one exit");
+                    hasExit = true;
+                    exitX = centreX;
+                    exitZ = centreZ;
                 } else if (c != FLOOR) {
                     throw new IllegalArgumentException("Unknown layout character '" + c + "' at column " + col
                         + ", row " + row);
@@ -106,7 +149,7 @@ public final class GameMap {
             }
         }
         if (!hasSpawn) throw new IllegalArgumentException("The layout has no player spawn");
-        return new GameMap(cells, spawnX, spawnZ, spawnYaw, targets);
+        return new GameMap(cells, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ, targets, pickups);
     }
 
     /** @return the number of columns. */
@@ -153,8 +196,28 @@ public final class GameMap {
         return spawnYaw;
     }
 
+    /** @return whether this map defines a level exit pad. */
+    public boolean hasExit() {
+        return hasExit;
+    }
+
+    /** @return world x coordinate of the exit pad, or 0 if {@link #hasExit()} is false. */
+    public float getExitX() {
+        return exitX;
+    }
+
+    /** @return world z coordinate of the exit pad, or 0 if {@link #hasExit()} is false. */
+    public float getExitZ() {
+        return exitZ;
+    }
+
     /** @return the target spawns, in layout order. */
     public List<TargetSpawn> getTargetSpawns() {
         return targetSpawns;
+    }
+
+    /** @return the pickup spawns, in layout order. */
+    public List<PickupSpawn> getPickupSpawns() {
+        return pickupSpawns;
     }
 }

@@ -4,14 +4,14 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
 /**
- * A tiny built-in font of capitals, digits and a few signs, three pixels wide and five tall. Each glyph is drawn as
+ * A tiny built-in font of capitals, digits and common signs, three pixels wide and five tall. Each glyph is drawn as
  * flat squares, so the font needs no texture of its own.
  */
 public final class PixelFont {
 
     private static final int GLYPH_WIDTH = 3;
     private static final int GLYPH_HEIGHT = 5;
-    private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-:";
+    private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-:.,%+!?()<>[]'*";
     /** One string per character of {@link #CHARACTERS}: five rows of three pixels, top row first. */
     private static final String[] GLYPHS = {
         "010101111101101", "110101110101110", "011100100100011", "110101101101110", "111100110100111",
@@ -21,10 +21,24 @@ public final class PixelFont {
         "101101101101111", "101101101101010", "101101111111101", "101101010101101", "101101010010010",
         "111001010100111", "111101101101111", "010110010010111", "110001010100111", "110001010001110",
         "101101111001001", "111100110001110", "011100111101111", "111001010010010", "111101111101111",
-        "111101111001110", "001001010100100", "000000111000000", "000010000010000"
+        "111101111001110", "001001010100100", "000000111000000", "000010000010000",
+        "000000000000010", "000000000010100", "101001010100101", "000010111010000", "010010010000010",
+        "110001010000010", "001010010010001", "100010010010100", "001010100010001", "100010001010100",
+        "110100100100110", "011001001001011", "010010000000000", "101010111010101"
     };
 
     private PixelFont() {}
+
+    /** @return all supported non-space characters in glyph-table order. */
+    static String supportedCharacters() {
+        return CHARACTERS;
+    }
+
+    /** @return the raw 15-character bitmap string for {@code c}, or null if unsupported. */
+    static String glyphFor(char c) {
+        int index = CHARACTERS.indexOf(Character.toUpperCase(c));
+        return index < 0 ? null : GLYPHS[index];
+    }
 
     /**
      * @param text the text

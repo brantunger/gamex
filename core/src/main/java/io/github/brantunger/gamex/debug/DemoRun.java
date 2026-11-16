@@ -96,6 +96,11 @@ public final class DemoRun {
         }
     }
 
+    /** @return the lowercase script name from {@code GAMEX_DEMO}, or empty when unset. */
+    public String getScript() {
+        return script;
+    }
+
     /**
      * Starts the next frame and fills in its scripted input.
      * @param out the input to fill
@@ -110,6 +115,10 @@ public final class DemoRun {
         } else if ("targets".equals(script)) {
             if (frame == 1) out.yawDelta = TARGET_TURN;
             out.fire = frame >= TARGET_FIRE_FROM_FRAME;
+        } else if ("breach".equals(script)) {
+            if (frame == 1) out.yawDelta = 62f;
+            if (frame == 25) out.dash = true;
+            out.fire = frame >= 42;
         }
     }
 
