@@ -17,8 +17,10 @@ import java.util.Locale;
  * right, origin at the middle of the underside of the slide; lengths roughly in metres). Each bone chain is skinned
  * as a tube: a smooth curve through the joints carries elliptical cross-sections, so a finger is one continuous
  * surface with a pinch at each crease and a rounded tip. Every glove vertex that would end up inside the pistol is
- * pushed back out to its surface, which presses the fingers and the palm against the grip. Normals are smoothed
- * within a part; parts do not share vertices, so the edge between two parts (the cuff against the glove) stays hard.
+ * pushed back out to its surface, which presses the fingers and the palm against the grip. Where two neighbouring
+ * rings of a glove part then cross, their corners are slid apart, so that no quad between them folds. Normals are
+ * smoothed within a part; parts do not share vertices, so the edge between two parts (the cuff against the glove)
+ * stays hard.
  *
  * <p>The numbers under "The pistol" copy the grip, frame and slide of PistolGeometry. A test in core loads the
  * written file and checks it against the real PistolGeometry, so a pistol that has moved on shows up there.
@@ -43,6 +45,13 @@ public final class HandSculpt {
     private static final double PLATE_HALF_WIDTH = 0.0145;
     /** How far off the pistol's surface a pushed-out vertex is left. */
     private static final double CLEARANCE = 0.0006;
+    /**
+     * How far ahead of a ring's corner the same corner of the next ring is kept, as a fraction of the distance between
+     * the two ring centres.
+     */
+    private static final double RING_GAP = 0.1;
+    /** The most sweeps the uncrossing of a part's rings may take; the fingers take about 25. */
+    private static final int UNCROSS_SWEEPS = 2000;
 
     // ---- The skeleton. ----
 
@@ -499,10 +508,18 @@ public final class HandSculpt {
 
     // ---- Fitting to the pistol, and output. ----
 
-    /** Pushes a part's vertices out of the pistol if asked, smooths its normals and appends it to the file. */
+    /**
+     * Fits a part to the pistol if asked, smooths its normals and appends it to the file. Fitting pushes the part's
+     * vertices out of the pistol, then uncrosses the rings that cross, whether on a tight bend or because of the push,
+     * and pushes again.
+     */
     private void emit(Part part, boolean fitToPistol) {
         if (fitToPistol) {
+            // The ring centres are taken before the push, which moves one side of a ring and so its centre.
+            double[][] centres = new double[part.ringIndices.size()][];
+            for (int ring = 0; ring < centres.length; ring++) centres[ring] = part.centreOf(part.ringIndices.get(ring));
             for (double[] vertex : part.vertices) pushOutOfPistol(vertex);
+            uncrossRings(part, centres);
         }
         // A smooth normal is the sum of the normals of the faces round a vertex, each weighted by its area.
         double[][] normals = new double[part.vertices.size()][3];
@@ -633,6 +650,53 @@ public final class HandSculpt {
             area += outline[i * 2] * outline[next * 2 + 1] - outline[next * 2] * outline[i * 2 + 1];
         }
         return area > 0.0 ? 1.0 : -1.0;
+    }
+
+    /**
+     * Slides ring corners apart until every corner of a ring lies ahead of the same corner of the ring before it, by
+     * at least {@link #RING_GAP} of the distance between the two ring centres, measured along the line between those
+     * centres. Rings cross on the inside of a tight bend, and where the push out of the pistol moves one ring further
+     * than the next; {@link Part#ring} joins corner i of one ring to corner i of the other, so the quad between two
+     * crossed corners folds or faces inwards. On the palm only the later corner moves, forwards; on every other part
+     * the two corners share the move. A move may take a corner back into the pistol, so the push runs again after
+     * every sweep that moved one, until a sweep moves none.
+     * @param centres the ring centres as they were before the push
+     */
+    private static void uncrossRings(Part part, double[][] centres) {
+        boolean bothMove = !part.name.equals("palm");
+        for (int sweep = 0; sweep < UNCROSS_SWEEPS; sweep++) {
+            boolean moved = false;
+            for (int ring = 0; ring + 1 < centres.length; ring++) {
+                int[] low = part.ringIndices.get(ring);
+                int[] high = part.ringIndices.get(ring + 1);
+                double[] ahead = {centres[ring + 1][0] - centres[ring][0], centres[ring + 1][1] - centres[ring][1],
+                    centres[ring + 1][2] - centres[ring][2]};
+                double length = StrictMath.sqrt(ahead[0] * ahead[0] + ahead[1] * ahead[1] + ahead[2] * ahead[2]);
+                if (length < 1e-9) continue;
+                for (int axis = 0; axis < 3; axis++) ahead[axis] /= length;
+                double gap = RING_GAP * length;
+                for (int i = 0; i < low.length; i++) {
+                    double[] a = part.vertices.get(low[i]);
+                    double[] b = part.vertices.get(high[i]);
+                    double lead = (b[0] - a[0]) * ahead[0] + (b[1] - a[1]) * ahead[1] + (b[2] - a[2]) * ahead[2];
+                    if (lead >= gap - 1e-9) continue;
+                    moved = true;
+                    double shortfall = gap - lead;
+                    for (int axis = 0; axis < 3; axis++) {
+                        if (bothMove) {
+                            a[axis] -= ahead[axis] * shortfall * 0.5;
+                            b[axis] += ahead[axis] * shortfall * 0.5;
+                        } else {
+                            b[axis] += ahead[axis] * shortfall;
+                        }
+                    }
+                }
+            }
+            if (!moved) return;
+            for (double[] vertex : part.vertices) pushOutOfPistol(vertex);
+        }
+        throw new IllegalStateException("The rings of " + part.name + " are still crossed after " + UNCROSS_SWEEPS
+            + " sweeps");
     }
 
     private static double distance(double[] a, double[] b) {
