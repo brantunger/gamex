@@ -21,8 +21,9 @@ the `.obj` together.
 ```
 
 `HandModelTest` loads the written file and checks it against the real pistol: every part is a closed surface that
-faces outwards, no glove vertex is inside the pistol, the fingers wrap the grip and end on its left side, the index
-finger reaches the trigger, and the forearm leaves towards the lower right.
+faces outwards, no glove vertex is inside the pistol, the fingers and the palm lie on the grip's surface, the fingers
+wrap the grip and end on its left side, the index finger reaches the trigger, and the forearm leaves towards the
+lower right.
 
 To look at it, run the game's debug views (the variables are described in `DemoRun`):
 
@@ -42,7 +43,10 @@ The first draws the pistol and hand alone from the left side; the second saves t
   pinch at each crease and a rounded tip.
 - Glove vertices that would land inside the pistol are pushed back out to its surface. That is what presses the
   fingers and the palm against the grip. The outlines of the grip, frame and slide at the top of the generator are
-  copies of the ones in `PistolGeometry`; if the pistol changes, change them too. `HandModelTest` fails if they drift.
+  copies of the ones in `PistolGeometry`; if the pistol changes, change them too. `HandModelTest` measures the written
+  file against the real grip, and fails if the grip has grown into the glove or shrunk away from it: on either side,
+  at the front strap or at the back strap. It does not notice a change to a part of the pistol that the hand does not
+  touch, or a change smaller than about 2 mm.
 - Normals are smoothed within a part. Parts do not share vertices, so the edge between two parts, such as the cuff
   against the glove, stays hard.
 - Each part is an OBJ group (`g palm`, `g thumb`, `g sleeve`, ...) with one material (`usemtl glove`, `pads`, `cuff`,

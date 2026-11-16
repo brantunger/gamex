@@ -84,8 +84,8 @@ public final class HandSculpt {
         double[] sizes = {1.0, 0.98, 0.9};
         String[] names = {"middle_finger", "ring_finger", "little_finger"};
         for (int i = 0; i < 3; i++) {
-            finger(names[i], wrappingPath(heights[i]), 0.0093 * sizes[i], 0.0078 * sizes[i],
-                new double[] {0.36, 0.68});
+            double thick = 0.0078 * sizes[i];
+            finger(names[i], wrappingPath(heights[i], thick), 0.0093 * sizes[i], thick, new double[] {0.36, 0.68});
         }
         thumb();
         knucklePads(heights);
@@ -106,9 +106,9 @@ public final class HandSculpt {
             {0.0080, -0.0610, 0.1200, 0.0405, 0.0275},
             {0.0110, -0.0610, 0.1080, 0.0415, 0.0268},
             {0.0275, -0.0610, 0.0940, 0.0420, 0.0128},
-            {0.0292, -0.0600, 0.0780, 0.0412, 0.0128},
-            {0.0302, -0.0590, 0.0650, 0.0400, 0.0122},
-            {0.0304, -0.0588, 0.0585, 0.0372, 0.0100},
+            {0.0276, -0.0600, 0.0780, 0.0412, 0.0128},
+            {0.0270, -0.0590, 0.0650, 0.0400, 0.0122},
+            {0.0250, -0.0588, 0.0585, 0.0372, 0.0100},
         };
         List<double[]> rings = smooth(stations, 4);
         Part part = new Part("palm", "glove");
@@ -124,18 +124,23 @@ public final class HandSculpt {
         return new double[] {centre[0], centre[1], centre[2], wide, thick};
     }
 
-    /** The path of a finger that wraps the grip at a height: right side, across the front strap, left side. */
-    private static double[][] wrappingPath(double height) {
+    /**
+     * The path of a finger that wraps the grip at a height: right side, across the front strap, left side. The path
+     * keeps the finger's own thickness away from the grip, so that its inner surface lies on the grip all the way
+     * round, whatever the size of the finger.
+     * @param thick the finger's radius through its thickness
+     */
+    private static double[][] wrappingPath(double height, double thick) {
         return new double[][] {
             onGrip(0.0310, height, 0.0320),
-            onGrip(0.0262, height, 0.0130),
-            onGrip(0.0252, height, -0.0030),
-            onGrip(0.0190, height, -0.0120),
-            onGrip(0.0040, height, -0.0132),
-            onGrip(-0.0120, height, -0.0124),
-            onGrip(-0.0228, height, -0.0045),
-            onGrip(-0.0244, height, 0.0120),
-            onGrip(-0.0240, height, 0.0290),
+            onGrip(0.0158 + thick, height, 0.0130),
+            onGrip(0.0144 + thick, height, -0.0030),
+            onGrip(0.0097 + thick, height, -thick),
+            onGrip(0.0040, height, -thick - 0.0002),
+            onGrip(-0.0120, height, -thick),
+            onGrip(-0.0130 - thick, height, -0.0035),
+            onGrip(-0.0140 - thick, height, 0.0120),
+            onGrip(-0.0136 - thick, height, 0.0290),
         };
     }
 
@@ -178,7 +183,7 @@ public final class HandSculpt {
             double scale = 1.0;
             for (double crease : creases) {
                 double away = (fraction - crease) / 0.028;
-                scale *= 1.0 - 0.20 * Math.exp(-away * away) + 0.06 * Math.exp(-(away * away) / 9.0);
+                scale *= 1.0 - 0.20 * StrictMath.exp(-away * away) + 0.06 * StrictMath.exp(-(away * away) / 9.0);
             }
             ring[3] *= scale;
             ring[4] *= scale;
@@ -211,7 +216,7 @@ public final class HandSculpt {
         for (int i = 0; i < rings.size(); i++) {
             double[] ring = rings.get(i).clone();
             double away = (travelled[i] / length - 0.64) / 0.035;
-            double scale = 1.0 - 0.11 * Math.exp(-away * away) + 0.05 * Math.exp(-(away * away) / 9.0);
+            double scale = 1.0 - 0.11 * StrictMath.exp(-away * away) + 0.05 * StrictMath.exp(-(away * away) / 9.0);
             ring[3] *= scale;
             ring[4] *= scale;
             part.ring(ringPoints(rings, rings.get(i), UP, 14, ring));
@@ -225,20 +230,20 @@ public final class HandSculpt {
     private void knucklePads(double[] wrappingHeights) {
         double[] heights = {-0.041, wrappingHeights[0], wrappingHeights[1], wrappingHeights[2]};
         for (int i = 0; i < heights.length; i++) {
-            double[] knuckle = onGrip(0.0375, heights[i], 0.0300);
+            double[] knuckle = onGrip(0.0350, heights[i], 0.0300);
             Part part = new Part("knuckle_pad_" + i, "pads");
             int bands = 5;
             int segments = 10;
             // An ellipsoid with its poles along x: thin through the hand, longer along the finger.
             for (int band = 1; band < bands; band++) {
-                double latitude = -Math.PI / 2.0 + band * Math.PI / bands;
+                double latitude = -StrictMath.PI / 2.0 + band * StrictMath.PI / bands;
                 double[][] ring = new double[segments][];
                 for (int s = 0; s < segments; s++) {
-                    double longitude = (s + 0.5) * 2.0 * Math.PI / segments;
+                    double longitude = (s + 0.5) * 2.0 * StrictMath.PI / segments;
                     ring[s] = new double[] {
-                        knuckle[0] + 0.0062 * Math.sin(latitude),
-                        knuckle[1] + 0.0086 * Math.cos(latitude) * Math.cos(longitude),
-                        knuckle[2] + 0.0105 * Math.cos(latitude) * Math.sin(longitude),
+                        knuckle[0] + 0.0062 * StrictMath.sin(latitude),
+                        knuckle[1] + 0.0086 * StrictMath.cos(latitude) * StrictMath.cos(longitude),
+                        knuckle[2] + 0.0105 * StrictMath.cos(latitude) * StrictMath.sin(longitude),
                     };
                 }
                 part.ring(ring);
@@ -288,12 +293,13 @@ public final class HandSculpt {
         List<double[]> stations = new ArrayList<>();
         for (int i = 0; i < rings; i++) {
             // More rings near the cuff, where the fabric gathers.
-            double u = Math.pow(i / (rings - 1.0), 1.6);
+            double u = StrictMath.pow(i / (rings - 1.0), 1.6);
             double[] centre = along(from + (to - from) * u);
             // The fabric hangs a little below the arm's axis.
-            centre[1] -= 0.004 * Math.sin(Math.PI * Math.min(1.0, u * 2.5));
+            centre[1] -= 0.004 * StrictMath.sin(StrictMath.PI * StrictMath.min(1.0, u * 2.5));
             double grow = 1.0 + 0.36 * u;
-            double gather = 1.0 + 0.10 * Math.exp(-Math.pow((u - 0.035) / 0.03, 2.0)) - 0.07 * Math.exp(-u / 0.006);
+            double gather = 1.0 + 0.10 * StrictMath.exp(-StrictMath.pow((u - 0.035) / 0.03, 2.0))
+                - 0.07 * StrictMath.exp(-u / 0.006);
             stations.add(new double[] {centre[0], centre[1], centre[2], 0.0372 * grow * gather,
                 0.0290 * grow * gather, u});
         }
@@ -303,11 +309,11 @@ public final class HandSculpt {
             double[][] ring = ringPoints(stations, station, UP, segments, null);
             double[] centre = {station[0], station[1], station[2]};
             for (int s = 0; s < segments; s++) {
-                double angle = (s + 0.5) * 2.0 * Math.PI / segments;
+                double angle = (s + 0.5) * 2.0 * StrictMath.PI / segments;
                 // Creases: long folds that wind slowly round the arm, and shorter ripples across them.
-                double fold = 0.060 * Math.sin(3.0 * angle + 7.0 * u + 0.6)
-                    + 0.040 * Math.sin(5.0 * angle - 17.0 * u)
-                    + 0.035 * Math.sin(2.0 * angle + 41.0 * u) * Math.exp(-u / 0.25);
+                double fold = 0.060 * StrictMath.sin(3.0 * angle + 7.0 * u + 0.6)
+                    + 0.040 * StrictMath.sin(5.0 * angle - 17.0 * u)
+                    + 0.035 * StrictMath.sin(2.0 * angle + 41.0 * u) * StrictMath.exp(-u / 0.25);
                 for (int axis = 0; axis < 3; axis++) {
                     ring[s][axis] = centre[axis] + (ring[s][axis] - centre[axis]) * (1.0 + fold);
                 }
@@ -344,10 +350,10 @@ public final class HandSculpt {
         List<double[]> rings = new ArrayList<>();
         int last = stations.length - 1;
         for (int span = 0; span < last; span++) {
-            double[] p0 = stations[Math.max(0, span - 1)];
+            double[] p0 = stations[StrictMath.max(0, span - 1)];
             double[] p1 = stations[span];
             double[] p2 = stations[span + 1];
-            double[] p3 = stations[Math.min(last, span + 2)];
+            double[] p3 = stations[StrictMath.min(last, span + 2)];
             for (int step = 0; step < steps; step++) {
                 double t = step / (double) steps;
                 rings.add(spline(p0, p1, p2, p3, t));
@@ -379,8 +385,8 @@ public final class HandSculpt {
     private static double[][] ringPoints(List<double[]> rings, double[] ring, double[] wideHint, int segments,
                                          double[] radii) {
         int index = rings.indexOf(ring);
-        double[] before = rings.get(Math.max(0, index - 1));
-        double[] after = rings.get(Math.min(rings.size() - 1, index + 1));
+        double[] before = rings.get(StrictMath.max(0, index - 1));
+        double[] after = rings.get(StrictMath.min(rings.size() - 1, index + 1));
         double[] tangent = normalise(new double[] {after[0] - before[0], after[1] - before[1], after[2] - before[2]});
         double dot = wideHint[0] * tangent[0] + wideHint[1] * tangent[1] + wideHint[2] * tangent[2];
         double[] wide = normalise(new double[] {wideHint[0] - dot * tangent[0], wideHint[1] - dot * tangent[1],
@@ -391,9 +397,9 @@ public final class HandSculpt {
         double thickRadius = radii != null ? radii[4] : ring[4];
         double[][] points = new double[segments][3];
         for (int s = 0; s < segments; s++) {
-            double angle = (s + 0.5) * 2.0 * Math.PI / segments;
-            double alongWide = wideRadius * Math.cos(angle);
-            double alongThick = thickRadius * Math.sin(angle);
+            double angle = (s + 0.5) * 2.0 * StrictMath.PI / segments;
+            double alongWide = wideRadius * StrictMath.cos(angle);
+            double alongThick = thickRadius * StrictMath.sin(angle);
             for (int axis = 0; axis < 3; axis++) {
                 points[s][axis] = ring[axis] + alongWide * wide[axis] + alongThick * thick[axis];
             }
@@ -468,12 +474,12 @@ public final class HandSculpt {
             double[][] rim = new double[base.length][];
             for (int i = 0; i < base.length; i++) rim[i] = vertices.get(base[i]);
             for (int step = 1; step < steps; step++) {
-                double angle = step * Math.PI / 2.0 / steps;
+                double angle = step * StrictMath.PI / 2.0 / steps;
                 double[][] points = new double[base.length][3];
                 for (int i = 0; i < base.length; i++) {
                     for (int axis = 0; axis < 3; axis++) {
-                        points[i][axis] = centre[axis] + (rim[i][axis] - centre[axis]) * Math.cos(angle)
-                            + ahead[axis] * reach * Math.sin(angle);
+                        points[i][axis] = centre[axis] + (rim[i][axis] - centre[axis]) * StrictMath.cos(angle)
+                            + ahead[axis] * reach * StrictMath.sin(angle);
                     }
                 }
                 ring(points);
@@ -578,17 +584,17 @@ public final class HandSculpt {
      *     x = 0.
      */
     private static double depth(double[] point, double[] outline, double halfWidth) {
-        double depth = halfWidth - Math.abs(point[0]);
+        double depth = halfWidth - StrictMath.abs(point[0]);
         int corners = outline.length / 2;
         double sign = turning(outline);
         for (int i = 0; i < corners && depth > -1.0; i++) {
             int next = (i + 1) % corners;
             double edgeY = outline[next * 2] - outline[i * 2];
             double edgeZ = outline[next * 2 + 1] - outline[i * 2 + 1];
-            double length = Math.sqrt(edgeY * edgeY + edgeZ * edgeZ);
+            double length = StrictMath.sqrt(edgeY * edgeY + edgeZ * edgeZ);
             double outside = ((point[1] - outline[i * 2]) * sign * edgeZ
                 - (point[2] - outline[i * 2 + 1]) * sign * edgeY) / length;
-            depth = Math.min(depth, -outside);
+            depth = StrictMath.min(depth, -outside);
         }
         return depth;
     }
@@ -601,12 +607,12 @@ public final class HandSculpt {
         double side = point[0] >= 0.0 ? 1.0 : -1.0;
         // Each exit carries the distance moved as a fourth number, to sort by.
         exits.add(new double[] {side * (halfWidth + CLEARANCE), point[1], point[2],
-            halfWidth + CLEARANCE - Math.abs(point[0])});
+            halfWidth + CLEARANCE - StrictMath.abs(point[0])});
         for (int i = 0; i < corners; i++) {
             int next = (i + 1) % corners;
             double edgeY = outline[next * 2] - outline[i * 2];
             double edgeZ = outline[next * 2 + 1] - outline[i * 2 + 1];
-            double length = Math.sqrt(edgeY * edgeY + edgeZ * edgeZ);
+            double length = StrictMath.sqrt(edgeY * edgeY + edgeZ * edgeZ);
             // The outward normal of the edge, in (y, z).
             double normalY = sign * edgeZ / length;
             double normalZ = -sign * edgeY / length;
@@ -633,7 +639,7 @@ public final class HandSculpt {
         double dx = a[0] - b[0];
         double dy = a[1] - b[1];
         double dz = a[2] - b[2];
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return StrictMath.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     private static double[] cross(double[] a, double[] b) {
@@ -641,7 +647,7 @@ public final class HandSculpt {
     }
 
     private static double[] normalise(double[] v) {
-        double length = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        double length = StrictMath.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
         if (length < 1e-12) return new double[] {0.0, 1.0, 0.0};
         return new double[] {v[0] / length, v[1] / length, v[2] / length};
     }

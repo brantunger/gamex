@@ -148,7 +148,13 @@ public final class ViewmodelRenderer implements Disposable {
         slide = buildMesh(geometry.slide);
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
         String handFile = Gdx.files.internal(HandModel.ASSET_PATH).readString("UTF-8");
-        hand = buildMesh(HandModel.vertices(ObjModel.parse(handFile)));
+        try {
+            hand = buildMesh(HandModel.vertices(ObjModel.parse(handFile)));
+        } catch (IllegalArgumentException e) {
+            // The parser names the line; say which file it was reading as well.
+            throw new GdxRuntimeException("The hand model " + HandModel.ASSET_PATH + " could not be read: "
+                + e.getMessage(), e);
+        }
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);

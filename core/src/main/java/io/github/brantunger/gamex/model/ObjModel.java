@@ -13,7 +13,8 @@ import java.util.List;
  * {@code v/vt/vn} with indices counted from 1 or, when negative, back from the latest, {@code g} and {@code o} group
  * names and {@code usemtl} material names. Faces with more than three corners are split into a fan of triangles. A
  * face without normals gets the flat normal of its first triangle. {@code vt}, {@code mtllib} and {@code s} lines
- * and comments are read past. Anything else is an error, so a file that uses a feature this parser lacks is not
+ * and comments are read past, as is a byte-order mark at the start; lines may end in LF, CRLF or a lone CR. Anything
+ * else is an error, so a file that uses a feature this parser lacks is not
  * silently drawn wrong.
  */
 public final class ObjModel {
@@ -22,6 +23,8 @@ public final class ObjModel {
     public static final String NO_MATERIAL = "";
     /** The group name of faces that come before any {@code g} or {@code o} line. */
     public static final String NO_GROUP = "";
+    /** The character some editors put at the very start of a text file. */
+    private static final char BYTE_ORDER_MARK = 0xFEFF;
 
     private final int vertexCount;
     private final float[] positions;
@@ -90,7 +93,10 @@ public final class ObjModel {
         String material = NO_MATERIAL;
         String group = NO_GROUP;
 
-        String[] lines = text.split("\n", -1);
+        // A file may start with a byte-order mark, and may end its lines the Unix, Windows or old Mac way.
+        boolean marked = !text.isEmpty() && text.charAt(0) == BYTE_ORDER_MARK;
+        String content = marked ? text.substring(1) : text;
+        String[] lines = content.split("\r\n|\r|\n", -1);
         for (int number = 1; number <= lines.length; number++) {
             String line = lines[number - 1];
             int comment = line.indexOf('#');

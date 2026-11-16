@@ -12,11 +12,22 @@ dependencies {
   testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
+// Tells the tests where the assets folder is. The model files are a test input, so editing one reruns the tests;
+// they are tracked by relative path, so the absolute location of the checkout stays out of the build cache key.
+class AssetsLocation implements CommandLineArgumentProvider {
+  @InputDirectory
+  @PathSensitive(PathSensitivity.RELATIVE)
+  File models
+
+  @Override
+  Iterable<String> asArguments() {
+    ["-Dgamex.assets=${models.parentFile.path}".toString()]
+  }
+}
+
 test {
   useJUnitPlatform()
-  // Some tests check the shipped model files; the assets folder is an input, so editing a model reruns them.
-  inputs.dir(rootProject.file("assets/models")).withPathSensitivity(PathSensitivity.RELATIVE)
-  systemProperty "gamex.assets", rootProject.file("assets").path
+  jvmArgumentProviders.add(new AssetsLocation(models: rootProject.file("assets/models")))
 }
 
 jar {

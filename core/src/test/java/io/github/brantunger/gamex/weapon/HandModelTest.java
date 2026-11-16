@@ -27,22 +27,96 @@ class HandModelTest {
 
     private static final ObjModel MODEL = load();
     private static final PistolGeometry PISTOL = PistolGeometry.build();
+    /** The pistol's grip, the solid the hand is wrapped round. Every grip measurement below is read off it. */
+    private static final PistolGeometry.Solid GRIP = pistolSolid("grip");
     /** The half-width of the grip with its stippling, which is the widest thing a finger lies against. */
-    private static final float GRIP_HALF_WIDTH = 0.0146f;
+    private static final float GRIP_HALF_WIDTH = gripHalfWidth();
+    /** How far a glove vertex may be from the grip's own surface and still count as lying on it. */
+    private static final float TOUCHING = 0.0015f;
+    /**
+     * The most the stippling may stand between the glove and the sides of the grip. It is a fixed allowance, not read
+     * off the pistol, so that a grip that has become narrower than the hand was sculpted for is noticed.
+     */
+    private static final float STUDS = 0.002f;
     private static final String[] GLOVE_GROUPS = {"palm", "index_finger", "middle_finger", "ring_finger",
         "little_finger", "thumb"};
     private static final String[] WRAPPING_FINGERS = {"middle_finger", "ring_finger", "little_finger"};
 
-    /** Reads the model from the assets folder, which the build passes in; the fallback suits a run from an IDE. */
+    /**
+     * Reads the model from the assets folder. The build passes the folder in as {@code gamex.assets}; a run from an
+     * IDE has no such property, so the folder is then looked for from the working directory, which may be the
+     * {@code core} project or the root project.
+     */
     private static ObjModel load() {
+        List<Path> candidates = new ArrayList<>();
         String assets = System.getProperty("gamex.assets");
-        Path path = assets != null ? Paths.get(assets, HandModel.ASSET_PATH) : Paths.get("..", "assets",
-            HandModel.ASSET_PATH);
-        try {
-            return ObjModel.parse(new String(Files.readAllBytes(path), StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        if (assets != null) candidates.add(Paths.get(assets, HandModel.ASSET_PATH));
+        candidates.add(Paths.get("..", "assets", HandModel.ASSET_PATH));
+        candidates.add(Paths.get("assets", HandModel.ASSET_PATH));
+        for (Path candidate : candidates) {
+            if (!Files.isRegularFile(candidate)) continue;
+            try {
+                return ObjModel.parse(new String(Files.readAllBytes(candidate), StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
+        List<Path> tried = new ArrayList<>();
+        for (Path candidate : candidates) tried.add(candidate.toAbsolutePath().normalize());
+        throw new IllegalStateException("The hand model was not found. Set the system property gamex.assets to the "
+            + "assets folder, or run from the root project or the core project. Tried: " + tried);
+    }
+
+    private static PistolGeometry.Solid pistolSolid(String name) {
+        for (PistolGeometry.Solid solid : PISTOL.solids) {
+            if (solid.name.equals(name)) return solid;
+        }
+        throw new IllegalStateException("The pistol has no solid named " + name);
+    }
+
+    /** A corner of one of the pistol's solids. */
+    private static Vector3 pistolCorner(PistolGeometry.Solid solid, int corner) {
+        int at = (solid.firstVertex + corner) * PistolGeometry.VERTEX_SIZE;
+        float[] vertices = PISTOL.vertices(solid.group);
+        return new Vector3(vertices[at], vertices[at + 1], vertices[at + 2]);
+    }
+
+    private static float gripHalfWidth() {
+        float widest = 0f;
+        for (PistolGeometry.Solid solid : PISTOL.solids) {
+            if (solid != GRIP && !solid.name.startsWith("stipple")) continue;
+            for (int i = 0; i < solid.vertexCount; i++) widest = Math.max(widest, Math.abs(pistolCorner(solid, i).x));
+        }
+        return widest;
+    }
+
+    /** @return the height of the top of the grip (index 0) and of its bottom (index 1). */
+    private static float[] gripHeights() {
+        float top = -Float.MAX_VALUE;
+        float bottom = Float.MAX_VALUE;
+        for (int i = 0; i < GRIP.vertexCount; i++) {
+            float y = pistolCorner(GRIP, i).y;
+            top = Math.max(top, y);
+            bottom = Math.min(bottom, y);
+        }
+        return new float[] {top, bottom};
+    }
+
+    /**
+     * @return how far a point is outside a convex solid of the pistol: its distance in front of the face it is
+     *     furthest in front of. Negative inside. Beyond an edge or a corner this is a little less than the true
+     *     distance.
+     */
+    private static float outside(Vector3 point, PistolGeometry.Solid solid) {
+        float[] vertices = PISTOL.vertices(solid.group);
+        float furthest = -Float.MAX_VALUE;
+        for (int i = 0; i < solid.vertexCount; i += 3) {
+            int at = (solid.firstVertex + i) * PistolGeometry.VERTEX_SIZE;
+            float ahead = (point.x - vertices[at]) * vertices[at + 3] + (point.y - vertices[at + 1]) * vertices[at + 4]
+                + (point.z - vertices[at + 2]) * vertices[at + 5];
+            furthest = Math.max(furthest, ahead);
+        }
+        return furthest;
     }
 
     private static Vector3 position(int triangle, int corner) {
@@ -84,11 +158,16 @@ class HandModelTest {
 
     /** The z of the front of the grip at a height, read off the real grip. */
     private static float frontStrap(float y) {
-        float topY = -0.018f;
-        float topZ = 0.022f;
-        float bottomY = -0.105f;
-        float bottomZ = 0.050f;
-        return topZ + (topY - y) * (bottomZ - topZ) / (topY - bottomY);
+        float[] heights = gripHeights();
+        // The front strap runs between the foremost corner of the grip's top and the foremost corner of its bottom.
+        float topZ = Float.MAX_VALUE;
+        float bottomZ = Float.MAX_VALUE;
+        for (int i = 0; i < GRIP.vertexCount; i++) {
+            Vector3 corner = pistolCorner(GRIP, i);
+            if (corner.y == heights[0]) topZ = Math.min(topZ, corner.z);
+            if (corner.y == heights[1]) bottomZ = Math.min(bottomZ, corner.z);
+        }
+        return topZ + (heights[0] - y) * (bottomZ - topZ) / (heights[0] - heights[1]);
     }
 
     @Test
@@ -221,14 +300,63 @@ class HandModelTest {
 
     /** Whether a point lies more than a hair inside a convex solid: behind every one of its faces. */
     private static boolean isInside(Vector3 point, PistolGeometry.Solid solid) {
-        float[] vertices = PISTOL.vertices(solid.group);
-        for (int i = 0; i < solid.vertexCount; i += 3) {
-            int at = (solid.firstVertex + i) * PistolGeometry.VERTEX_SIZE;
-            float ahead = (point.x - vertices[at]) * vertices[at + 3] + (point.y - vertices[at + 1]) * vertices[at + 4]
-                + (point.z - vertices[at + 2]) * vertices[at + 5];
-            if (ahead > -2e-4f) return false;
+        return outside(point, solid) <= -2e-4f;
+    }
+
+    /** @return how near the nearest of some glove vertices comes to the surface of the real grip. */
+    private static float nearestToGrip(List<Vector3> corners) {
+        float nearest = Float.MAX_VALUE;
+        for (Vector3 corner : corners) nearest = Math.min(nearest, outside(corner, GRIP));
+        return nearest;
+    }
+
+    @Test
+    void wrappingFingersLieOnTheRealGripOnBothSidesAndAcrossTheFrontStrap() {
+        float gripSide = 0f;
+        for (int i = 0; i < GRIP.vertexCount; i++) gripSide = Math.max(gripSide, pistolCorner(GRIP, i).x);
+
+        for (String finger : WRAPPING_FINGERS) {
+            List<Vector3> left = new ArrayList<>();
+            List<Vector3> right = new ArrayList<>();
+            List<Vector3> front = new ArrayList<>();
+            for (Vector3 corner : corners(finger)) {
+                boolean behindTheStrap = corner.z > frontStrap(corner.y);
+                if (behindTheStrap && corner.x < -gripSide) left.add(corner);
+                else if (behindTheStrap && corner.x > gripSide) right.add(corner);
+                else if (!behindTheStrap && Math.abs(corner.x) < gripSide) front.add(corner);
+            }
+            assertTrue(nearestToGrip(left) < STUDS + TOUCHING,
+                finger + " floats off the left of the grip by " + nearestToGrip(left));
+            assertTrue(nearestToGrip(right) < STUDS + TOUCHING,
+                finger + " floats off the right of the grip by " + nearestToGrip(right));
+            assertTrue(nearestToGrip(front) < TOUCHING,
+                finger + " floats off the front strap by " + nearestToGrip(front));
         }
-        return true;
+    }
+
+    @Test
+    void palmLiesOnTheBackOfTheRealGripAndAlongItsRightSide() {
+        float gripSide = 0f;
+        for (int i = 0; i < GRIP.vertexCount; i++) gripSide = Math.max(gripSide, pistolCorner(GRIP, i).x);
+        // The right side of the grip is judged only by the part of the palm that lies beside it, not behind it.
+        float[] heights = gripHeights();
+        float topBack = 0f;
+        for (int i = 0; i < GRIP.vertexCount; i++) {
+            Vector3 corner = pistolCorner(GRIP, i);
+            if (corner.y == heights[0]) topBack = Math.max(topBack, corner.z);
+        }
+        List<Vector3> behind = new ArrayList<>();
+        List<Vector3> right = new ArrayList<>();
+        for (Vector3 corner : corners("palm")) {
+            if (Math.abs(corner.x) < gripSide) behind.add(corner);
+            else if (corner.x > gripSide && corner.z < topBack && corner.y < heights[0] && corner.y > heights[1]) {
+                right.add(corner);
+            }
+        }
+
+        assertTrue(nearestToGrip(behind) < TOUCHING, "the palm floats off the back strap by " + nearestToGrip(behind));
+        assertTrue(nearestToGrip(right) < STUDS + TOUCHING,
+            "the palm floats off the right of the grip by " + nearestToGrip(right));
     }
 
     @Test
@@ -267,7 +395,8 @@ class HandModelTest {
                 bottom = Math.min(bottom, corner.y);
             }
         }
-        float ratio = (top - bottom) / (0.105f - 0.018f);
+        float[] gripHeights = gripHeights();
+        float ratio = (top - bottom) / (gripHeights[0] - gripHeights[1]);
         assertTrue(ratio > 0.8f && ratio < 1.15f, "hand width over grip length: " + ratio);
     }
 
@@ -322,15 +451,16 @@ class HandModelTest {
 
     @Test
     void sleeveIsLooserThanTheCuffAndIsNotAPlainCylinder() {
-        Vector3 axis = new Vector3(0.157f, -0.299f, 0.941f);
-        Vector3 wristCentre = new Vector3(0.012f, -0.058f, 0.150f);
+        // The arm's axis as the model has it: from the middle of the cuff through the middle of the sleeve.
+        Vector3 wristCentre = centre("cuff");
+        Vector3 axis = centre("sleeve").sub(wristCentre).nor();
         float nearest = Float.MAX_VALUE;
         float furthest = 0f;
         for (Vector3 corner : corners("sleeve")) {
             Vector3 offset = new Vector3(corner).sub(wristCentre);
             float along = offset.dot(axis);
             // A slice of the sleeve well clear of both of its ends.
-            if (along < 0.20f || along > 0.24f) continue;
+            if (along < 0.15f || along > 0.19f) continue;
             float radius = offset.mulAdd(axis, -along).len();
             nearest = Math.min(nearest, radius);
             furthest = Math.max(furthest, radius);

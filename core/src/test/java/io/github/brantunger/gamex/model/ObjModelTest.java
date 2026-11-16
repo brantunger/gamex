@@ -142,6 +142,27 @@ class ObjModelTest {
     }
 
     @Test
+    void readsAFileWhoseLinesEndInALoneCarriageReturn() {
+        ObjModel model = ObjModel.parse("v 0 0 0\rv 1 0 0\rv 0 1 0\rusemtl glove\rf 1 2 3\r");
+
+        assertEquals(3, model.getVertexCount());
+        assertEquals(1, model.getTriangleCount());
+        assertEquals("glove", model.getMaterial(0));
+        // Errors still name the right line.
+        assertTrue(rejects("v 0 0 0\rv 1 0 0\rl 1 2\r").getMessage().contains("Line 3"));
+    }
+
+    @Test
+    void readsPastAByteOrderMarkAtTheStartOfTheFile() {
+        char byteOrderMark = 0xFEFF;
+        ObjModel model = ObjModel.parse(byteOrderMark + "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+
+        assertEquals(3, model.getVertexCount());
+        assertEquals(1, model.getTriangleCount());
+        assertArrayEquals(new float[] {0f, 0f, 0f}, corner(model.getPositions(), 0, 0), EPSILON);
+    }
+
+    @Test
     void emptyTextIsAnEmptyModel() {
         ObjModel model = ObjModel.parse("");
 
