@@ -88,16 +88,8 @@ public final class MenuState {
         return activeLoadout;
     }
 
-    public boolean isTrainingRange() {
-        return inTrainingRange;
-    }
-
     public SaveData.CompletionSummary getLastSummary() {
         return lastSummary;
-    }
-
-    public GameSettings getSettings() {
-        return settings;
     }
 
     /** @return visible menu option labels for the current screen. */

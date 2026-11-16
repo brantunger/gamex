@@ -17,7 +17,10 @@ import java.util.zip.Deflater;
  *  <li>{@code GAMEX_SCREENSHOT_FRAME}: the frame to save, counted from 1; the default is {@value #DEFAULT_FRAME}.</li>
  *  <li>{@code GAMEX_DEMO}: set to {@code action} to play a short script instead of standing still: the player turns
  *  towards a pillar, holds the blast button, releases it, and fires the pistol. Set to {@code targets} to turn
- *  towards the nearest canister and keep firing the pistol at it.</li>
+ *  towards the nearest canister and keep firing the pistol at it. Set to {@code breach} to turn, dash and then fire
+ *  the pistol. Two values are read by {@code MainGame} through {@link #getScript()}: {@code breach} also loads the
+ *  Outer Breach stage instead of the original first level, and {@code title} shows the Title screen over that stage
+ *  with no scripted input and without advancing the game.</li>
  *  <li>{@code GAMEX_VIEWMODEL_ORBIT}: set to {@code yaw} or {@code yaw,pitch} in degrees to draw only the pistol and
  *  hand, on a plain background, seen from outside: 0 is from behind, 90 the left side, 180 the front, and a pitch
  *  of 90 is from above.</li>

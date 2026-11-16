@@ -22,7 +22,5 @@ public interface KeyValueStore {
 
     void putString(String key, String value);
 
-    void remove(String key);
-
     void flush();
 }

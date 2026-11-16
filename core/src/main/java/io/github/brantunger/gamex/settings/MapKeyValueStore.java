@@ -7,7 +7,6 @@ import java.util.Map;
 public final class MapKeyValueStore implements KeyValueStore {
 
     private final Map<String, Object> values = new HashMap<>();
-    private int flushes;
 
     @Override
     public float getFloat(String key, float defaultValue) {
@@ -54,17 +53,7 @@ public final class MapKeyValueStore implements KeyValueStore {
     }
 
     @Override
-    public void remove(String key) {
-        values.remove(key);
-    }
-
-    @Override
     public void flush() {
-        flushes++;
-    }
-
-    /** @return how many times {@link #flush()} has been called. */
-    public int getFlushCount() {
-        return flushes;
+        // Nothing to write: the values live only in memory.
     }
 }

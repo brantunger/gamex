@@ -53,11 +53,6 @@ public final class GdxPreferencesStore implements KeyValueStore {
     }
 
     @Override
-    public void remove(String key) {
-        prefs.remove(key);
-    }
-
-    @Override
     public void flush() {
         prefs.flush();
     }

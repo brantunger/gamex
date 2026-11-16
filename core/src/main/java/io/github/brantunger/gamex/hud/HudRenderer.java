@@ -56,21 +56,6 @@ public final class HudRenderer implements Disposable {
     }
 
     /**
-     * Legacy two-argument entry point used by unattended runs; draws the combat HUD and optional pause overlay.
-     */
-    public void render(GameSimulation simulation, boolean paused) {
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
-        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        batch.begin();
-        drawCombatHud(simulation);
-        if (paused) drawSimplePauseBanner();
-        batch.setColor(1f, 1f, 1f, 1f);
-        batch.end();
-    }
-
-    /**
      * Draws the active combat HUD and/or menu screen driven by {@code menuState}.
      */
     public void render(GameSimulation simulation, MenuState menuState) {
@@ -393,12 +378,6 @@ public final class HudRenderer implements Disposable {
         rect(cx - boxW * 0.5f, y, boxW, boxH);
         batch.setColor(0.55f, 1f, 0.82f, alpha);
         PixelFont.drawCentred(batch, textures.white, msg, cx, y + padY, pixel);
-    }
-
-    private void drawSimplePauseBanner() {
-        batch.setColor(0f, 0f, 0f, 0.6f);
-        rect(0f, 0f, width, height);
-        PixelFont.drawCentred(batch, textures.white, "PAUSED", width * 0.5f, height * 0.5f, 10f * unit);
     }
 
     // ---- Menu Screens ----
