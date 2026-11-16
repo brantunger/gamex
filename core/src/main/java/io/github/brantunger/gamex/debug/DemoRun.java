@@ -78,14 +78,19 @@ public final class DemoRun {
         return orbit;
     }
 
-    private static float[] parseOrbit(String text) {
+    /**
+     * Reads a view of the pistol and hand from outside, such as {@code 90} or {@code 90,30}.
+     * @param text the view as {@code yaw} or {@code yaw,pitch} in degrees, or null
+     * @return the yaw and pitch in degrees, or null when the text is missing or malformed
+     */
+    static float[] parseOrbit(String text) {
         if (text == null || text.isEmpty()) return null;
         String[] parts = text.split(",");
         try {
             float yaw = Float.parseFloat(parts[0].trim());
             float pitch = parts.length > 1 ? Float.parseFloat(parts[1].trim()) : 0f;
             return new float[] {yaw, pitch};
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
             System.err.println("GAMEX_VIEWMODEL_ORBIT is not 'yaw' or 'yaw,pitch' in degrees: '" + text + "'");
             return null;
         }

@@ -4,8 +4,8 @@ An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.
 
 This is the first playable version. You are "gamerx", in a level of four rooms joined in a loop, with a pistol, a
 charged blast and 11 destructible targets to practise on. There are no enemies yet, and no win or restart state:
-the HUD only counts the targets left. Every texture is painted in code at start-up; the game loads no art files
-apart from the window icons.
+the HUD only counts the targets left. Every texture is painted in code at start-up, and the pistol and the hand
+holding it are a 3D model built in code; the game loads no art files apart from the window icons.
 
 ## How to run
 
@@ -40,6 +40,10 @@ you click or press `Esc`. Pausing cancels a blast charge that is building, at no
 **Pistol.** A hitscan weapon: a shot hits instantly, up to 60 world units away (one map cell is one unit). It has
 no ammo limit. With the button held it fires once every 0.3 seconds, at any frame rate, and a shot does 20 damage.
 
+On screen the pistol is a 3D model in a gloved hand at the lower right, drawn in a pass of its own so that a wall
+the player stands against never cuts it off. It kicks back on each shot with a flash at the muzzle, bobs while the
+player walks, lags a little behind turns, and glows violet towards the muzzle while a blast is charging.
+
 **Blast.** A slow glowing ball that explodes on the first wall, floor, ceiling or target it touches and damages
 every target in its radius. Walls do not shield a target from the explosion.
 
@@ -70,17 +74,27 @@ on by environment variables:
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
 | `GAMEX_DEMO` | Optional script: `action` or `targets`. Without it the player stands still. |
+| `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
 - `targets`: the player turns towards the nearest canister and fires the pistol at it from frame 30. The third
   shot, around frame 66, destroys it, so a later frame shows it gone.
 
-`GAMEX_SCREENSHOT_FRAME` and `GAMEX_DEMO` do nothing unless `GAMEX_SCREENSHOT` is set. During such a run the
-keyboard and mouse are ignored, the cursor stays free, and every frame advances the game by 1/60 of a second, so
-the saved frame is the same on every run.
+With `GAMEX_VIEWMODEL_ORBIT` the saved frame shows the pistol and hand alone, at rest, on a plain grey background,
+without the world or the HUD. A yaw of 0 shows them from behind, 90 from the left side and 180 from the front; a
+pitch of 90 shows them from above, and the pitch is 0 if left out. A value that is not a number prints a warning
+and the normal picture is saved.
+
+`GAMEX_SCREENSHOT_FRAME`, `GAMEX_DEMO` and `GAMEX_VIEWMODEL_ORBIT` do nothing unless `GAMEX_SCREENSHOT` is set.
+During such a run the keyboard and mouse are ignored, the cursor stays free, and every frame advances the game by
+1/60 of a second, so the saved frame is the same on every run.
 
 Use an absolute path. The `desktop:run` task runs in the `assets` folder, so a relative path would write the PNG
 there.
+
+One more variable works on any run, with or without `GAMEX_SCREENSHOT`: `GAMEX_WINDOW` sets the window size as
+`WIDTHxHEIGHT`, for example `800x600`. A value that is malformed or smaller than 160x120 prints a warning and the
+window opens at 1280x720.
 
 PowerShell:
 
@@ -107,9 +121,10 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `world`: the level grid and its layouts, collision with walls and targets, hitscan ray casting, map
     geometry, targets and effects.
   - `player`: the player's position, view angles and movement, and the per-frame input record.
-  - `weapon`: the pistol, the energy meter, the blast's charge logic, its projectile and its explosion damage.
-  - `render`: the 3D view and the textures painted in code.
-  - `hud`: the 2D overlay (pistol, crosshair, energy meter, charge bar, pause screen) and its built-in pixel font.
+  - `weapon`: the pistol, the energy meter, the blast's charge logic, its projectile and its explosion damage, and
+    the 3D model of the pistol and hand with the numbers that animate it.
+  - `render`: the 3D view, the pass that draws the pistol and hand over it, and the textures painted in code.
+  - `hud`: the 2D overlay (crosshair, energy meter, charge bar, status texts, pause screen) and its built-in pixel font.
   - `input`: reads the keyboard and mouse, adds up mouse movement for looking around (`LookAccumulator`), and
     handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
@@ -129,10 +144,11 @@ The tests are JUnit Jupiter tests in `core/src/test`. They need no window or gra
   collision, hitscan, map geometry and targets.
 - `player`: view angles and movement.
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
-- `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, and the projectile and its
-  explosion damage.
+- `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the projectile and its explosion
+  damage, the pistol and hand model (every solid is closed, convex and faces outwards; the parts of the hand), and
+  its animation (recoil, slide, walking bob and turn lag).
 
-Rendering, the HUD, the rest of input handling (`InputController`) and the debug screenshot mode have no tests.
+Rendering, the HUD, the rest of input handling (`InputController`) and the debug screenshot mode have no tests, apart from the parsing of `GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`).
 
 ## Gradle
 

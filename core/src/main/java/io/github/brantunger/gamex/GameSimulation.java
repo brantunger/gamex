@@ -73,6 +73,8 @@ public final class GameSimulation {
     public void update(float frameTime, PlayerInput input) {
         float dt = Math.max(0f, Math.min(MAX_DT, frameTime));
         time += dt;
+        float beforeYaw = player.getYaw();
+        float beforePitch = player.getPitch();
         player.look(input.yawDelta, input.pitchDelta);
         float beforeX = player.position.x;
         float beforeZ = player.position.y;
@@ -85,7 +87,10 @@ public final class GameSimulation {
         // The gun bobs with the distance actually covered, so it settles when the player is held up by a wall.
         float walked = player.position.dst(beforeX, beforeZ);
         float walkSpeed = dt > 0f ? walked / (Player.MOVE_SPEED * dt) : 0f;
-        viewmodel.update(dt, fired, walkSpeed, input.yawDelta, input.pitchDelta);
+        // It sways with the turn actually made, so it settles when the view is held at the pitch limit. The yaw
+        // wraps at north, so its change is taken the short way round, as a turn from -180 up to 180 degrees.
+        float turned = (player.getYaw() - beforeYaw + 540f) % 360f - 180f;
+        viewmodel.update(dt, fired, walkSpeed, turned, player.getPitch() - beforePitch);
 
         float firedCharge = charger.update(dt, input.charge);
         if (firedCharge > 0f) {

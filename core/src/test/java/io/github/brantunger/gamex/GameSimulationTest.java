@@ -195,6 +195,44 @@ class GameSimulationTest {
     }
 
     @Test
+    void pistolViewmodelSwaysWithATurnAndSettlesOnceTheViewIsHeldAtThePitchLimit() {
+        GameSimulation simulation = emptyCorridor();
+        PlayerInput input = new PlayerInput();
+
+        // Turn right and tilt up at 180 degrees per second: the gun lags behind, to the left and downwards.
+        input.yawDelta = 3f;
+        input.pitchDelta = 3f;
+        for (int i = 0; i < 10; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.player.getPitch() < Player.MAX_PITCH, "still tilting up");
+        assertTrue(simulation.viewmodel.getSwayYaw() < -0.5f, "yaw sway " + simulation.viewmodel.getSwayYaw());
+        assertTrue(simulation.viewmodel.getSwayPitch() < -0.5f, "pitch sway " + simulation.viewmodel.getSwayPitch());
+
+        // The mouse keeps pushing upwards against the limit: the view no longer moves, so the gun comes back.
+        input.yawDelta = 0f;
+        for (int i = 0; i < 240; i++) simulation.update(FRAME, input);
+        assertEquals(Player.MAX_PITCH, simulation.player.getPitch(), 1e-6f);
+        assertEquals(0f, simulation.viewmodel.getSwayPitch(), 1e-3f);
+    }
+
+    @Test
+    void pistolViewmodelSwayIsSteadyWhileATurnCrossesNorth() {
+        GameSimulation simulation = emptyCorridor();
+        PlayerInput input = new PlayerInput();
+
+        // The player faces east, at a yaw of 90, and turns left through north, where the yaw wraps from 0 to 360.
+        input.yawDelta = -3f;
+        for (int i = 0; i < 20; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.viewmodel.getSwayYaw() > 0.9f, "yaw sway " + simulation.viewmodel.getSwayYaw());
+        for (int i = 0; i < 20; i++) {
+            float before = simulation.viewmodel.getSwayYaw();
+            simulation.update(FRAME, input);
+            assertTrue(simulation.viewmodel.getSwayYaw() >= before - 1e-3f, "yaw sway fell from " + before + " to "
+                + simulation.viewmodel.getSwayYaw() + " at a yaw of " + simulation.player.getYaw());
+        }
+        assertTrue(simulation.player.getYaw() > 180f, "crossed north to a yaw of " + simulation.player.getYaw());
+    }
+
+    @Test
     void quickTapOfTheBlastButtonFiresNothing() {
         GameSimulation simulation = emptyCorridor();
         PlayerInput input = new PlayerInput();
