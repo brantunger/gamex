@@ -256,22 +256,17 @@ public final class WorldRenderer implements Disposable {
         camera.viewportHeight = height;
     }
 
-    /** Draws the world using default camera settings. */
-    public void render(GameSimulation simulation) {
-        render(simulation, null);
-    }
-
     /**
      * Clears the screen and draws the world from the player's eyes.
      * @param simulation the game state to draw
-     * @param settings optional live gameplay settings (FOV, view bob), or null
+     * @param settings the live gameplay settings (FOV, view bob)
      */
     public void render(GameSimulation simulation, GameSettings settings) {
         setMap(simulation.map);
         Player player = simulation.player;
-        camera.fieldOfView = settings != null ? settings.getFov() : FIELD_OF_VIEW;
+        camera.fieldOfView = settings.getFov();
         player.eye(camera.position);
-        if ((settings == null || settings.isViewBob()) && !player.isDead()) {
+        if (settings.isViewBob() && !player.isDead()) {
             camera.position.y += MathUtils.sin(player.getBobPhase()) * BOB_HEIGHT;
         }
         camera.direction.set(player.direction(direction));
@@ -298,7 +293,7 @@ public final class WorldRenderer implements Disposable {
      */
     public void renderBackdrop(GameSimulation simulation, GameSettings settings, float previewTime) {
         setMap(simulation.map);
-        camera.fieldOfView = settings != null ? settings.getFov() : FIELD_OF_VIEW;
+        camera.fieldOfView = settings.getFov();
         camera.position.set(simulation.map.getSpawnX(), Player.EYE_HEIGHT + 0.05f, simulation.map.getSpawnZ());
         float yaw = simulation.map.getSpawnYaw() + MathUtils.sin(previewTime * 0.35f) * 26f;
         float pitch = MathUtils.sin(previewTime * 0.22f) * 4f - 2f;

@@ -6,15 +6,17 @@ import java.nio.file.Paths;
 import java.util.Locale;
 
 /**
- * Sculpts the 3D world objects (coolant canister, ring board and blast orb) and writes them as Wavefront OBJ files.
+ * Sculpts the 3D world objects (coolant canister, ring board, blast orb, and the medkit, armor vest and energy cell
+ * pickups) and writes them as Wavefront OBJ files: {@code canister.obj}, {@code ring-board.obj},
+ * {@code blast-orb.obj}, {@code pickup-medkit.obj}, {@code pickup-armor.obj} and {@code pickup-energy.obj}.
  *
  * <p>Run it from the repository root with a JDK and nothing else:
  * <pre>java tools/world/WorldSculpt.java assets/models</pre>
  *
  * <p>Canister and ring board stand on {@code y = 0} with {@code y} up and face {@code -z}. The blast orb is centred
- * at the origin. Every part is a closed surface written as its own OBJ group ({@code g}) with one material
- * ({@code usemtl}). No vertex normals are written for flat-faceted solids; smooth sphere bands carry unit {@code vn}
- * normals.
+ * at the origin. The pickups stand on {@code y = 0} with {@code y} up, centred on the {@code y} axis. Every part is
+ * a closed surface written as its own OBJ group ({@code g}) with one material ({@code usemtl}). No vertex normals
+ * are written for flat-faceted solids; smooth sphere bands carry unit {@code vn} normals.
  */
 public final class WorldSculpt {
 

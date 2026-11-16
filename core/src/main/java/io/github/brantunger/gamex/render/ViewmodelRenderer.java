@@ -167,23 +167,15 @@ public final class ViewmodelRenderer implements Disposable {
     }
 
     /**
-     * Draws the pistol over the finished world using default viewmodel settings.
-     * @param simulation the game state to draw
-     */
-    public void render(GameSimulation simulation) {
-        render(simulation, null);
-    }
-
-    /**
      * Draws the pistol over the finished world.
      * @param simulation the game state to draw
-     * @param settings optional gameplay settings (view bob), or null
+     * @param settings the live gameplay settings (view bob)
      */
     public void render(GameSimulation simulation, GameSettings settings) {
         if (simulation.player.isDead()) return;
         ViewmodelAnimation animation = simulation.viewmodel;
         float recoil = animation.getRecoil();
-        boolean bobEnabled = settings == null || settings.isViewBob();
+        boolean bobEnabled = settings.isViewBob();
         float bobX = bobEnabled ? animation.getBobX() : 0f;
         float bobY = bobEnabled ? animation.getBobY() : 0f;
 
