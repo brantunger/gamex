@@ -127,16 +127,88 @@ class ObjModelTest {
     }
 
     @Test
-    void faceWithSeveralTrianglesThatHaveAnAreaGetsTheFlatNormalOfTheFirstOfThem() {
-        // The fan is a triangle with no area, one that faces +z, and one that faces another way.
-        ObjModel model = ObjModel.parse(IN_A_LINE + "v 1 1 0\nv 0 0 1\nf 1 2 3 4 5\n");
+    void nonPlanarFaceWithoutNormalsGetsTheWholeFaceNormalIndependentOfStartCorner() {
+        String vertices = IN_A_LINE + "v 1 1 0\nv 0 0 1\n";
+        float s = (float) Math.sqrt(6.0);
+        float[] expected = {1f / s, -1f / s, 2f / s};
 
-        assertEquals(3, model.getTriangleCount());
-        for (int triangle = 0; triangle < 3; triangle++) {
-            for (int corner = 0; corner < 3; corner++) {
-                assertArrayEquals(new float[] {0f, 0f, 1f}, corner(model.getNormals(), triangle, corner), EPSILON);
+        for (String face : new String[] {"f 1 2 3 4 5\n", "f 4 5 1 2 3\n"}) {
+            ObjModel model = ObjModel.parse(vertices + face);
+
+            assertEquals(3, model.getTriangleCount());
+            for (int triangle = 0; triangle < 3; triangle++) {
+                for (int corner = 0; corner < 3; corner++) {
+                    assertArrayEquals(expected, corner(model.getNormals(), triangle, corner), EPSILON);
+                }
             }
         }
+    }
+
+    @Test
+    void concaveFaceWithoutNormalsGetsTheWholeFaceFlatNormalRegardlessOfStartCorner() {
+        String dart = "v -2 -2 0\nv 0 -1 0\nv 2 -2 0\nv 0 2 0\n";
+        for (String face : new String[] {"f 1 2 3 4\n", "f 2 3 4 1\n", "f 3 4 1 2\n", "f 4 1 2 3\n"}) {
+            ObjModel model = ObjModel.parse(dart + face);
+
+            assertEquals(2, model.getTriangleCount(), face);
+            for (int triangle = 0; triangle < 2; triangle++) {
+                for (int corner = 0; corner < 3; corner++) {
+                    assertArrayEquals(new float[] {0f, 0f, 1f}, corner(model.getNormals(), triangle, corner), EPSILON);
+                }
+            }
+        }
+
+        // First three corners collinear, next corner inward (#20 case 2).
+        String six = "v 0 0 0\nv 1 0 0\nv 2 0 0\nv 3 -1 0\nv 3 3 0\nv 0 3 0\nf 1 2 3 4 5 6\n";
+        ObjModel sixModel = ObjModel.parse(six);
+        assertEquals(4, sixModel.getTriangleCount());
+        for (int triangle = 0; triangle < 4; triangle++) {
+            for (int corner = 0; corner < 3; corner++) {
+                assertArrayEquals(new float[] {0f, 0f, 1f}, corner(sixModel.getNormals(), triangle, corner), EPSILON);
+            }
+        }
+    }
+
+    @Test
+    void concaveFaceEarClipsInsideItsOutlineForAnyStartCorner() {
+        String dart = "v -2 -2 0\nv 0 -1 0\nv 2 -2 0\nv 0 2 0\n";
+        for (String prefix : new String[] {"", "vn 0 0 1\n"}) {
+            String suffix = prefix.isEmpty() ? "" : "//1";
+            String[] faces = {
+                "f 1" + suffix + " 2" + suffix + " 3" + suffix + " 4" + suffix + "\n",
+                "f 2" + suffix + " 3" + suffix + " 4" + suffix + " 1" + suffix + "\n",
+                "f 3" + suffix + " 4" + suffix + " 1" + suffix + " 2" + suffix + "\n",
+                "f 4" + suffix + " 1" + suffix + " 2" + suffix + " 3" + suffix + "\n",
+            };
+            for (String face : faces) {
+                ObjModel model = ObjModel.parse(dart + prefix + face);
+                assertEquals(2, model.getTriangleCount(), face);
+                float[] positions = model.getPositions();
+                float totalTwiceArea = 0f;
+                for (int t = 0; t < 2; t++) {
+                    float[] a = corner(positions, t, 0);
+                    float[] b = corner(positions, t, 1);
+                    float[] c = corner(positions, t, 2);
+                    float twiceSignedAreaZ = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+                    assertTrue(twiceSignedAreaZ > 0f, face + " triangle " + t + " wound wrong: " + twiceSignedAreaZ);
+                    totalTwiceArea += twiceSignedAreaZ;
+                }
+                assertEquals(12f, totalTwiceArea, EPSILON, face);
+            }
+        }
+    }
+
+    @Test
+    void rejectsSelfCrossingFacesAndKeepsCollinearZeroAreaFacesWithNormals() {
+        String bowtie = "v 0 0 0\nv 1 1 0\nv 1 0 0\nv 0 1 0\n";
+        assertAll(
+            () -> rejectsSaying(bowtie + "f 1 2 3 4\n", "Line 5", "self-crossing"),
+            () -> rejectsSaying(bowtie + "vn 0 0 1\nf 1//1 2//1 3//1 4//1\n", "Line 6", "self-crossing"),
+            () -> rejectsSaying("v 0 0 0\nv 2 2 0\nv 2 0 0\nv 0 1 0\nf 1 2 3 4\n", "Line 5", "self-crossing"));
+
+        ObjModel collinearWithNormals = ObjModel.parse(IN_A_LINE + "v 3 0 0\nvn 0 1 0\nf 1//1 2//1 3//1 4//1\n");
+        assertEquals(2, collinearWithNormals.getTriangleCount());
+        assertArrayEquals(new float[] {0f, 1f, 0f}, corner(collinearWithNormals.getNormals(), 0, 0), EPSILON);
     }
 
     @Test
@@ -359,5 +431,35 @@ class ObjModelTest {
     void rejectsFacesWithFewerThanThreeCorners() {
         rejects(SQUARE + "f 1 2\n");
         rejects(SQUARE + "f\n");
+    }
+
+    @Test
+    void checksTextureCoordinateIndicesAndRejectsTrailingSlashes() {
+        assertAll(
+            () -> rejectsSaying(SQUARE + "f 1/abc/1 2/abc/1 3/abc/1\n", "Line 6", "not a texture coordinate index"),
+            () -> rejectsSaying(SQUARE + "f 1/abc 2/abc 3/abc\n", "Line 6", "not a texture coordinate index"),
+            () -> rejectsSaying(SQUARE + "f 1/99 2/99 3/99\n", "Line 6", "no texture coordinate 99 (0 so far)"),
+            () -> rejectsSaying(SQUARE + "f 1/0/1 2/0/1 3/0/1\n", "Line 6", "no texture coordinate 0"),
+            () -> rejectsSaying(SQUARE + "f 1/ 2/ 3/\n", "Line 6", "is not a face corner"),
+            () -> rejectsSaying(SQUARE + "f 1// 2// 3//\n", "Line 6", "is not a face corner"));
+
+        ObjModel negativeAndUnreadVt = ObjModel.parse(SQUARE + "vt abc\nvt 0 0\nvt 1 1\nf 1/-3 2/-2 3/-1\n");
+        assertEquals(1, negativeAndUnreadVt.getTriangleCount());
+    }
+
+    @Test
+    void largeCoordinatesKeepTrueUnitNormalsWithoutOverflowOrFalseNoAreaError() {
+        ObjModel longVn = ObjModel.parse("v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 1e20 0 0\nf 1//1 2//1 3//1\n");
+        assertArrayEquals(new float[] {1f, 0f, 0f}, corner(longVn.getNormals(), 0, 0), EPSILON);
+
+        for (String scale : new String[] {"1e10", "1e20"}) {
+            ObjModel largeFlat = ObjModel.parse("v 0 0 0\nv " + scale + " 0 0\nv 0 " + scale + " 0\nf 1 2 3\n");
+            assertArrayEquals(new float[] {0f, 0f, 1f}, corner(largeFlat.getNormals(), 0, 0), EPSILON);
+        }
+
+        ObjModel extremeFlat = ObjModel.parse("v -3e38 0 0\nv 3e38 0 0\nv 0 3e38 0\nf 1 2 3\n");
+        for (int c = 0; c < 3; c++) {
+            assertArrayEquals(new float[] {0f, 0f, 1f}, corner(extremeFlat.getNormals(), 0, c), EPSILON);
+        }
     }
 }
