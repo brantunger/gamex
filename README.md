@@ -213,9 +213,10 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `weapon`: the pistol, the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
     `EnemyProjectile`), explosion damage, the pistol's 3D model and materials (`PistolModel`), the colours for the
     hand's mesh (`HandModel`) and the numbers that animate both.
-  - `model`: a parser for Wavefront OBJ model files (`ObjModel`) and vertex packing (`ModelVertices`). Neither uses
-    graphics types.
-  - `render`: the 3D view, the pass that draws the pistol and hand over it, and the textures painted in code.
+  - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
+    a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
+    indexed deduplication). None use graphics types.
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the pistol and hand over it (`ViewmodelRenderer`), and the textures painted in code.
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
     or input types) and the built-in pixel font.
@@ -225,6 +226,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
     (`LookAccumulator`), and handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings and the window icons.
+- `tools`: the Gradle model authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
+  DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `HandSculpt`, `GenerateAllModels`, and the interactive LWJGL3
+  previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads at start-up:
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`: the mesh of the first-person pistol (body and animated slide).
@@ -233,10 +237,6 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `models/door-bulkhead.obj`, `models/security-console.obj`: 3D meshes for sliding bulkhead doors and security consoles.
   - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-bolt.obj`: 3D meshes
     for articulated enemies and enemy plasma bolts.
-- `tools`: standalone single-file Java generators that build the `.obj` models:
-  - `tools/viewmodel/HandSculpt.java` and `tools/viewmodel/PistolSculpt.java` (see
-    [tools/viewmodel/README.md](tools/viewmodel/README.md)).
-  - `tools/world/WorldSculpt.java` (`java tools/world/WorldSculpt.java assets/models`).
 
 ## Tests
 
@@ -244,10 +244,10 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ./gradlew test
 ```
 
-The tests are JUnit Jupiter tests in `core/src/test` and `desktop/src/test`. They need no window or graphics context.
-`GeneratedModelsTest`, `HandModelTest`, `PistolModelTest` and `WorldModelsTest` read `.obj` models from `assets` and
-run the standalone generators in `tools/`; the `core` test task tracks both folders and reruns when any model or
-generator changes. They cover:
+The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
+graphics context. `HandModelTest`, `PistolModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
+track model changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest`) invokes `GenerateAllModels` directly
+to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex deduplication. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
   a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
@@ -268,11 +268,15 @@ generator changes. They cover:
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
 - `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
-  closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
-  normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
-  the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
-- `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in
-  `assets/models/` (`GeneratedModelsTest`), and model-file error reporting (`ModelVertices.read`).
+  closed, convex and faces outwards, plus indexed body/slide meshes and `# @socket muzzle`), the shipped hand mesh (every
+  part is closed and faces outwards, no quad folds, unit normals, bands of the fingers and palm lie on the grip's
+  surface, the fingers wrap the grip, no glove vertex is inside the pistol, and `PistolModel` shared outlines match the
+  pistol mesh), and the animation (recoil, slide, walking bob and turn lag).
+- `model`: the OBJ parser (including `# @part`/`# @socket`/`# @accent` directives, multi-word materials, and files it
+  must reject), forward-kinematics evaluation (`ModelRig`), indexed vertex deduplication (`ModelVertices`), and
+  model-file error reporting (`ModelVertices.read`).
+- `tools`: byte-for-byte deterministic `.obj` generation and 16-bit indexed vertex deduplication checks across every
+  model in `assets/models/` (`GeneratedModelsTest`).
 - `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and the packaging icons.
 
 Rendering, the drawing of the HUD (`HudRenderer`), OpenAL audio hardware playback (`SoundManager` runtime), the rest
@@ -288,7 +292,9 @@ The project uses the [Gradle](https://gradle.org/) wrapper: run tasks with `./gr
 Windows.
 
 - `desktop:run`: starts the game.
-- `test`: runs the unit tests.
+- `tools:generateModels`: regenerates every sculpted `.obj` model in `assets/models/`.
+- `tools:preview`: launches the interactive 3D OBJ model previewer (`R` rebuilds & reloads live).
+- `test`: runs the unit tests across `core`, `desktop`, and `tools`.
 - `build`: builds and tests every project.
 - `desktop:jar`: builds a runnable jar in `desktop/build/libs`.
 - `clean`: removes the `build` folders.

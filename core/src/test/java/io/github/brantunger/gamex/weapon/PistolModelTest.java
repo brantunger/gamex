@@ -267,4 +267,21 @@ class PistolModelTest {
             () -> PistolModel.from(missingGroup));
         assertTrue(groupError.getMessage().contains("group"), groupError.getMessage());
     }
+
+    @Test
+    void indexedMeshesAndMuzzleSocketMatchSplitModel() {
+        assertTrue(MODEL.bodyMesh.vertexCount() > 0);
+        assertTrue(MODEL.slideMesh.vertexCount() > 0);
+        assertEquals(MODEL.body.length / PistolModel.VERTEX_SIZE, MODEL.bodyMesh.indexCount());
+        assertEquals(MODEL.slide.length / PistolModel.VERTEX_SIZE, MODEL.slideMesh.indexCount());
+        assertTrue(MODEL.bodyMesh.vertexCount() < MODEL.bodyMesh.indexCount());
+
+        ObjModel obj = load(PistolModel.ASSET_PATH);
+        assertTrue(obj.getPartSpec("slide") != null, "missing # @part slide");
+        ObjModel.SocketSpec muzzle = obj.getSocket("muzzle");
+        assertTrue(muzzle != null, "missing # @socket muzzle");
+        assertEquals(PistolModel.MUZZLE_X, muzzle.x, 1e-5f);
+        assertEquals(PistolModel.MUZZLE_Y, muzzle.y, 1e-5f);
+        assertEquals(PistolModel.MUZZLE_Z, muzzle.z, 1e-5f);
+    }
 }
