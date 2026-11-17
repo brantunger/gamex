@@ -21,6 +21,7 @@ public final class MenuState {
     /** Active top-level UI screen. */
     public enum Screen {
         TITLE,
+        STAGE_SELECT,
         DIFFICULTY_SELECT,
         BRIEFING,
         PLAYING,
@@ -48,8 +49,11 @@ public final class MenuState {
 
     private Screen screen;
     private Screen settingsReturnScreen = Screen.TITLE;
+    private Screen difficultyReturnScreen = Screen.TITLE;
     private int selectedIndex;
+    private int pendingStageIndex;
     private boolean inTrainingRange;
+    private boolean campaignCompleted;
     private int stageIndex;
     private Levels.Stage activeStage;
     private PlayerLoadout activeLoadout;
@@ -88,6 +92,10 @@ public final class MenuState {
         return activeLoadout;
     }
 
+    public boolean isCampaignCompleted() {
+        return campaignCompleted;
+    }
+
     public SaveData.CompletionSummary getLastSummary() {
         return lastSummary;
     }
@@ -99,10 +107,26 @@ public final class MenuState {
             case TITLE:
                 if (saveData.hasSavedRun()) items.add("CONTINUE CAMPAIGN");
                 items.add("START CAMPAIGN");
+                items.add("SELECT STAGE");
                 items.add("TRAINING RANGE");
                 items.add("SETTINGS");
                 items.add("QUIT");
                 break;
+            case STAGE_SELECT: {
+                int unlocked = saveData.getUnlockedStageIndex();
+                for (int i = 0; i < campaign.size(); i++) {
+                    Levels.Stage stage = campaign.get(i);
+                    if (i <= unlocked) {
+                        char best = saveData.getBestOverallRank(stage.id);
+                        String badge = best == '-' ? "[READY]" : "[BEST: " + best + "]";
+                        items.add(stage.title + " " + badge);
+                    } else {
+                        items.add(stage.title + " [LOCKED]");
+                    }
+                }
+                items.add("BACK");
+                break;
+            }
             case DIFFICULTY_SELECT:
                 items.add("EASY - 70% DAMAGE / +25% PICKUPS");
                 items.add("NORMAL - STANDARD CHALLENGE");
@@ -195,6 +219,7 @@ public final class MenuState {
             case TITLE:
                 if (choice.startsWith("CONTINUE")) {
                     inTrainingRange = false;
+                    campaignCompleted = false;
                     stageIndex = Math.min(saveData.getSavedStageIndex(), campaign.size() - 1);
                     activeStage = campaign.get(stageIndex);
                     activeLoadout = saveData.getSavedLoadout();
@@ -202,12 +227,19 @@ public final class MenuState {
                     return Command.LAUNCH_STAGE;
                 }
                 if (choice.startsWith("START CAMPAIGN")) {
+                    pendingStageIndex = 0;
+                    difficultyReturnScreen = Screen.TITLE;
                     setScreen(Screen.DIFFICULTY_SELECT);
                     selectedIndex = 1; // Default to NORMAL.
                     return Command.NONE;
                 }
+                if (choice.startsWith("SELECT STAGE")) {
+                    setScreen(Screen.STAGE_SELECT);
+                    return Command.NONE;
+                }
                 if (choice.startsWith("TRAINING RANGE")) {
                     inTrainingRange = true;
+                    campaignCompleted = false;
                     stageIndex = 0;
                     activeStage = trainingRange;
                     activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
@@ -222,16 +254,30 @@ public final class MenuState {
                 if (choice.startsWith("QUIT")) return Command.QUIT;
                 return Command.NONE;
 
+            case STAGE_SELECT:
+                if (choice.equals("BACK")) {
+                    setScreen(Screen.TITLE);
+                    return Command.NONE;
+                }
+                if (selectedIndex < campaign.size() && selectedIndex <= saveData.getUnlockedStageIndex()) {
+                    pendingStageIndex = selectedIndex;
+                    difficultyReturnScreen = Screen.STAGE_SELECT;
+                    setScreen(Screen.DIFFICULTY_SELECT);
+                    selectedIndex = 1; // Default to NORMAL.
+                }
+                return Command.NONE;
+
             case DIFFICULTY_SELECT:
                 if (choice.startsWith("BACK")) {
-                    setScreen(Screen.TITLE);
+                    setScreen(difficultyReturnScreen);
                     return Command.NONE;
                 }
                 Difficulty diff = choice.startsWith("EASY") ? Difficulty.EASY
                     : choice.startsWith("HARD") ? Difficulty.HARD : Difficulty.NORMAL;
                 inTrainingRange = false;
-                stageIndex = 0;
-                activeStage = campaign.get(0);
+                campaignCompleted = false;
+                stageIndex = Math.min(pendingStageIndex, campaign.size() - 1);
+                activeStage = campaign.get(stageIndex);
                 activeLoadout = PlayerLoadout.fresh(diff);
                 saveData.saveCampaignRun(stageIndex, activeLoadout);
                 setScreen(Screen.BRIEFING);
@@ -283,6 +329,7 @@ public final class MenuState {
 
             case INTERMISSION:
                 if (choice.startsWith("NEXT STAGE")) {
+                    campaignCompleted = false;
                     stageIndex++;
                     activeStage = campaign.get(stageIndex);
                     saveData.saveCampaignRun(stageIndex, activeLoadout);
@@ -290,6 +337,7 @@ public final class MenuState {
                     return Command.NONE;
                 }
                 if (choice.startsWith("PLAY AGAIN")) {
+                    campaignCompleted = false;
                     if (!inTrainingRange) {
                         activeLoadout = saveData.hasSavedRun() && saveData.getSavedStageIndex() == stageIndex
                             ? saveData.getSavedLoadout()
@@ -321,6 +369,9 @@ public final class MenuState {
                 setScreen(settingsReturnScreen);
                 return Command.NONE;
             case DIFFICULTY_SELECT:
+                setScreen(difficultyReturnScreen);
+                return Command.NONE;
+            case STAGE_SELECT:
             case BRIEFING:
             case DEAD:
             case INTERMISSION:
@@ -358,6 +409,7 @@ public final class MenuState {
         if (screen != Screen.PLAYING) return;
         lastSummary = saveData.recordCompletion(activeStage.id, activeLoadout.difficulty, clearTime,
             activeStage.parSeconds, destroyed, totalTargets, damageTaken);
+        campaignCompleted = !inTrainingRange && (stageIndex + 1 >= campaign.size());
         if (!inTrainingRange) {
             PlayerLoadout carryOver = PlayerLoadout.fromPlayer(survivingPlayer, activeLoadout.difficulty);
             if (stageIndex + 1 < campaign.size()) {

@@ -65,5 +65,52 @@ class MenuStateTest {
         assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
         assertNotNull(menu.getLastSummary());
         assertEquals('S', menu.getLastSummary().rank);
+        assertFalse(menu.isCampaignCompleted(), "stage 01 of 3 does not complete campaign");
+        assertTrue(menu.getOptions().get(0).startsWith("NEXT STAGE"));
+
+        // Clear remaining stages 02 -> 03 -> Campaign Complete.
+        assertEquals(MenuState.Command.NONE, menu.confirm()); // NEXT STAGE -> BRIEFING stage 02
+        assertEquals("02_coolant_core", menu.getActiveStage().id);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm()); // DEPLOY
+        menu.onStageCleared(survivor, 45f, 8, 8, 10f);
+        assertFalse(menu.isCampaignCompleted());
+        assertEquals(MenuState.Command.NONE, menu.confirm()); // NEXT STAGE -> BRIEFING stage 03
+        assertEquals("03_security_hub", menu.getActiveStage().id);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm()); // DEPLOY
+        menu.onStageCleared(survivor, 55f, 12, 12, 15f);
+        assertTrue(menu.isCampaignCompleted());
+        assertFalse(save.hasSavedRun(), "final clear clears active Continue snapshot");
+        assertFalse(menu.getOptions().get(0).startsWith("NEXT STAGE"));
+    }
+
+    @Test
+    void stageSelectShowsBestRanksLocksUnreachedStagesAndLaunchesUnlockedStage() {
+        GameSettings settings = new GameSettings();
+        SaveData save = new SaveData(new MapKeyValueStore());
+        save.unlockStage(1); // Stage 01 & 02 unlocked, Stage 03 locked.
+        save.recordCompletion("01_outer_breach", Difficulty.NORMAL, 40f, 50f, 8, 8, 0f);
+        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+
+        // Select SELECT STAGE (index 1 on fresh Title without Continue).
+        menu.setSelectedIndex(1);
+        assertEquals(MenuState.Command.NONE, menu.confirm());
+        assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
+        assertTrue(menu.getOptions().get(0).contains("[BEST: S]"));
+        assertTrue(menu.getOptions().get(1).contains("[READY]"));
+        assertTrue(menu.getOptions().get(2).contains("[LOCKED]"));
+
+        // Locked stage cannot be launched.
+        menu.setSelectedIndex(2);
+        assertEquals(MenuState.Command.NONE, menu.confirm());
+        assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
+
+        // Unlocked stage 02 launches via DIFFICULTY_SELECT -> BRIEFING.
+        menu.setSelectedIndex(1);
+        menu.confirm();
+        assertEquals(MenuState.Screen.DIFFICULTY_SELECT, menu.getScreen());
+        assertEquals(MenuState.Command.NONE, menu.confirm()); // NORMAL -> BRIEFING
+        assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
+        assertEquals("02_coolant_core", menu.getActiveStage().id);
+        assertEquals(100f, menu.getActiveLoadout().health, 1e-4f);
     }
 }

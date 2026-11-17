@@ -138,6 +138,32 @@ public final class SaveData {
             bestRank);
     }
 
+    /** @return stored best rank ('S', 'A', 'B', 'C') for {@code stageId} on {@code difficulty}, or '-' if unplayed. */
+    public char getBestRank(String stageId, Difficulty difficulty) {
+        String text = store.getString("best." + stageId + "." + difficulty.name() + ".rank", "");
+        return text.isEmpty() ? '-' : text.charAt(0);
+    }
+
+    /** @return stored best clear time in seconds for {@code stageId} on {@code difficulty}, or +Infinity if unplayed. */
+    public float getBestTime(String stageId, Difficulty difficulty) {
+        return store.getFloat("best." + stageId + "." + difficulty.name() + ".time", Float.POSITIVE_INFINITY);
+    }
+
+    /** @return highest rank earned on {@code stageId} across all difficulties, or '-' if never cleared. */
+    public char getBestOverallRank(String stageId) {
+        char best = '-';
+        int bestOrd = 99;
+        for (Difficulty diff : Difficulty.values()) {
+            char rank = getBestRank(stageId, diff);
+            int ord = rankOrder(rank);
+            if (ord < bestOrd) {
+                bestOrd = ord;
+                best = rank;
+            }
+        }
+        return best;
+    }
+
     private static int rankOrder(char rank) {
         switch (rank) {
             case 'S':

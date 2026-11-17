@@ -103,37 +103,110 @@ public final class Levels {
         GameMap map = GameMap.parse(
             "#############&&&&&&&&&&&&&&&",
             "#.a......####..............&",
-            "#........####..o.o......O..&",
+            "#........####..o.D......O..&",
             "#..#..#..####....&...&.....&",
-            "#...>......................&",
+            "#...>................T.....&",
             "#..#..#..####....&...&.....&",
             "#........####...........e..&",
-            "#.+..o...####.....o.o......&",
+            "#.+..o...####.....o.D......&",
             "####.########..............&",
-            "####.########.......O...+..&",
+            "####.########.......O..T+..&",
             "####.########&&&&&&&&.&&&&&&",
             "%%%%.%%%%%%%%%%%%%%%%.%%%%%%",
             "%........e.%%%%%%..........%",
             "%..o.o.%%..%%%%%%...%..%...%",
-            "%......%%..%%%%%%..........%",
-            "%...........o..............%",
-            "%..........%%%%%%....O.....%",
-            "%.O......o.%%%%%%.o......o.%",
+            "%...D..%%..%%%%%%..D.......%",
+            "%...........o.........T....%",
+            "%......T...%%%%%%....O.....%",
+            "%.O......o.%%%%%%.o..D...o.%",
             "%.+......a.%%%%%%....+...X.%",
             "%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
         return new Stage(
             "01_outer_breach",
             "01: OUTER BREACH",
-            40f,
+            50f,
             false,
             map,
             "AUTOMATED CONTAINMENT LOCKDOWN DETECTED IN SECTOR 01.",
-            "VOLATILE COOLANT CANISTERS LINE THE EASTERN AND SOUTHERN HALLS.",
-            "CLEAR A PATH AND REACH THE EXTRACTION TELEPORTER PAD.");
+            "RUSHER DRONES AND SENTRY TURRETS GUARD THE BREACH HALLS.",
+            "USE COOLANT CANISTERS AND DASH TO REACH THE EXTRACTION PAD.");
+    }
+
+    /** @return Campaign Stage 02 ("02: COOLANT CORE"), introducing mobile Guard Bots across conduit lanes. */
+    public static Stage coolantCore() {
+        GameMap map = GameMap.parse(
+            "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&",
+            "&.>....o..&........&..a.....e&",
+            "&.........&..G..o..&....T....&",
+            "&...&.&.......&.......&..&...&",
+            "&.........&........&.........&",
+            "&.a..D....&..o..D..&..o...G..&",
+            "&.+...O...&&&.&&&.&&&&&..&&&&&",
+            "&&&&.&&&&&###.#########..#####",
+            "#.........#.......#..........#",
+            "#...o.G...#..o.T..#...D..o...#",
+            "#.........#.......#..........#",
+            "#..##.##.....###.....##..##..#",
+            "#.........#.......#..........#",
+            "#..e..+...#..G.o..#...G...a..#",
+            "#.........#.......#..........#",
+            "#####.#######.#######.########",
+            "%%%%%.%%%%%%%.%%%%%%%.%%%%%%%%",
+            "%.........+.......o..........%",
+            "%..G..o......T.......o...G...%",
+            "%.......%.......%............%",
+            "%..e....%..D....%....+...X...%",
+            "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        return new Stage(
+            "02_coolant_core",
+            "02: COOLANT CORE",
+            65f,
+            false,
+            map,
+            "HEAVY GUARD BOTS PATROL THE PRIMARY COOLANT CONDUITS.",
+            "STRAFE INCOMING BOLTS AND BAIT FIRE INTO VOLATILE CANISTERS.",
+            "BREACH THE REACTOR LANES AND REACH THE SOUTH EXTRACTION PAD.");
+    }
+
+    /** @return Campaign Stage 03 ("03: SECURITY HUB"), combining all three enemy archetypes in a final gauntlet. */
+    public static Stage securityHub() {
+        GameMap map = GameMap.parse(
+            "#############&&&&&&&&&&&&&&&&&&&",
+            "#........####..................&",
+            "#.>......####..o.D...&...T....a&",
+            "#..#..#..####........&.........&",
+            "#............G.......&...o..G..&",
+            "#..#..#..####..&..o......&.....&",
+            "#.a......####..&.....G...&..e..&",
+            "#.+..o...&&&&..&&&.&&&&&&&.&&&&&",
+            "####.########.....#............%",
+            "%%%%.%%%%%%%%.#.#.#..%...%..%..%",
+            "%........e..%.#.#.#....T.......%",
+            "%..D...o....%.#.#.#..o..G...T..%",
+            "%.....%.......#.#..............%",
+            "%..G..%..T..%.#.#.%%%%..%%%%%%.%",
+            "%.....%.....%..........o....+..%",
+            "%..+..o..D..%.#.#.%.T..........%",
+            "%%%%%.%%%%%%%&#.#.%....%%.%%...%",
+            "#..........#..#...%..D.%%.%%.G.%",
+            "#..o..G....#......%............%",
+            "#..........#.####.%..o...T.....%",
+            "#..#...#..........%.........o..%",
+            "#..a...e...#.+....%..G....e..X.%",
+            "################################");
+        return new Stage(
+            "03_security_hub",
+            "03: SECURITY HUB",
+            80f,
+            false,
+            map,
+            "CENTRAL SECURITY HUB ALERT LEVEL MAXIMUM.",
+            "COORDINATED DRONE, TURRET AND GUARD SQUADS PROTECT THE EXIT.",
+            "CLEAR THE COMMAND DECK AND EXTRACT TO COMPLETE THE CAMPAIGN.");
     }
 
     /** @return the ordered list of campaign stages available so far. */
     public static List<Stage> campaign() {
-        return Collections.singletonList(outerBreach());
+        return Collections.unmodifiableList(Arrays.asList(outerBreach(), coolantCore(), securityHub()));
     }
 }

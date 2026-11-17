@@ -119,9 +119,11 @@ public final class DemoRun {
             if (frame == 1) out.yawDelta = TARGET_TURN;
             out.fire = frame >= TARGET_FIRE_FROM_FRAME;
         } else if ("breach".equals(script)) {
-            if (frame == 1) out.yawDelta = 62f;
+            out.moveForward = frame <= 155 ? 1f : 0f;
             if (frame == 25) out.dash = true;
-            out.fire = frame >= 42;
+            if (frame >= 115 && frame <= 135) out.moveStrafe = 1f;
+            if (frame > 135 && frame <= 150) out.yawDelta = -1.2f;
+            out.fire = frame >= 150;
         }
     }
 

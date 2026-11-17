@@ -77,6 +77,9 @@ public final class HudRenderer implements Disposable {
             case TITLE:
                 drawTitleScreen(menuState);
                 break;
+            case STAGE_SELECT:
+                drawStageSelectScreen(menuState);
+                break;
             case DIFFICULTY_SELECT:
                 drawDifficultyScreen(menuState);
                 break;
@@ -138,7 +141,9 @@ public final class HudRenderer implements Disposable {
         float cy = h * 0.5f;
         switch (screen) {
             case TITLE:
-                return cy + 16f * u;
+                return cy + 22f * u;
+            case STAGE_SELECT:
+                return cy + 36f * u;
             case DIFFICULTY_SELECT:
                 return cy + 28f * u;
             case BRIEFING:
@@ -346,9 +351,17 @@ public final class HudRenderer implements Disposable {
     private void drawStatus(GameSimulation simulation) {
         float pixel = 3f * unit;
         float topY = height - 28f * unit - PixelFont.height(pixel);
-        batch.setColor(0.8f, 1f, 0.88f, 0.92f);
-        String targets = "TARGETS " + simulation.getTargetsRemaining() + "/" + simulation.targets.size();
-        PixelFont.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
+        if (!simulation.enemies.isEmpty()) {
+            int remaining = simulation.getEnemiesRemaining();
+            if (remaining > 0) batch.setColor(1f, 0.52f, 0.46f, 0.95f);
+            else batch.setColor(0.55f, 1f, 0.82f, 0.95f);
+            String hostiles = "HOSTILES " + remaining + "/" + simulation.enemies.size();
+            PixelFont.draw(batch, textures.white, hostiles, 28f * unit, topY, pixel);
+        } else {
+            batch.setColor(0.8f, 1f, 0.88f, 0.92f);
+            String targets = "TARGETS " + simulation.getTargetsRemaining() + "/" + simulation.targets.size();
+            PixelFont.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
+        }
 
         if (simulation.map.hasExit()) {
             batch.setColor(0.55f, 0.95f, 1f, 0.9f);
@@ -387,7 +400,7 @@ public final class HudRenderer implements Disposable {
         float cx = width * 0.5f;
         float cy = height * 0.5f;
 
-        drawPanel(cx, cy + 10f * unit, 600f * unit, 470f * unit);
+        drawPanel(cx, cy + 6f * unit, 600f * unit, 488f * unit);
         batch.setColor(0.76f, 0.56f, 1f, 1f);
         PixelFont.drawCentred(batch, textures.white, "GAMEX", cx, cy + 168f * unit, 12f * unit);
         batch.setColor(0.62f, 0.95f, 0.88f, 0.95f);
@@ -399,6 +412,19 @@ public final class HudRenderer implements Disposable {
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
         PixelFont.drawCentred(batch, textures.white,
             "WASD: MOVE   SHIFT/SPACE: DASH   LMB: PISTOL   RMB: BLAST", cx, 32f * unit, 2.3f * unit);
+    }
+
+    private void drawStageSelectScreen(MenuState menuState) {
+        drawBackdropShade(0.62f);
+        float cx = width * 0.5f;
+        float cy = height * 0.5f;
+        drawPanel(cx, cy, 620f * unit, 360f * unit);
+        batch.setColor(0.55f, 0.95f, 1f, 1f);
+        PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 122f * unit, 5.5f * unit);
+        batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
+        PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 92f * unit,
+            2.2f * unit);
+        drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
     }
 
     private void drawDifficultyScreen(MenuState menuState) {
@@ -469,8 +495,10 @@ public final class HudRenderer implements Disposable {
         batch.setColor(1f, 0.30f, 0.34f, 1f);
         PixelFont.drawCentred(batch, textures.white, "SIGNAL LOST", cx, cy + 78f * unit, 6.5f * unit);
         if (simulation != null) {
-            String sub = "SURVIVED " + formatTime(simulation.getTime()) + "   //   TARGETS "
-                + simulation.getTargetsDestroyed() + "/" + simulation.targets.size();
+            String tally = simulation.enemies.isEmpty()
+                ? "TARGETS " + simulation.getTargetsDestroyed() + "/" + simulation.targets.size()
+                : "HOSTILES " + simulation.getEnemiesDestroyed() + "/" + simulation.enemies.size();
+            String sub = "SURVIVED " + formatTime(simulation.getTime()) + "   //   " + tally;
             batch.setColor(0.90f, 0.80f, 0.82f, 0.92f);
             PixelFont.drawCentred(batch, textures.white, sub, cx, cy + 32f * unit, 2.5f * unit);
         }
@@ -481,28 +509,40 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.72f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy - 6f * unit, 640f * unit, 470f * unit);
+        drawPanel(cx, cy - 6f * unit, 640f * unit, 480f * unit);
 
         Levels.Stage stage = menuState.getActiveStage();
         SaveData.CompletionSummary sum = menuState.getLastSummary();
+        boolean campaignDone = menuState.isCampaignCompleted();
 
-        batch.setColor(0.52f, 1f, 0.82f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "STAGE COMPLETE", cx, cy + 168f * unit, 5.8f * unit);
+        if (campaignDone) {
+            batch.setColor(1f, 0.88f, 0.36f, 1f);
+            PixelFont.drawCentred(batch, textures.white, "CAMPAIGN COMPLETE", cx, cy + 174f * unit, 5.6f * unit);
+        } else {
+            batch.setColor(0.52f, 1f, 0.82f, 1f);
+            PixelFont.drawCentred(batch, textures.white, "STAGE COMPLETE", cx, cy + 174f * unit, 5.8f * unit);
+        }
         batch.setColor(0.78f, 0.84f, 1f, 0.95f);
-        PixelFont.drawCentred(batch, textures.white, stage.title, cx, cy + 132f * unit, 3.2f * unit);
+        PixelFont.drawCentred(batch, textures.white, stage.title, cx, cy + 138f * unit, 3.2f * unit);
+        if (campaignDone) {
+            batch.setColor(0.52f, 1f, 0.82f, 0.95f);
+            PixelFont.drawCentred(batch, textures.white, "SECTOR CLEARED - ALL STAGES COMPLETE", cx,
+                cy + 112f * unit, 2.4f * unit);
+        }
 
         if (sum != null) {
             float statPix = 2.8f * unit;
             String timeLine = "CLEAR TIME: " + formatTime(sum.clearTime) + "  (PAR " + formatTime(stage.parSeconds)
                 + ")" + (sum.newBestTime ? "  *NEW BEST!*" : "");
             int pct = sum.targetsTotal <= 0 ? 100 : Math.round(sum.targetsDestroyed * 100f / sum.targetsTotal);
-            String targetLine = "TARGETS CLEARED: " + sum.targetsDestroyed + "/" + sum.targetsTotal + " (" + pct + "%)";
+            String label = stage.map.getEnemySpawns().isEmpty() ? "TARGETS CLEARED: " : "HOSTILES CLEARED: ";
+            String targetLine = label + sum.targetsDestroyed + "/" + sum.targetsTotal + " (" + pct + "%)";
             String dmgLine = "DAMAGE TAKEN: " + Math.round(sum.damageTaken);
             String rankLine = "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]";
 
             batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, timeLine, cx, cy + 82f * unit, statPix);
-            PixelFont.drawCentred(batch, textures.white, targetLine, cx, cy + 48f * unit, statPix);
+            PixelFont.drawCentred(batch, textures.white, timeLine, cx, cy + 78f * unit, statPix);
+            PixelFont.drawCentred(batch, textures.white, targetLine, cx, cy + 46f * unit, statPix);
             PixelFont.drawCentred(batch, textures.white, dmgLine, cx, cy + 14f * unit, statPix);
 
             if (sum.rank == 'S') batch.setColor(1f, 0.88f, 0.36f, 1f);

@@ -51,6 +51,7 @@ public final class ProceduralTextures implements Disposable {
         scorch = upload(paintScorch());
         spark = upload(paintSpark());
         orb = upload(paintOrb());
+        orb.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         explosion = upload(paintExplosion());
         exitPad = upload(paintExitPad());
         Pixmap pixel = blank(1, 1);
@@ -280,7 +281,7 @@ public final class ProceduralTextures implements Disposable {
     }
 
     private static Pixmap paintOrb() {
-        int size = 32;
+        int size = 64;
         Pixmap pixmap = blank(size, size);
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
@@ -289,9 +290,11 @@ public final class ProceduralTextures implements Disposable {
                 float distance = (float) Math.sqrt(dx * dx + dy * dy);
                 if (distance >= 1f) continue;
                 float glow = (1f - distance) * (1f - distance);
-                float core = distance < 0.35f ? 1f : 0f;
-                pixmap.drawPixel(x, y, rgba(150f + 105f * Math.max(glow, core), 70f + 185f * Math.max(glow, core),
-                    255f, Math.min(1f, glow * 2.4f + core) * 255f));
+                float coreT = Math.max(0f, 1f - distance / 0.42f);
+                float core = coreT * coreT * (3f - 2f * coreT);
+                float bright = Math.max(glow, core);
+                pixmap.drawPixel(x, y, rgba(155f + 100f * bright, 75f + 180f * bright,
+                    255f, Math.min(1f, glow * 2.1f + core * 0.95f) * 255f));
             }
         }
         return pixmap;

@@ -41,6 +41,7 @@ public class MainGame extends ApplicationAdapter {
     private DemoRun demoRun;
     private float backdropTime;
     private float deathTimer;
+    private float smoothedDt = 1f / 60f;
     private int windowedWidth = DEFAULT_WINDOW_WIDTH;
     private int windowedHeight = DEFAULT_WINDOW_HEIGHT;
 
@@ -125,6 +126,7 @@ public class MainGame extends ApplicationAdapter {
         }
 
         float rawDt = Gdx.graphics.getDeltaTime();
+        float stepDt = smoothStepDt(rawDt);
         backdropTime += Math.min(0.1f, Math.max(0f, rawDt));
 
         MenuState.Screen beforeScreen = menuState.getScreen();
@@ -136,10 +138,16 @@ public class MainGame extends ApplicationAdapter {
 
         MenuState.Screen screen = menuState.getScreen();
         if (screen == MenuState.Screen.PLAYING) {
-            simulation.update(rawDt, input);
+            simulation.update(stepDt, input);
             if (simulation.isLevelCleared()) {
-                menuState.onStageCleared(simulation.player, simulation.getTime(), simulation.getTargetsDestroyed(),
-                    simulation.targets.size(), simulation.getDamageTaken());
+                int cleared = simulation.enemies.isEmpty()
+                    ? simulation.getTargetsDestroyed()
+                    : simulation.getEnemiesDestroyed();
+                int total = simulation.enemies.isEmpty()
+                    ? simulation.targets.size()
+                    : simulation.enemies.size();
+                menuState.onStageCleared(simulation.player, simulation.getTime(), cleared, total,
+                    simulation.getDamageTaken());
                 controller.syncCursorCapture();
             } else if (simulation.player.isDead()) {
                 deathTimer += Math.min(GameSimulation.MAX_DT, Math.max(0f, rawDt));
@@ -153,11 +161,12 @@ public class MainGame extends ApplicationAdapter {
         } else if (screen == MenuState.Screen.DEAD) {
             // Keep settling the lowered camera and lingering blast effects behind the death overlay.
             input.clear();
-            simulation.update(rawDt, input);
+            simulation.update(stepDt, input);
         }
 
         MenuState.Screen renderScreen = menuState.getScreen();
         if (renderScreen == MenuState.Screen.TITLE
+            || renderScreen == MenuState.Screen.STAGE_SELECT
             || renderScreen == MenuState.Screen.DIFFICULTY_SELECT
             || renderScreen == MenuState.Screen.BRIEFING) {
             if (simulation.map != menuState.getActiveStage().map) {
@@ -194,6 +203,15 @@ public class MainGame extends ApplicationAdapter {
             default:
                 break;
         }
+    }
+
+    private float smoothStepDt(float rawDt) {
+        if (rawDt > 0f && rawDt <= GameSimulation.MAX_DT && Math.abs(rawDt - smoothedDt) <= smoothedDt * 0.25f) {
+            smoothedDt += (rawDt - smoothedDt) * 0.25f;
+        } else {
+            smoothedDt = Math.min(GameSimulation.MAX_DT, Math.max(0f, rawDt));
+        }
+        return smoothedDt;
     }
 
     private void applyDisplayMode() {

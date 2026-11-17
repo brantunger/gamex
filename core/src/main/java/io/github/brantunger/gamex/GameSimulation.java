@@ -7,14 +7,18 @@ import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
+import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.weapon.Explosion;
 import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
+import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
 import io.github.brantunger.gamex.world.Effect;
+import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Hitscan;
+import io.github.brantunger.gamex.world.Pathfinder;
 import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.RayHit;
 import io.github.brantunger.gamex.world.Target;
@@ -43,8 +47,10 @@ public final class GameSimulation {
 
     /** How far a mark sits off the surface it lies on, so it does not fight with the surface for depth. */
     private static final float MARK_OFFSET = 0.012f;
-    /** How far below the eyes a blast leaves, so it does not fill the view. */
-    private static final float BLAST_DROP = 0.1f;
+    /** World-space muzzle launch offset from eye so the blast starts in view and past the near clip plane. */
+    private static final float BLAST_SPAWN_FORWARD = 0.52f;
+    private static final float BLAST_SPAWN_RIGHT = 0.11f;
+    private static final float BLAST_SPAWN_DOWN = 0.05f;
 
     /** The level. */
     public final GameMap map;
@@ -56,6 +62,8 @@ public final class GameSimulation {
     public final Player player;
     /** Every target of the level, destroyed ones included. */
     public final List<Target> targets = new ArrayList<>();
+    /** Every hostile enemy of the level, destroyed ones included. */
+    public final List<Enemy> enemies = new ArrayList<>();
     /** Every pickup item of the level, collected ones included. */
     public final List<Pickup> pickups = new ArrayList<>();
     /** The pistol. */
@@ -68,12 +76,23 @@ public final class GameSimulation {
     public final ViewmodelAnimation viewmodel = new ViewmodelAnimation();
     /** The blasts in flight. */
     public final List<BlastProjectile> projectiles = new ArrayList<>();
+    /** Enemy plasma bolts in flight. */
+    public final List<EnemyProjectile> enemyProjectiles = new ArrayList<>();
     /** The visual effects that are still running. */
     public final List<Effect> effects = new ArrayList<>();
 
+    private final List<Damageable> allDamageables = new ArrayList<>();
+    private final Pathfinder pathfinder = new Pathfinder();
     private final Vector3 eye = new Vector3();
     private final Vector3 direction = new Vector3();
+    private final Vector3 blastOrigin = new Vector3();
+    private final Vector3 blastDir = new Vector3();
+    private final Vector3 viewRight = new Vector3();
+    private final Vector3 viewUp = new Vector3();
+    private final Vector3 aimPoint = new Vector3();
+    private final Vector2 spawnCheckPos = new Vector2();
     private final boolean[] breakHandled;
+    private final boolean[] enemyBreakHandled;
     private float time;
     private float damageTaken;
     private boolean levelCleared;
@@ -99,12 +118,20 @@ public final class GameSimulation {
         this.player = new Player(map.getSpawnX(), map.getSpawnZ(), map.getSpawnYaw(),
             this.entryLoadout.health, this.entryLoadout.armor);
         for (GameMap.TargetSpawn spawn : map.getTargetSpawns()) {
-            targets.add(new Target(spawn.kind, spawn.x, spawn.z));
+            Target target = new Target(spawn.kind, spawn.x, spawn.z);
+            targets.add(target);
+            allDamageables.add(target);
+        }
+        for (GameMap.EnemySpawn spawn : map.getEnemySpawns()) {
+            Enemy enemy = new Enemy(spawn.kind, map, spawn.x, spawn.z);
+            enemies.add(enemy);
+            allDamageables.add(enemy);
         }
         for (GameMap.PickupSpawn spawn : map.getPickupSpawns()) {
             pickups.add(new Pickup(spawn.kind, spawn.x, spawn.z));
         }
         breakHandled = new boolean[targets.size()];
+        enemyBreakHandled = new boolean[enemies.size()];
     }
 
     /**
@@ -121,6 +148,7 @@ public final class GameSimulation {
         if (levelCleared || player.isDead()) {
             charger.cancel();
             viewmodel.update(dt, false, 0f, 0f, 0f);
+            updateEnemiesWhenInactive(dt);
             updateTargetsAndEffects(dt);
             return;
         }
@@ -137,7 +165,7 @@ public final class GameSimulation {
 
         float beforeX = player.position.x;
         float beforeZ = player.position.y;
-        player.move(map, targets, input.moveForward, input.moveStrafe, dt);
+        player.move(map, allDamageables, input.moveForward, input.moveStrafe, dt);
         collectPickups();
         checkExitReached();
 
@@ -148,39 +176,56 @@ public final class GameSimulation {
         boolean fired = !levelCleared && pistol.update(dt, input.fire);
         if (fired) firePistol();
 
+        float firedCharge = charger.update(dt, !levelCleared && !player.isDashing() && input.charge);
+
         // The gun bobs with the distance actually covered, so it settles when the player is held up by a wall.
         float walked = player.position.dst(beforeX, beforeZ);
         float walkSpeed = dt > 0f ? walked / (Player.MOVE_SPEED * dt) : 0f;
         // It sways with the turn actually made, so it settles when the view is held at the pitch limit.
         float turned = (player.getYaw() - beforeYaw + 540f) % 360f - 180f;
-        viewmodel.update(dt, fired, walkSpeed, turned, player.getPitch() - beforePitch);
-
-        float firedCharge = charger.update(dt, !levelCleared && !player.isDashing() && input.charge);
-        if (firedCharge > 0f) {
-            eye.y -= BLAST_DROP;
-            projectiles.add(new BlastProjectile(eye, direction, firedCharge));
-        }
+        viewmodel.update(dt, fired || firedCharge > 0f, walkSpeed, turned, player.getPitch() - beforePitch);
 
         float selfScale = BlastProjectile.SELF_DAMAGE_SCALE * entryLoadout.difficulty.damageTakenScale;
         for (int i = projectiles.size() - 1; i >= 0; i--) {
             BlastProjectile projectile = projectiles.get(i);
-            int aliveBefore = getTargetsRemaining();
-            float targetHealthBefore = totalTargetHealth();
-            if (!projectile.update(dt, map, targets, player, selfScale)) continue;
+            int aliveBefore = getTargetsRemaining() + getEnemiesRemaining();
+            float healthBefore = totalDamageableHealth();
+            if (!projectile.update(dt, map, allDamageables, player, selfScale)) continue;
             projectiles.remove(i);
             float radius = BlastProjectile.blastRadius(projectile.getCharge());
             effects.add(new Effect(Effect.Type.EXPLOSION, projectile.position, Vector3.Y, radius));
-            if (totalTargetHealth() < targetHealthBefore) {
-                triggerHitMarker(getTargetsRemaining() < aliveBefore);
+            alertNoise(projectile.position.x, projectile.position.z, 11.0f, 5.5f);
+            if (totalDamageableHealth() < healthBefore) {
+                triggerHitMarker(getTargetsRemaining() + getEnemiesRemaining() < aliveBefore);
             }
         }
 
-        resolveDestroyedTargets();
+        if (firedCharge > 0f) {
+            spawnBlast(firedCharge);
+        }
+
+        if (!enemies.isEmpty()) {
+            pathfinder.compute(map, player.position.x, player.position.y);
+            for (int i = 0; i < enemies.size(); i++) {
+                enemies.get(i).update(dt, map, pathfinder, player, entryLoadout.difficulty,
+                    allDamageables, enemyProjectiles);
+            }
+        }
+        for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
+            if (enemyProjectiles.get(i).update(dt, map, player, entryLoadout.difficulty.damageTakenScale,
+                targets, enemies, effects)) {
+                enemyProjectiles.remove(i);
+            }
+        }
+
+        resolveDestroyedObjects();
 
         float vitalsLost = Math.max(0f, vitalsBefore - (player.getHealth() + player.getArmor()));
         damageTaken += vitalsLost;
 
-        if (!player.isDead() && completeOnAllTargets && !targets.isEmpty() && getTargetsRemaining() == 0) {
+        if (!player.isDead() && completeOnAllTargets
+            && (!targets.isEmpty() || !enemies.isEmpty())
+            && getTargetsRemaining() == 0 && getEnemiesRemaining() == 0) {
             levelCleared = true;
         }
 
@@ -244,6 +289,20 @@ public final class GameSimulation {
         return targets.size() - getTargetsRemaining();
     }
 
+    /** @return the number of hostile enemies still alive. */
+    public int getEnemiesRemaining() {
+        int remaining = 0;
+        for (int i = 0; i < enemies.size(); i++) {
+            if (!enemies.get(i).isDestroyed()) remaining++;
+        }
+        return remaining;
+    }
+
+    /** @return the number of hostile enemies destroyed so far. */
+    public int getEnemiesDestroyed() {
+        return enemies.size() - getEnemiesRemaining();
+    }
+
     /** @return the number of pickups collected so far. */
     public int getPickupsCollected() {
         int collected = 0;
@@ -271,8 +330,44 @@ public final class GameSimulation {
         }
     }
 
+    private void spawnBlast(float charge) {
+        RayHit aim = Hitscan.cast(map, allDamageables, eye, direction, Pistol.RANGE);
+        if (aim.isHit()) {
+            aimPoint.set(aim.point);
+        } else {
+            aimPoint.set(eye).mulAdd(direction, Pistol.RANGE);
+        }
+
+        viewRight.set(direction).crs(Vector3.Y);
+        if (viewRight.len2() < 1e-6f) viewRight.set(1f, 0f, 0f);
+        else viewRight.nor();
+        viewUp.set(viewRight).crs(direction).nor();
+
+        float clearance = aim.isHit() ? Math.max(0f, (aim.distance - 0.20f) / 0.55f) : 1f;
+        float t = Math.min(1f, clearance);
+        blastOrigin.set(eye)
+            .mulAdd(direction, BLAST_SPAWN_FORWARD * t)
+            .mulAdd(viewRight, BLAST_SPAWN_RIGHT * t)
+            .mulAdd(viewUp, -BLAST_SPAWN_DOWN * t);
+        float minY = BlastProjectile.RADIUS + 0.01f;
+        float maxY = GameMap.WALL_HEIGHT - BlastProjectile.RADIUS - 0.01f;
+        blastOrigin.y = Math.max(minY, Math.min(maxY, blastOrigin.y));
+
+        spawnCheckPos.set(blastOrigin.x, blastOrigin.z);
+        if (Collision.overlapsWall(map, blastOrigin.x, blastOrigin.z, BlastProjectile.RADIUS + 0.01f)
+            || Collision.overlapsSolid(allDamageables, spawnCheckPos, BlastProjectile.RADIUS + 0.01f)) {
+            blastOrigin.set(eye.x, Math.max(minY, eye.y - 0.05f), eye.z);
+        }
+
+        blastDir.set(aimPoint).sub(blastOrigin);
+        if (blastDir.len2() < 1e-6f) blastDir.set(direction);
+        else blastDir.nor();
+        projectiles.add(new BlastProjectile(blastOrigin, blastDir, charge));
+    }
+
     private void firePistol() {
-        RayHit hit = Hitscan.cast(map, targets, eye, direction, Pistol.RANGE);
+        alertNoise(player.position.x, player.position.y, 9.0f, 4.5f);
+        RayHit hit = Hitscan.cast(map, allDamageables, eye, direction, Pistol.RANGE);
         if (!hit.isHit()) return;
         // Lift the effect off the surface towards the open side.
         hit.point.mulAdd(hit.normal, MARK_OFFSET);
@@ -281,11 +376,14 @@ public final class GameSimulation {
             return;
         }
         hit.target.damage(Pistol.DAMAGE);
+        if (hit.target instanceof Enemy) {
+            alertNoise(hit.target.getX(), hit.target.getZ(), 5.0f, 3.0f);
+        }
         effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
         triggerHitMarker(hit.target.isDestroyed());
     }
 
-    private void resolveDestroyedTargets() {
+    private void resolveDestroyedObjects() {
         float canisterPlayerScale = CANISTER_SELF_DAMAGE_SCALE * entryLoadout.difficulty.damageTakenScale;
         boolean progressed = true;
         while (progressed) {
@@ -300,10 +398,38 @@ public final class GameSimulation {
                     Vector3 centre = new Vector3(target.getX(), target.getHeight() * 0.5f, target.getZ());
                     effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, CANISTER_BLAST_RADIUS));
                     Explosion.apply(map, target.getX(), target.getZ(), CANISTER_BLAST_RADIUS, CANISTER_BLAST_DAMAGE,
-                        targets, player, canisterPlayerScale);
+                        allDamageables, player, canisterPlayerScale);
+                    alertNoise(target.getX(), target.getZ(), 11.0f, 5.5f);
                 } else {
                     addBreakEffect(target);
                 }
+            }
+            for (int i = 0; i < enemies.size(); i++) {
+                if (enemyBreakHandled[i] || !enemies.get(i).isDestroyed()) continue;
+                enemyBreakHandled[i] = true;
+                progressed = true;
+                triggerHitMarker(true);
+                Enemy enemy = enemies.get(i);
+                Vector3 centre = new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ());
+                effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, enemy.getHeight() * 0.8f));
+                alertNoise(enemy.getX(), enemy.getZ(), 5.0f, 3.0f);
+            }
+        }
+    }
+
+    private void alertNoise(float x, float z, float losRange, float muffledRange) {
+        float losRange2 = losRange * losRange;
+        float muffledRange2 = muffledRange * muffledRange;
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy enemy = enemies.get(i);
+            if (enemy.isDestroyed()) continue;
+            float dx = enemy.getX() - x;
+            float dz = enemy.getZ() - z;
+            float dist2 = dx * dx + dz * dz;
+            if (dist2 <= muffledRange2) {
+                enemy.alert();
+            } else if (dist2 <= losRange2 && Hitscan.hasLineOfSight(map, x, z, enemy.getX(), enemy.getZ())) {
+                enemy.alert();
             }
         }
     }
@@ -322,10 +448,22 @@ public final class GameSimulation {
         hitMarkerTimer = HIT_MARKER_TIME;
     }
 
-    private float totalTargetHealth() {
+    private float totalDamageableHealth() {
         float sum = 0f;
-        for (int i = 0; i < targets.size(); i++) sum += targets.get(i).getHealth();
+        for (int i = 0; i < allDamageables.size(); i++) sum += allDamageables.get(i).getHealth();
         return sum;
+    }
+
+    private void updateEnemiesWhenInactive(float dt) {
+        for (int i = 0; i < enemies.size(); i++) {
+            enemies.get(i).update(dt, map, null, player, entryLoadout.difficulty, allDamageables, null);
+        }
+        for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
+            if (enemyProjectiles.get(i).update(dt, map, player, entryLoadout.difficulty.damageTakenScale,
+                targets, enemies, effects)) {
+                enemyProjectiles.remove(i);
+            }
+        }
     }
 
     private void updateTargetsAndEffects(float dt) {
