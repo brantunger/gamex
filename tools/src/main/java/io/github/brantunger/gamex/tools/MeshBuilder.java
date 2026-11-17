@@ -309,6 +309,15 @@ public final class MeshBuilder {
         return entries.size();
     }
 
+    /**
+     * Returns the value, or positive zero when it would print as zero at the given precision. Without this, a value
+     * such as {@code -1e-17} prints as {@code -0.000000}, and whether such values appear depends on the platform's
+     * trigonometry, so the committed models would not regenerate identically everywhere.
+     */
+    static double zeroed(double value, int decimals) {
+        return Math.abs(value) < 0.5 * Math.pow(10, -decimals) ? 0.0 : value;
+    }
+
     /** Serializes the complete model deterministically with deduplicated {@code v} and {@code vn} pools. */
     public String toObjString() {
         StringBuilder sb = new StringBuilder();
@@ -322,18 +331,18 @@ public final class MeshBuilder {
         for (Map.Entry<String, PartDecl> entry : parts.entrySet()) {
             PartDecl p = entry.getValue();
             sb.append(String.format(Locale.ROOT, "# @part %s parent=%s pivot=%.6f,%.6f,%.6f%n",
-                p.name, p.parent, p.px, p.py, p.pz).replace("\r", ""));
+                p.name, p.parent, zeroed(p.px, 6), zeroed(p.py, 6), zeroed(p.pz, 6)).replace("\r", ""));
             declaredParts.add(p.name);
         }
         for (SocketDecl s : sockets) {
             sb.append(String.format(Locale.ROOT, "# @socket %s part=%s pos=%.6f,%.6f,%.6f%n",
-                s.name, s.part, s.x, s.y, s.z).replace("\r", ""));
+                s.name, s.part, zeroed(s.x, 6), zeroed(s.y, 6), zeroed(s.z, 6)).replace("\r", ""));
         }
         for (double[] v : exportedPositions) {
-            sb.append(String.format(Locale.ROOT, "v %.6f %.6f %.6f%n", v[0], v[1], v[2]).replace("\r", ""));
+            sb.append(String.format(Locale.ROOT, "v %.6f %.6f %.6f%n", zeroed(v[0], 6), zeroed(v[1], 6), zeroed(v[2], 6)).replace("\r", ""));
         }
         for (double[] n : exportedNormals) {
-            sb.append(String.format(Locale.ROOT, "vn %.5f %.5f %.5f%n", n[0], n[1], n[2]).replace("\r", ""));
+            sb.append(String.format(Locale.ROOT, "vn %.5f %.5f %.5f%n", zeroed(n[0], 5), zeroed(n[1], 5), zeroed(n[2], 5)).replace("\r", ""));
         }
         String emittedPart = "root";
         for (GroupEntry entry : entries) {
