@@ -82,7 +82,7 @@ public final class Levels {
             "%........e.%%%%%.........%",
             "%..o...%%..%%%%%...%.%...%",
             "%......%%..%%%%%.........%",
-            "%...........s............%",
+            "%..........~~.s..........%",
             "%..........%%%%%....O....%",
             "%.O......o.%%%%%.o.....o.%",
             "%.+........%%%%%.......a.%",
@@ -275,9 +275,42 @@ public final class Levels {
             "OVERRIDE VAULT LOCKDOWN AND REACH THE FINAL EXTRACTION PAD.");
     }
 
+    /** @return Campaign Stage 06 ("06: WARDEN CORE"), featuring Shock Grate trenches and the Warden Mech boss. */
+    public static Stage wardenCore() {
+        GameMap map = GameMap.parse(
+            "######&&&&&&&&&&################",
+            "#....#..........#..............#",
+            "#.W..#..o....k..#..a........s..#",
+            "#.s..#....~~....#....&&..&&....#",
+            "#.>..=...D..G...#..o........o..#",
+            "#.a..#....~~....L......~~......#",
+            "#.+..#..e....s..#..D........T..#",
+            "#....#..........#....&....&....#",
+            "######&&&&A&&&&&#......B.......#",
+            "%%%%%%..........#....&....&....#",
+            "%..o.%..........#..e........+..#",
+            "%.T..=...~~..G..#......~~......#",
+            "%....%..........L..o........o..#",
+            "%.a..%..........#....&&..&&....#",
+            "%..s.%...o...D..#..............#",
+            "%..+.%..e....S..#######M########",
+            "%..o.%....~~....#..a........+..#",
+            "%....%..........#..s...X...e...#",
+            "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        return new Stage(
+            "06_warden_core",
+            "06: WARDEN CORE",
+            110f,
+            false,
+            map,
+            "CORE THREAT DETECTED: DESTROY THE WARDEN MECH TO UNSEAL EXTRACTION.",
+            "DASH ACROSS LIVE SHOCK GRATES (~) WITHOUT TAKING ARC DAMAGE.",
+            "DEFEAT THE WARDEN MECH (B) TO UNLOCK THE SEALED EXTRACTION BULKHEAD (M).");
+    }
+
     /** @return the ordered list of campaign stages available so far. */
     public static List<Stage> campaign() {
         return Collections.unmodifiableList(Arrays.asList(
-            outerBreach(), coolantCore(), securityHub(), lockdownWing(), commandVault()));
+            outerBreach(), coolantCore(), securityHub(), lockdownWing(), commandVault(), wardenCore()));
     }
 }

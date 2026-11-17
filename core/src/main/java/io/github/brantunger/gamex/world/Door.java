@@ -27,7 +27,9 @@ public final class Door {
         /** Requires the stage Cyan Keycard. */
         CYAN_KEY,
         /** Sealed remotely until an active Security Console overrides lockdown. */
-        LOCKDOWN
+        LOCKDOWN,
+        /** Sealed remotely until all Warden Mech bosses in the stage are destroyed. */
+        BOSS
     }
 
     /** Axis along which the door panel spans across its cell. */

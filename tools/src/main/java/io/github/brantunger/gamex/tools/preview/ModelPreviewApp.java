@@ -104,9 +104,10 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         WorldModels.ACCENT_DOOR_AMBER,
         WorldModels.ACCENT_DOOR_CYAN,
         WorldModels.ACCENT_DOOR_LOCKDOWN,
+        WorldModels.ACCENT_DOOR_BOSS,
         WorldModels.ACCENT_DOOR_OPEN
     };
-    private static final String[] DOOR_ACCENT_NAMES = {"UNLOCKED", "AMBER", "CYAN", "LOCKDOWN", "OPEN"};
+    private static final String[] DOOR_ACCENT_NAMES = {"UNLOCKED", "AMBER", "CYAN", "LOCKDOWN", "BOSS", "OPEN"};
 
     private final List<Entry> entries = new ArrayList<>();
     private PerspectiveCamera camera;
@@ -315,6 +316,9 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         vmScatter.rawVertices = vmScatter.totalTriangles * 3;
         entries.add(vmScatter);
 
+        addWorldEntry(dir, "enemy-warden.obj", 0f, Enemy.Kind.WARDEN.height * 0.5f, 0f, 1.55f,
+            Enemy.Kind.WARDEN.radius, Enemy.Kind.WARDEN.height,
+            "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
         addWorldEntry(dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
             Enemy.Kind.GUARD.radius, Enemy.Kind.GUARD.height,
             "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
@@ -323,6 +327,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             "base", "head", "barrels");
         addWorldEntry(dir, "enemy-drone.obj", 0f, 0.35f, 0f, 1.05f, Enemy.Kind.DRONE.radius, Enemy.Kind.DRONE.height);
         addWorldEntry(dir, "door-bulkhead.obj", 0f, 0.50f, 0f, 1.70f, 0f, GameMap.WALL_HEIGHT);
+        addWorldEntry(dir, "hazard-grate.obj", 0f, 0.012f, 0f, 1.45f, 0f, 0.024f);
         addWorldEntry(dir, "security-console.obj", 0f, 0.36f, 0f, 1.15f,
             SecurityConsole.RADIUS, SecurityConsole.HEIGHT);
         addWorldEntry(dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
@@ -375,7 +380,8 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         targetCenter.set(e.centerX, e.centerY, e.centerZ);
         orbitDist = e.defaultDist;
         orbitYaw = e.label.startsWith("viewmodel") ? 65f : 148f;
-        orbitPitch = e.label.startsWith("viewmodel") ? 14f : 18f;
+        orbitPitch = e.label.equals("hazard-grate.obj") ? 38f
+            : (e.label.startsWith("viewmodel") ? 14f : 18f);
     }
 
     @Override
@@ -420,6 +426,21 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             boolean active = Math.floorMod(accentIndex, 2) == 1;
             accent = active ? WorldModels.ACCENT_CONSOLE_ACTIVE : WorldModels.ACCENT_CONSOLE_LOCKED;
             accentLabel = active ? "ACTIVE" : "LOCKED";
+        } else if (entry.label.equals("hazard-grate.obj")) {
+            accent = WorldModels.ACCENT_HAZARD_LIVE;
+            accentLabel = "LIVE";
+        } else if (entry.label.equals("enemy-warden.obj")) {
+            boolean overdrive = Math.floorMod(accentIndex, 2) == 1;
+            accent = overdrive ? WorldModels.ACCENT_WARDEN_OVERDRIVE : WorldModels.ACCENT_WARDEN_PHASE1;
+            accentLabel = overdrive ? "OVERDRIVE" : "PHASE1";
+            if (animate) {
+                float swing = MathUtils.sin(time * 5.2f);
+                rootMat.translate(0f, Math.abs(swing) * 0.016f, 0f);
+                animRotations.put("leg_l", new Matrix4().setToRotation(Vector3.X, swing * 22f));
+                animRotations.put("leg_r", new Matrix4().setToRotation(Vector3.X, -swing * 22f));
+                animRotations.put("arm_l", new Matrix4().setToRotation(Vector3.X, -swing * 12f));
+                animRotations.put("arm_r", new Matrix4().setToRotation(Vector3.X, swing * 12f));
+            }
         } else if (entry.label.equals("enemy-guard.obj") && animate) {
             float swing = MathUtils.sin(time * 6f);
             rootMat.translate(0f, Math.abs(swing) * 0.018f, 0f);

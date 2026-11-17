@@ -24,7 +24,9 @@ public final class Enemy implements Damageable {
         /** Anchored dual-barrel turret with a capped swivel rate that fires telegraphed 3-bolt bursts. */
         TURRET(80f, 0.23f, 0.68f, 0f),
         /** Mobile armoured skirmisher that strafes at medium range and fires single aimed plasma bolts. */
-        GUARD(100f, 0.24f, 0.82f, 2.15f);
+        GUARD(100f, 0.24f, 0.82f, 2.15f),
+        /** Two-phase heavy walker boss firing fan volleys and telegraphed hydraulic charge slams. */
+        WARDEN(600f, 0.32f, 0.94f, 1.95f);
 
         public final float maxHealth;
         public final float radius;
@@ -78,6 +80,24 @@ public final class Enemy implements Damageable {
     public static final float DRONE_LUNGE_DAMAGE = 22f;
     public static final float DRONE_RECOVER_TIME = 0.50f;
 
+    public static final float WARDEN_OVERDRIVE_RATIO = 0.5f;
+    public static final float WARDEN_OVERDRIVE_SCALE = 1.30f;
+    public static final float WARDEN_VOLLEY_RANGE = 16.0f;
+    public static final float WARDEN_WINDUP_TIME = 0.38f;
+    public static final float WARDEN_COOLDOWN = 1.40f;
+    public static final float WARDEN_BOLT_SPEED = 7.8f;
+    public static final float WARDEN_BOLT_DAMAGE = 14f;
+    public static final int WARDEN_FAN_PHASE1 = 3;
+    public static final int WARDEN_FAN_PHASE2 = 5;
+    public static final float WARDEN_FAN_SPREAD_DEG_PHASE1 = 18f;
+    public static final float WARDEN_FAN_SPREAD_DEG_PHASE2 = 30f;
+    public static final float WARDEN_SLAM_TRIGGER_RANGE = 2.65f;
+    public static final float WARDEN_SLAM_WINDUP_TIME = 0.42f;
+    public static final float WARDEN_SLAM_LUNGE_TIME = 0.24f;
+    public static final float WARDEN_SLAM_LUNGE_SPEED = 9.2f;
+    public static final float WARDEN_SLAM_DAMAGE = 26f;
+    public static final float WARDEN_SLAM_RECOVER_TIME = 0.48f;
+
     private static final float WAKE_COOLDOWN = 0.25f;
     private static final float STRAFE_SWITCH_TIME = 1.8f;
 
@@ -99,6 +119,11 @@ public final class Enemy implements Damageable {
     private float lungeDirX;
     private float lungeDirZ;
     private boolean lungeHitDealt;
+    private boolean windupIsSlam;
+    private boolean preferSlamNext;
+    private boolean overdriveTriggered;
+    private boolean slamTriggered;
+    private float shootRecoil;
     private float strafeSign = 1f;
     private float strafeTimer = STRAFE_SWITCH_TIME;
     private float walkPhase;
@@ -214,6 +239,35 @@ public final class Enemy implements Damageable {
         return Math.max(0f, Math.min(1f, 1f - stateTimer / stateDuration));
     }
 
+    /** @return whether this enemy is a live Warden Mech operating in Phase 2 Overdrive (&le; 50% HP). */
+    public boolean isOverdrive() {
+        return kind == Kind.WARDEN && !isDestroyed() && health <= kind.maxHealth * WARDEN_OVERDRIVE_RATIO;
+    }
+
+    /** @return true once when a Warden Mech transitions across 50% HP into Phase 2 Overdrive. */
+    public boolean consumeOverdriveTriggered() {
+        boolean triggered = overdriveTriggered;
+        overdriveTriggered = false;
+        return triggered;
+    }
+
+    /** @return true once when a Warden Mech launches a hydraulic charge slam. */
+    public boolean consumeSlamTriggered() {
+        boolean triggered = slamTriggered;
+        slamTriggered = false;
+        return triggered;
+    }
+
+    /** @return true while a Warden Mech is winding up or executing a hydraulic charge slam. */
+    public boolean isSlamAttack() {
+        return kind == Kind.WARDEN && ((state == State.WINDUP && windupIsSlam) || state == State.LUNGING);
+    }
+
+    /** @return firing recoil impulse in [0, 1] for cannon arm animation. */
+    public float getShootRecoil() {
+        return shootRecoil;
+    }
+
     /**
      * Wakes the enemy into {@link State#PURSUING} (or refreshes its aggro memory if already alert).
      */
@@ -229,9 +283,13 @@ public final class Enemy implements Damageable {
     @Override
     public void damage(float amount) {
         if (amount <= 0f || isDestroyed()) return;
+        boolean wasOverdrive = isOverdrive();
         health = Math.max(0f, health - amount);
         hitFlash = HIT_FLASH_TIME;
         if (!isDestroyed()) {
+            if (!wasOverdrive && isOverdrive()) {
+                overdriveTriggered = true;
+            }
             alert();
         }
     }
@@ -254,6 +312,7 @@ public final class Enemy implements Damageable {
                        List<EnemyProjectile> outProjectiles) {
         if (dt <= 0f) return;
         hitFlash = Math.max(0f, hitFlash - dt);
+        shootRecoil = Math.max(0f, shootRecoil - dt * 4.5f);
         if (isDestroyed() || player == null || player.isDead()) {
             if (state == State.WINDUP || state == State.LUNGING || state == State.RECOVERING) {
                 state = State.DORMANT;
@@ -297,6 +356,10 @@ public final class Enemy implements Damageable {
             case GUARD:
                 updateGuard(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, player, worldBlockers, doors,
                     outProjectiles);
+                break;
+            case WARDEN:
+                updateWarden(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, damageScale, player,
+                    worldBlockers, doors, outProjectiles);
                 break;
             case DRONE:
             default:
@@ -424,15 +487,28 @@ public final class Enemy implements Damageable {
 
         float moveLen = (float) Math.hypot(moveX, moveZ);
         if (moveLen > 1e-4f) {
+            float dirX = moveX / moveLen;
+            float dirZ = moveZ / moveLen;
             float step = kind.moveSpeed * moveScale * dt;
-            float beforeX = position.x;
-            float beforeZ = position.y;
-            moveSolid(map, worldBlockers, doors, player, moveX / moveLen * step, moveZ / moveLen * step, true);
-            float moved = Vector2.dst(beforeX, beforeZ, position.x, position.y);
-            walkPhase += moved * 7.5f;
-            if (moved < step * 0.25f) {
+            boolean currentlyOnHazard = map != null && map.isHazardAt(position.x, position.y);
+            boolean nextOnHazard = map != null && map.isHazardAt(
+                position.x + dirX * (kind.radius + 0.25f),
+                position.y + dirZ * (kind.radius + 0.25f));
+            if (hasLos && !currentlyOnHazard && nextOnHazard) {
                 strafeSign = -strafeSign;
                 strafeTimer = STRAFE_SWITCH_TIME;
+                step = 0f;
+            }
+            if (step > 0f) {
+                float beforeX = position.x;
+                float beforeZ = position.y;
+                moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
+                float moved = Vector2.dst(beforeX, beforeZ, position.x, position.y);
+                walkPhase += moved * 7.5f;
+                if (moved < step * 0.25f) {
+                    strafeSign = -strafeSign;
+                    strafeTimer = STRAFE_SWITCH_TIME;
+                }
             }
         }
 
@@ -468,6 +544,174 @@ public final class Enemy implements Damageable {
         Vector3 aim = new Vector3(player.position.x - muzzle.x, (Player.EYE_HEIGHT - 0.06f) - muzzle.y,
             player.position.y - muzzle.z).nor();
         outProjectiles.add(new EnemyProjectile(muzzle, aim, GUARD_BOLT_SPEED * speedScale, GUARD_BOLT_DAMAGE, this));
+    }
+
+    private void updateWarden(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
+                              boolean hasLos, float speedScale, float damageScale, Player player,
+                              List<? extends Damageable> worldBlockers, List<Door> doors,
+                              List<EnemyProjectile> outProjectiles) {
+        float phaseScale = isOverdrive() ? WARDEN_OVERDRIVE_SCALE : 1.0f;
+        float effectiveScale = speedScale * phaseScale;
+
+        if (state == State.WINDUP) {
+            if (hasLos && dist > 1e-4f) {
+                yaw = turnToward(yaw, yawToward(dx, dz), (windupIsSlam ? 260f : 340f) * phaseScale * dt);
+            }
+            stateTimer -= dt;
+            if (stateTimer <= 0f) {
+                if (windupIsSlam) {
+                    if (hasLos && dist > 1e-4f) {
+                        lungeDirX = dx / dist;
+                        lungeDirZ = dz / dist;
+                        yaw = yawToward(lungeDirX, lungeDirZ);
+                    }
+                    state = State.LUNGING;
+                    stateDuration = WARDEN_SLAM_LUNGE_TIME;
+                    stateTimer = stateDuration;
+                    lungeHitDealt = false;
+                    slamTriggered = true;
+                } else {
+                    if (hasLos) {
+                        fireWardenFanVolley(effectiveScale, player, outProjectiles);
+                    }
+                    state = State.PURSUING;
+                    cooldown = WARDEN_COOLDOWN / effectiveScale;
+                    preferSlamNext = dist <= WARDEN_SLAM_TRIGGER_RANGE * 1.4f;
+                }
+            }
+            return;
+        }
+
+        if (state == State.LUNGING) {
+            stateTimer -= dt;
+            float step = WARDEN_SLAM_LUNGE_SPEED * phaseScale * dt;
+            float beforeX = position.x;
+            float beforeZ = position.y;
+            moveSolid(map, worldBlockers, doors, player, lungeDirX * step, lungeDirZ * step, false);
+            walkPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * 5.0f;
+            float nowDist = Vector2.dst(position.x, position.y, player.position.x, player.position.y);
+            float contactDist = Player.RADIUS + kind.radius + 0.24f;
+            if (!lungeHitDealt && nowDist <= contactDist) {
+                player.damage(WARDEN_SLAM_DAMAGE * damageScale, position.x, position.y);
+                lungeHitDealt = true;
+                keepOutsidePlayer(map, worldBlockers, doors, player);
+                enterWardenRecovering(effectiveScale);
+                return;
+            }
+            if (stateTimer <= 0f) {
+                keepOutsidePlayer(map, worldBlockers, doors, player);
+                enterWardenRecovering(effectiveScale);
+            }
+            return;
+        }
+
+        if (state == State.RECOVERING) {
+            stateTimer -= dt;
+            if (stateTimer <= 0f) {
+                state = State.PURSUING;
+                cooldown = (WARDEN_COOLDOWN * 0.65f) / effectiveScale;
+            }
+            return;
+        }
+
+        float moveX = 0f;
+        float moveZ = 0f;
+        if (hasLos && dist > 1e-4f) {
+            yaw = turnToward(yaw, yawToward(dx, dz), 320f * phaseScale * dt);
+            if (dist > 1.35f) {
+                moveX = dx / dist;
+                moveZ = dz / dist;
+            }
+        } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
+            moveX = steerDir.x;
+            moveZ = steerDir.y;
+            yaw = turnToward(yaw, yawToward(moveX, moveZ), 280f * phaseScale * dt);
+        }
+
+        if (Math.hypot(moveX, moveZ) > 1e-4f) {
+            float step = kind.moveSpeed * phaseScale * dt;
+            float beforeX = position.x;
+            float beforeZ = position.y;
+            moveSolid(map, worldBlockers, doors, player, moveX * step, moveZ * step, true);
+            walkPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * 5.5f;
+        }
+
+        if (hasLos && cooldown <= 0f) {
+            if (dist <= WARDEN_SLAM_TRIGGER_RANGE && (preferSlamNext || dist <= 1.75f)) {
+                if (dist > 1e-4f) {
+                    lungeDirX = dx / dist;
+                    lungeDirZ = dz / dist;
+                } else {
+                    double rad = Math.toRadians(yaw);
+                    lungeDirX = (float) Math.sin(rad);
+                    lungeDirZ = (float) -Math.cos(rad);
+                }
+                yaw = yawToward(lungeDirX, lungeDirZ);
+                windupIsSlam = true;
+                state = State.WINDUP;
+                stateDuration = WARDEN_SLAM_WINDUP_TIME / effectiveScale;
+                stateTimer = stateDuration;
+                return;
+            }
+            if (dist <= WARDEN_VOLLEY_RANGE) {
+                windupIsSlam = false;
+                state = State.WINDUP;
+                stateDuration = WARDEN_WINDUP_TIME / effectiveScale;
+                stateTimer = stateDuration;
+                preferSlamNext = dist <= WARDEN_SLAM_TRIGGER_RANGE * 1.5f;
+            }
+        }
+    }
+
+    private void enterWardenRecovering(float effectiveScale) {
+        state = State.RECOVERING;
+        stateDuration = WARDEN_SLAM_RECOVER_TIME / effectiveScale;
+        stateTimer = stateDuration;
+        preferSlamNext = false;
+    }
+
+    private void fireWardenFanVolley(float effectiveScale, Player player, List<EnemyProjectile> outProjectiles) {
+        shootRecoil = 1f;
+        if (outProjectiles == null) return;
+        boolean overdrive = isOverdrive();
+        int count = overdrive ? WARDEN_FAN_PHASE2 : WARDEN_FAN_PHASE1;
+        float spreadDeg = overdrive ? WARDEN_FAN_SPREAD_DEG_PHASE2 : WARDEN_FAN_SPREAD_DEG_PHASE1;
+
+        double rad = Math.toRadians(yaw);
+        float fx = (float) Math.sin(rad);
+        float fz = (float) -Math.cos(rad);
+        float rx = (float) Math.cos(rad);
+        float rz = (float) Math.sin(rad);
+        float fwd = -WorldModels.WARDEN_MUZZLE_Z;
+        Vector3 leftMuzzle = new Vector3(
+            position.x + fx * fwd - rx * WorldModels.WARDEN_MUZZLE_X,
+            WorldModels.WARDEN_MUZZLE_Y,
+            position.y + fz * fwd - rz * WorldModels.WARDEN_MUZZLE_X);
+        Vector3 rightMuzzle = new Vector3(
+            position.x + fx * fwd + rx * WorldModels.WARDEN_MUZZLE_X,
+            WorldModels.WARDEN_MUZZLE_Y,
+            position.y + fz * fwd + rz * WorldModels.WARDEN_MUZZLE_X);
+        Vector3 baseAim = new Vector3(
+            player.position.x - (position.x + fx * fwd),
+            (Player.EYE_HEIGHT - 0.08f) - WorldModels.WARDEN_MUZZLE_Y,
+            player.position.y - (position.y + fz * fwd)).nor();
+
+        for (int i = 0; i < count; i++) {
+            float offsetDeg = count <= 1 ? 0f : -spreadDeg * 0.5f + spreadDeg * i / (count - 1f);
+            Vector3 muzzle = Math.abs(offsetDeg) < 0.5f
+                ? (alternateBarrel ? rightMuzzle : leftMuzzle)
+                : (offsetDeg < 0f ? leftMuzzle : rightMuzzle);
+            double aRad = Math.toRadians(offsetDeg);
+            float cos = (float) Math.cos(aRad);
+            float sin = (float) Math.sin(aRad);
+            Vector3 aim = new Vector3(
+                baseAim.x * cos - baseAim.z * sin,
+                baseAim.y,
+                baseAim.x * sin + baseAim.z * cos).nor();
+            outProjectiles.add(new EnemyProjectile(
+                muzzle, aim, WARDEN_BOLT_SPEED * effectiveScale, WARDEN_BOLT_DAMAGE, this));
+        }
+        alternateBarrel = !alternateBarrel;
     }
 
     private void updateDrone(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,

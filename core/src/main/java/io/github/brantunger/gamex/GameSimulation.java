@@ -27,6 +27,7 @@ import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.RayHit;
 import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
+import io.github.brantunger.gamex.world.WorldModels;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,6 +57,10 @@ public final class GameSimulation {
     public static final float HIT_MARKER_TIME = 0.16f;
     /** How long a pickup toast message remains visible, in seconds. */
     public static final float TOAST_TIME = 2.0f;
+    /** Base interval between consecutive shock grate damage ticks while standing on {@code ~}, in seconds. */
+    public static final float HAZARD_INTERVAL = 0.35f;
+    /** Base damage dealt per shock grate tick while not dashing. */
+    public static final float HAZARD_DAMAGE = 8f;
 
     /** How far a mark sits off the surface it lies on, so it does not fight with the surface for depth. */
     private static final float MARK_OFFSET = 0.012f;
@@ -102,6 +107,7 @@ public final class GameSimulation {
 
     private final List<Damageable> allDamageables = new ArrayList<>();
     private final Pathfinder pathfinder = new Pathfinder();
+    private final Pathfinder guardPathfinder = new Pathfinder();
     private final Vector3 eye = new Vector3();
     private final Vector3 direction = new Vector3();
     private final Vector3 blastOrigin = new Vector3();
@@ -112,12 +118,14 @@ public final class GameSimulation {
     private final Vector2 spawnCheckPos = new Vector2();
     private final boolean[] breakHandled;
     private final boolean[] enemyBreakHandled;
+    private final float[] enemyHazardTimers;
     private final float[] targetHealthBefore;
     private final float[] enemyHealthBefore;
     private final List<SoundEvent> soundEvents = new ArrayList<>();
     private final Set<Pickup.Kind> heldKeycards = EnumSet.noneOf(Pickup.Kind.class);
     private float time;
     private float damageTaken;
+    private float playerHazardTimer;
     private boolean levelCleared;
     private float hitMarkerTimer;
     private boolean hitMarkerKill;
@@ -203,6 +211,7 @@ public final class GameSimulation {
         }
         breakHandled = new boolean[targets.size()];
         enemyBreakHandled = new boolean[enemies.size()];
+        enemyHazardTimers = new float[enemies.size()];
         targetHealthBefore = new float[targets.size()];
         enemyHealthBefore = new float[enemies.size()];
     }
@@ -338,15 +347,40 @@ public final class GameSimulation {
 
         if (!enemies.isEmpty()) {
             pathfinder.compute(map, doors, player.position.x, player.position.y);
+            boolean hasHazards = !map.getHazardCells().isEmpty();
+            if (hasHazards && hasAliveGuard()) {
+                guardPathfinder.compute(map, doors, true, player.position.x, player.position.y);
+            }
             for (int i = 0; i < enemies.size(); i++) {
                 Enemy enemy = enemies.get(i);
                 Enemy.State stateBefore = enemy.getState();
                 int boltsBefore = enemyProjectiles.size();
-                enemy.update(dt, map, pathfinder, player, entryLoadout.difficulty,
+                Pathfinder enemyPath = (hasHazards && enemy.getKind() == Enemy.Kind.GUARD)
+                    ? guardPathfinder
+                    : pathfinder;
+                enemy.update(dt, map, enemyPath, player, entryLoadout.difficulty,
                     allDamageables, doors, enemyProjectiles);
-                for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
-                    EnemyProjectile bolt = enemyProjectiles.get(b);
-                    emitWorldSound(SoundEvent.Type.ENEMY_SHOOT, bolt.position.x, bolt.position.y, bolt.position.z, 1f);
+                if (enemy.consumeOverdriveTriggered()) {
+                    emitWorldSound(SoundEvent.Type.BOSS_OVERDRIVE,
+                        enemy.getX(), enemy.getHeight() * 0.55f, enemy.getZ(), 1.25f);
+                    effects.add(new Effect(Effect.Type.EXPLOSION,
+                        new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ()), Vector3.Y, 1.6f));
+                    showToast("WARDEN OVERDRIVE");
+                }
+                if (enemy.consumeSlamTriggered()) {
+                    emitWorldSound(SoundEvent.Type.BOSS_SLAM, enemy.getX(), 0.25f, enemy.getZ(), 1.15f);
+                }
+                if (enemyProjectiles.size() > boltsBefore) {
+                    if (enemy.getKind() == Enemy.Kind.WARDEN) {
+                        emitWorldSound(SoundEvent.Type.BOSS_SHOOT,
+                            enemy.getX(), WorldModels.WARDEN_MUZZLE_Y, enemy.getZ(), 1.1f);
+                    } else {
+                        for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
+                            EnemyProjectile bolt = enemyProjectiles.get(b);
+                            emitWorldSound(SoundEvent.Type.ENEMY_SHOOT,
+                                bolt.position.x, bolt.position.y, bolt.position.z, 1f);
+                        }
+                    }
                 }
                 if (enemy.getKind() == Enemy.Kind.DRONE && stateBefore != Enemy.State.LUNGING
                     && enemy.getState() == Enemy.State.LUNGING) {
@@ -362,6 +396,7 @@ public final class GameSimulation {
             }
         }
 
+        updateHazards(dt);
         resolveDestroyedObjects();
         emitNonLethalHitSounds();
 
@@ -524,10 +559,24 @@ public final class GameSimulation {
                     : "NEEDS CYAN KEYCARD";
             case LOCKDOWN:
                 return "SEALED BY SECURITY CONSOLE";
+            case BOSS:
+                return "SEALED BY WARDEN MECH";
             case NONE:
             default:
                 return "[E] OPEN BULKHEAD";
         }
+    }
+
+    /** @return the active alerted live Warden Mech boss for HUD display, or {@code null} when dormant or dead. */
+    public Enemy getActiveBoss() {
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy enemy = enemies.get(i);
+            if (enemy.getKind() == Enemy.Kind.WARDEN && !enemy.isDestroyed()
+                && enemy.getState() != Enemy.State.DORMANT) {
+                return enemy;
+            }
+        }
+        return null;
     }
 
     /** @return the number of targets that are not destroyed. */
@@ -690,6 +739,10 @@ public final class GameSimulation {
                     showToast("NEEDS CYAN KEYCARD");
                     emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 }
+                break;
+            case BOSS:
+                showToast("SEALED BY WARDEN MECH");
+                emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 break;
             case LOCKDOWN:
             default:
@@ -918,11 +971,74 @@ public final class GameSimulation {
                 triggerHitMarker(true);
                 Enemy enemy = enemies.get(i);
                 Vector3 centre = new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ());
-                effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, enemy.getHeight() * 0.8f));
-                emitWorldSound(SoundEvent.Type.ENEMY_DESTROYED, centre.x, centre.y, centre.z, 1.0f);
-                alertNoise(enemy.getX(), enemy.getZ(), 5.0f, 3.0f);
+                boolean isBoss = enemy.getKind() == Enemy.Kind.WARDEN;
+                effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y,
+                    isBoss ? 1.8f : enemy.getHeight() * 0.8f));
+                emitWorldSound(isBoss ? SoundEvent.Type.BOSS_DESTROYED : SoundEvent.Type.ENEMY_DESTROYED,
+                    centre.x, centre.y, centre.z, isBoss ? 1.25f : 1.0f);
+                alertNoise(enemy.getX(), enemy.getZ(), isBoss ? 10.0f : 5.0f, isBoss ? 6.0f : 3.0f);
+                if (isBoss && !hasAliveWarden()) {
+                    unsealBossDoors();
+                }
             }
         }
+    }
+
+    private void updateHazards(float dt) {
+        if (player.isDashing()) {
+            playerHazardTimer = 0f;
+        } else {
+            playerHazardTimer = Math.max(0f, playerHazardTimer - dt);
+            if (map.isHazardAt(player.position.x, player.position.y) && playerHazardTimer <= 0f) {
+                float hx = (float) Math.floor(player.position.x) + 0.5f;
+                float hz = (float) Math.floor(player.position.y) + 0.5f;
+                player.damage(HAZARD_DAMAGE * entryLoadout.difficulty.damageTakenScale, hx, hz);
+                playerHazardTimer = HAZARD_INTERVAL;
+                emitPlayerSound(SoundEvent.Type.HAZARD_ZAP, 0.9f);
+                effects.add(new Effect(Effect.Type.IMPACT,
+                    new Vector3(player.position.x, 0.06f, player.position.y), Vector3.Y, 0.24f));
+            }
+        }
+
+        if (map.getHazardCells().isEmpty()) return;
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy enemy = enemies.get(i);
+            if (enemy.isDestroyed() || enemy.getKind() != Enemy.Kind.GUARD) continue;
+            enemyHazardTimers[i] = Math.max(0f, enemyHazardTimers[i] - dt);
+            if (map.isHazardAt(enemy.getX(), enemy.getZ()) && enemyHazardTimers[i] <= 0f) {
+                enemy.damage(HAZARD_DAMAGE);
+                enemyHazardTimers[i] = HAZARD_INTERVAL;
+                emitWorldSound(SoundEvent.Type.HAZARD_ZAP, enemy.getX(), 0.14f, enemy.getZ(), 0.75f);
+                effects.add(new Effect(Effect.Type.IMPACT,
+                    new Vector3(enemy.getX(), 0.05f, enemy.getZ()), Vector3.Y, 0.20f));
+            }
+        }
+    }
+
+    private boolean hasAliveGuard() {
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy e = enemies.get(i);
+            if (!e.isDestroyed() && e.getKind() == Enemy.Kind.GUARD) return true;
+        }
+        return false;
+    }
+
+    private boolean hasAliveWarden() {
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy e = enemies.get(i);
+            if (!e.isDestroyed() && e.getKind() == Enemy.Kind.WARDEN) return true;
+        }
+        return false;
+    }
+
+    private void unsealBossDoors() {
+        for (int i = 0; i < doors.size(); i++) {
+            Door candidate = doors.get(i);
+            if (candidate.getLockKind() == Door.LockKind.BOSS && candidate.open()) {
+                emitWorldSound(SoundEvent.Type.DOOR_OPEN, candidate.getX(), 0.5f, candidate.getZ(), 1f);
+            }
+        }
+        showToast("WARDEN DESTROYED - EXTRACTION UNSEALED");
     }
 
     private void snapshotDamageableHealth() {

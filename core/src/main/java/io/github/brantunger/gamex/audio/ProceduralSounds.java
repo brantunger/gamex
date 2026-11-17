@@ -79,6 +79,26 @@ public final class ProceduralSounds {
                 samples = renderDroneLunge();
                 peakScale = 23_000.0;
                 break;
+            case HAZARD_ZAP:
+                samples = renderHazardZap();
+                peakScale = 22_000.0;
+                break;
+            case BOSS_SHOOT:
+                samples = renderBossShoot();
+                peakScale = 27_000.0;
+                break;
+            case BOSS_SLAM:
+                samples = renderBossSlam();
+                peakScale = 30_000.0;
+                break;
+            case BOSS_OVERDRIVE:
+                samples = renderBossOverdrive();
+                peakScale = 29_500.0;
+                break;
+            case BOSS_DESTROYED:
+                samples = renderBossDestroyed();
+                peakScale = 31_000.0;
+                break;
             case PLAYER_DASH:
                 samples = renderPlayerDash();
                 peakScale = 22_000.0;
@@ -650,6 +670,111 @@ public final class ProceduralSounds {
                 clunk = Math.sin(relayPhase) * Math.exp(-dt / 0.055) * 0.85;
             }
             buf[i] = Math.tanh((chirp * 0.65 + clunk) * 1.25);
+        }
+        return buf;
+    }
+
+    private static double[] renderHazardZap() {
+        double[] buf = alloc(0.13);
+        int rng = 0x7A9C011L > 0 ? 0x7A9C011 : 1;
+        double last = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            rng = nextRng(rng);
+            double n = rngFloat(rng);
+            double hp = n - last * 0.65;
+            last = n;
+            double mod = 0.5 + 0.5 * Math.sin(TWO_PI * 110.0 * t);
+            double buzz = (0.55 * Math.sin(TWO_PI * 240.0 * t + 1.8 * Math.sin(TWO_PI * 60.0 * t))
+                + 0.45 * Math.sin(TWO_PI * 720.0 * t)) * mod;
+            double env = (1.0 - Math.exp(-t / 0.004)) * Math.exp(-t / 0.048);
+            buf[i] = Math.tanh((hp * 0.85 + buzz * 0.70) * env * 1.4);
+        }
+        return buf;
+    }
+
+    private static double[] renderBossShoot() {
+        double[] buf = alloc(0.20);
+        double phase = 0.0;
+        double subPhase = 0.0;
+        int rng = 0xB055F12E;
+        double lp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double freq = 140.0 + 380.0 * Math.exp(-t / 0.045);
+            double subFreq = 64.0 + 95.0 * Math.exp(-t / 0.040);
+            phase += TWO_PI * freq / SAMPLE_RATE;
+            subPhase += TWO_PI * subFreq / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.25 * (rngFloat(rng) - lp);
+            double plasma = (0.65 * Math.sin(phase) + 0.25 * Math.sin(phase * 2.0)) * Math.exp(-t / 0.075);
+            double thump = Math.sin(subPhase) * Math.exp(-t / 0.055) * 0.75;
+            double crack = lp * Math.exp(-t / 0.025) * 0.45;
+            buf[i] = Math.tanh((plasma + thump + crack) * 1.35);
+        }
+        return buf;
+    }
+
+    private static double[] renderBossSlam() {
+        double[] buf = alloc(0.34);
+        double subPhase = 0.0;
+        double clangPhase = 0.0;
+        int rng = 0x51A3B055;
+        double lp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double freq = 32.0 + 88.0 * Math.exp(-t / 0.065);
+            subPhase += TWO_PI * freq / SAMPLE_RATE;
+            clangPhase += TWO_PI * (185.0 + 60.0 * Math.exp(-t / 0.04)) / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.16 * (rngFloat(rng) - lp);
+            double impact = Math.sin(subPhase) * Math.exp(-t / 0.13) * 0.95;
+            double armorClang = Math.sin(clangPhase) * Math.exp(-t / 0.075) * 0.45;
+            double shock = lp * Math.exp(-t / 0.11) * 0.80;
+            buf[i] = Math.tanh((impact + armorClang + shock) * 1.45);
+        }
+        return buf;
+    }
+
+    private static double[] renderBossOverdrive() {
+        double[] buf = alloc(0.52);
+        double sirenPhase = 0.0;
+        double subPhase = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double progress = Math.min(1.0, t / 0.44);
+            double sirenFreq = 160.0 + 540.0 * progress * progress;
+            double subFreq = 58.0 + 52.0 * progress;
+            sirenPhase += TWO_PI * sirenFreq / SAMPLE_RATE;
+            subPhase += TWO_PI * subFreq / SAMPLE_RATE;
+            double am = 0.72 + 0.28 * Math.sin(TWO_PI * 18.0 * t);
+            double env = pulseWindow(t, 0.0, 0.52, 0.025) * Math.exp(-Math.max(0.0, t - 0.18) / 0.28);
+            double wave = 0.55 * Math.sin(sirenPhase) + 0.25 * Math.sin(sirenPhase * 1.5) + 0.45 * Math.sin(subPhase);
+            buf[i] = Math.tanh(wave * am * env * 1.4);
+        }
+        return buf;
+    }
+
+    private static double[] renderBossDestroyed() {
+        double[] buf = alloc(0.68);
+        double phase = 0.0;
+        double downPhase = 0.0;
+        int rng = 0xD3ADB055;
+        double lp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double freq = 26.0 + 115.0 * Math.exp(-t / 0.22);
+            double downFreq = 55.0 + 340.0 * Math.exp(-t / 0.24);
+            phase += TWO_PI * freq / SAMPLE_RATE;
+            downPhase += TWO_PI * downFreq / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.12 * (rngFloat(rng) - lp);
+            double rumble = (Math.sin(phase) * 0.75 + lp * 0.75) * Math.exp(-t / 0.34);
+            double echoBurst = (t >= 0.16)
+                ? Math.sin(phase * 1.3) * Math.exp(-(t - 0.16) / 0.18) * 0.55
+                : 0.0;
+            double coreShutdown = Math.sin(downPhase) * Math.exp(-t / 0.28) * 0.50;
+            buf[i] = Math.tanh((rumble + echoBurst + coreShutdown) * 1.45);
         }
         return buf;
     }

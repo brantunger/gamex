@@ -2,6 +2,7 @@ package io.github.brantunger.gamex;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +15,7 @@ import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
@@ -846,5 +848,119 @@ class GameSimulationTest {
         assertEquals(0, sim.getShells());
         assertFalse(sim.scattergun.isLastShotDoubleBlast());
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.SCATTERGUN_FIRE));
+    }
+
+    @Test
+    void shockGratesDamageWalkingUnitsWhilePlayerDashGrantsZeroDamageImmunity() {
+        // Walking onto ~ deals HAZARD_DAMAGE + HAZARD_ZAP; Dashing across ~ clears the grate with 0 damage.
+        GameMap dashCourse = GameMap.parse(
+            "########",
+            "#>~....#",
+            "########");
+        GameSimulation dashSim = new GameSimulation(dashCourse);
+        PlayerInput input = new PlayerInput();
+        input.dash = true;
+        input.moveForward = 1f;
+        dashSim.update(FRAME, input);
+        input.dash = false;
+        for (int i = 0; i < 12; i++) {
+            dashSim.update(FRAME, input);
+        }
+        input.moveForward = 0f;
+        assertTrue(dashSim.player.position.x > 3.1f, "expected dash to clear ~ grate, at " + dashSim.player.position.x);
+        assertEquals(Player.MAX_HEALTH, dashSim.player.getHealth(), 1e-4f);
+        assertEquals(0f, dashSim.getDamageTaken(), 1e-4f);
+        assertEquals(0, countSound(dashSim.drainSoundEvents(), SoundEvent.Type.HAZARD_ZAP));
+
+        // Walking slowly onto ~ deals hazard zap damage.
+        GameMap walkMap = GameMap.parse(
+            "########",
+            "#>.~...#",
+            "#......#",
+            "########");
+        GameSimulation walkSim = new GameSimulation(walkMap);
+        input.moveForward = 1f;
+        for (int i = 0; i < 35; i++) walkSim.update(FRAME, input);
+        assertTrue(walkSim.player.getHealth() < Player.MAX_HEALTH, "walking onto ~ must deal shock damage");
+        assertTrue(countSound(walkSim.drainSoundEvents(), SoundEvent.Type.HAZARD_ZAP) >= 1);
+
+        // Choke-point ~ forces Guard, Drone, and Warden to cross it: only Guard takes shock grate damage.
+        PlayerInput idle = new PlayerInput();
+        GameSimulation guardSim = new GameSimulation(GameMap.parse(
+            "######",
+            "#>...#",
+            "####~#",
+            "#G...#",
+            "######"));
+        GameSimulation droneSim = new GameSimulation(GameMap.parse(
+            "######",
+            "#>...#",
+            "####~#",
+            "#D...#",
+            "######"));
+        GameSimulation wardenSim = new GameSimulation(GameMap.parse(
+            "######",
+            "#>...#",
+            "####~#",
+            "#B...#",
+            "######"));
+        guardSim.enemies.get(0).alert();
+        droneSim.enemies.get(0).alert();
+        wardenSim.enemies.get(0).alert();
+        for (int i = 0; i < 180; i++) {
+            guardSim.update(FRAME, idle);
+            droneSim.update(FRAME, idle);
+            wardenSim.update(FRAME, idle);
+        }
+        assertTrue(guardSim.enemies.get(0).getHealth() < Enemy.Kind.GUARD.maxHealth,
+            "Guard crossing forced ~ choke must take hazard zap damage");
+        assertEquals(Enemy.Kind.DRONE.maxHealth, droneSim.enemies.get(0).getHealth(), 1e-4f);
+        assertEquals(Enemy.Kind.WARDEN.maxHealth, wardenSim.enemies.get(0).getHealth(), 1e-4f);
+    }
+
+    @Test
+    void wardenOverdriveAndDestructionUnsealsBossExtractionBulkhead() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#########",
+            "#.>...B.#",
+            "####M####",
+            "#...X...#",
+            "#########"));
+        PlayerInput input = new PlayerInput();
+        Door bossDoor = sim.doors.get(0);
+        Enemy warden = sim.enemies.get(0);
+        assertEquals(Door.LockKind.BOSS, bossDoor.getLockKind());
+        assertFalse(bossDoor.isOpening());
+
+        // Move close to sealed M bulkhead and verify prompt + locked toast.
+        sim.player.position.set(4.5f, 1.3f);
+        sim.player.look(90f, 0f); // face south toward M at (4.5, 2.5)
+        assertEquals("SEALED BY WARDEN MECH", sim.getInteractionPrompt());
+        input.interact = true;
+        sim.update(FRAME, input);
+        input.interact = false;
+        assertEquals("SEALED BY WARDEN MECH", sim.getToastMessage());
+        assertFalse(bossDoor.isOpening());
+
+        // Turn back toward Warden and drop HP below 50%: wakes HUD boss bar & triggers Overdrive event.
+        sim.player.look(-90f, 0f);
+        sim.drainSoundEvents();
+        warden.damage(320f);
+        sim.update(FRAME, input);
+        assertNotNull(sim.getActiveBoss());
+        assertTrue(sim.getActiveBoss().isOverdrive());
+        assertEquals("WARDEN OVERDRIVE", sim.getToastMessage());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.BOSS_OVERDRIVE));
+
+        // Destroying Warden emits BOSS_DESTROYED, clears active boss HUD, and opens all M extraction bulkheads.
+        warden.damage(500f);
+        sim.update(FRAME, input);
+        assertTrue(warden.isDestroyed());
+        assertNull(sim.getActiveBoss());
+        assertTrue(bossDoor.isOpening());
+        assertEquals("WARDEN DESTROYED - EXTRACTION UNSEALED", sim.getToastMessage());
+        List<SoundEvent> events = sim.drainSoundEvents();
+        assertEquals(1, countSound(events, SoundEvent.Type.BOSS_DESTROYED));
+        assertEquals(1, countSound(events, SoundEvent.Type.DOOR_OPEN));
     }
 }
