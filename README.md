@@ -167,8 +167,8 @@ Use an absolute path. The `desktop:run` task runs in the `assets` folder, so a r
 there.
 
 One more variable works on any run, with or without `GAMEX_SCREENSHOT`: `GAMEX_WINDOW` sets the window size as
-`WIDTHxHEIGHT`, for example `800x600`. A value that is malformed or smaller than 160x120 prints a warning and the
-window opens at 1280x720.
+`WIDTHxHEIGHT`, for example `800x600`. A value that is malformed, smaller than 160x120 or larger than 7680x4320 prints a
+warning and the window opens at 1280x720.
 
 PowerShell:
 
@@ -230,9 +230,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ./gradlew test
 ```
 
-The tests are JUnit Jupiter tests in `core/src/test`. They need no window or graphics context. Three test classes
-(`HandModelTest`, `PistolModelTest` and `WorldModelsTest`) read `.obj` models from the `assets` folder; the `core`
-test task tells them where that folder is and runs again when a model file changes. They cover:
+The tests are JUnit Jupiter tests in `core/src/test` and `desktop/src/test`. They need no window or graphics context.
+Three test classes (`HandModelTest`, `PistolModelTest` and `WorldModelsTest`) read `.obj` models from the `assets`
+folder; the `core` test task tells them where that folder is and runs again when a model file changes. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
   a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
@@ -252,9 +252,11 @@ test task tells them where that folder is and runs again when a model file chang
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
 - `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
-  closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, unit normals, the
-  fingers wrap the grip, no glove vertex is inside the pistol), and the animation (recoil, slide, walking bob and turn lag).
+  closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
+  normals, the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside the pistol),
+  and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser, including the files it must reject.
+- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and the packaging icons.
 
 Rendering, the drawing of the HUD (`HudRenderer`), the rest of input handling (`InputController`) and the debug
 screenshot mode have no tests, apart from the parsing of `GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`).

@@ -22,12 +22,13 @@ import java.util.Locale;
  * smoothed within a part; parts do not share vertices, so the edge between two parts (the cuff against the glove)
  * stays hard.
  *
- * <p>The numbers under "The pistol" copy the grip, frame and slide of PistolGeometry. A test in core loads the
- * written file and checks it against the real PistolGeometry, so a pistol that has moved on shows up there.
+ * <p>The numbers under "The pistol" copy the grip, frame, slide, beavertail and magazine plate of
+ * {@code PistolSculpt}. A test in {@code core} loads the written file and checks it against the real
+ * {@code PistolModel}, so a pistol that has moved on shows up there.
  */
 public final class HandSculpt {
 
-    // ---- The pistol: copied from PistolGeometry, as the shape the hand has to fit around. ----
+    // ---- The pistol: copied from PistolSculpt, as the shape the hand has to fit around. ----
 
     /** The grip's side outline as (y, z) pairs, and the half-width of the grip with its stippling. */
     private static final double[] GRIP_OUTLINE = {

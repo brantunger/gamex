@@ -4,8 +4,15 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import io.github.brantunger.gamex.MainGame;
 
+import java.util.Locale;
+
 /** Launches the desktop (LWJGL3) application. */
 public class DesktopLauncher {
+
+    static final int MIN_WINDOW_WIDTH = 160;
+    static final int MIN_WINDOW_HEIGHT = 120;
+    static final int MAX_WINDOW_WIDTH = 7680;
+    static final int MAX_WINDOW_HEIGHT = 4320;
 
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
@@ -29,19 +36,25 @@ public class DesktopLauncher {
      * Reads a window size such as {@code 800x600}. The {@code GAMEX_WINDOW} environment variable carries one, for
      * trying the game at other sizes.
      * @param text the size as {@code WIDTHxHEIGHT}, or null
-     * @return the width and height in pixels; 1280 by 720 when the text is missing or malformed
+     * @return the width and height in pixels; 1280 by 720 when the text is missing, malformed, smaller than 160x120
+     *     or larger than 7680x4320
      */
     static int[] windowSize(String text) {
         int[] fallback = {1280, 720};
-        if (text == null || text.isEmpty()) return fallback;
-        String[] parts = text.trim().toLowerCase().split("x");
+        if (text == null || text.trim().isEmpty()) return fallback;
+        String[] parts = text.trim().toLowerCase(Locale.ROOT).split("x", -1);
         try {
+            if (parts.length != 2) throw new NumberFormatException("expected WIDTHxHEIGHT");
             int width = Integer.parseInt(parts[0].trim());
             int height = Integer.parseInt(parts[1].trim());
-            if (width < 160 || height < 120) throw new NumberFormatException("too small");
+            if (width < MIN_WINDOW_WIDTH || height < MIN_WINDOW_HEIGHT
+                || width > MAX_WINDOW_WIDTH || height > MAX_WINDOW_HEIGHT) {
+                throw new NumberFormatException("out of bounds");
+            }
             return new int[] {width, height};
-        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
-            System.err.println("GAMEX_WINDOW is not a size like 800x600: '" + text + "'; using 1280x720");
+        } catch (NumberFormatException e) {
+            System.err.println("GAMEX_WINDOW is not a size between 160x120 and 7680x4320 like 800x600: '"
+                + text + "'; using 1280x720");
             return fallback;
         }
     }

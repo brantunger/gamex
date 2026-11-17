@@ -12,6 +12,8 @@ plugins {
 }
 apply plugin: 'io.github.fourlastor.construo'
 
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
 
 import io.github.fourlastor.construo.Target
 
@@ -54,6 +56,15 @@ dependencies {
     implementation("org.lwjgl:lwjgl-opengl:$lwjgl3Version")
     implementation("org.lwjgl:lwjgl-stb:$lwjgl3Version")
   }
+
+  testImplementation platform("org.junit:junit-bom:$junitVersion")
+  testImplementation "org.junit.jupiter:junit-jupiter"
+  testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+  useJUnitPlatform()
+  inputs.dir(project.file("icons")).withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
