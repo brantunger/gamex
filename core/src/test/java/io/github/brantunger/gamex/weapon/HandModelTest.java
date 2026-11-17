@@ -6,11 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.model.GeneratedModelsTest;
+import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToDoubleFunction;
 
 /** Checks the shipped hand model file, and how it is turned into vertices. */
 class HandModelTest {
@@ -355,6 +360,58 @@ class HandModelTest {
         return nearest;
     }
 
+    /** Partitions {@code corners} along {@code coordinate} into equal bands and asserts every band touches the grip. */
+    private static void assertBandsTouchGrip(List<Vector3> corners, ToDoubleFunction<Vector3> coordinate,
+                                             int bandCount, float allowance, String what) {
+        assertFalse(corners.isEmpty(), what + " has no vertices near the grip");
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        for (Vector3 corner : corners) {
+            double value = coordinate.applyAsDouble(corner);
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+        }
+        double span = max - min;
+        for (int band = 0; band < bandCount; band++) {
+            double low = min + span * band / bandCount;
+            double high = min + span * (band + 1) / bandCount;
+            List<Vector3> slice = new ArrayList<>();
+            for (Vector3 corner : corners) {
+                double value = coordinate.applyAsDouble(corner);
+                boolean inBand = band == bandCount - 1
+                    ? value >= low && value <= high
+                    : value >= low && value < high;
+                if (inBand) slice.add(corner);
+            }
+            assertFalse(slice.isEmpty(), what + " band " + band + " of " + bandCount + " is empty");
+            float gap = nearestToGrip(slice);
+            assertTrue(gap < allowance, what + " band " + band + " floats off the grip by " + gap);
+        }
+    }
+
+    static void assertPalmLiesOnGrip(List<Vector3> palmCorners) {
+        float gripSide = 0f;
+        for (int i = 0; i < GRIP.vertexCount; i++) gripSide = Math.max(gripSide, pistolCorner(GRIP, i).x);
+        float[] heights = gripHeights();
+        float topBack = 0f;
+        for (int i = 0; i < GRIP.vertexCount; i++) {
+            Vector3 corner = pistolCorner(GRIP, i);
+            if (corner.y == heights[0]) topBack = Math.max(topBack, corner.z);
+        }
+        List<Vector3> behind = new ArrayList<>();
+        List<Vector3> right = new ArrayList<>();
+        for (Vector3 corner : palmCorners) {
+            if (Math.abs(corner.x) < gripSide && corner.y < heights[0] && corner.y > heights[1]) behind.add(corner);
+            else if (corner.x > gripSide && corner.z < topBack && corner.y < heights[0] && corner.y > heights[1]) {
+                right.add(corner);
+            }
+        }
+
+        assertBandsTouchGrip(behind, c -> c.y, 3, TOUCHING, "the palm behind the back strap");
+        assertBandsTouchGrip(right, c -> c.z, 3, STUDS + TOUCHING, "the palm along the right side (depth)");
+        assertBandsTouchGrip(right, c -> c.y, 3, STUDS + TOUCHING, "the palm along the right side (height)");
+    }
+
     @Test
     void wrappingFingersLieOnTheRealGripOnBothSidesAndAcrossTheFrontStrap() {
         float gripSide = 0f;
@@ -365,43 +422,51 @@ class HandModelTest {
             List<Vector3> right = new ArrayList<>();
             List<Vector3> front = new ArrayList<>();
             for (Vector3 corner : corners(finger)) {
-                boolean behindTheStrap = corner.z > frontStrap(corner.y);
-                if (behindTheStrap && corner.x < -gripSide) left.add(corner);
-                else if (behindTheStrap && corner.x > gripSide) right.add(corner);
-                else if (!behindTheStrap && Math.abs(corner.x) < gripSide) front.add(corner);
+                float behind = corner.z - frontStrap(corner.y);
+                if (behind > 0f && corner.x < -gripSide) left.add(corner);
+                // Beyond behind = 0.016 the wrapping fingers lift away from the grip towards the knuckles.
+                else if (behind > 0f && behind <= 0.016f && corner.x > gripSide) right.add(corner);
+                else if (behind <= 0f && Math.abs(corner.x) < gripSide) front.add(corner);
             }
-            assertTrue(nearestToGrip(left) < STUDS + TOUCHING,
-                finger + " floats off the left of the grip by " + nearestToGrip(left));
-            assertTrue(nearestToGrip(right) < STUDS + TOUCHING,
-                finger + " floats off the right of the grip by " + nearestToGrip(right));
-            assertTrue(nearestToGrip(front) < TOUCHING,
-                finger + " floats off the front strap by " + nearestToGrip(front));
+            assertBandsTouchGrip(left, c -> c.z - frontStrap(c.y), 2, STUDS + TOUCHING,
+                finger + " left of grip");
+            assertBandsTouchGrip(right, c -> c.z - frontStrap(c.y), 2, STUDS + TOUCHING,
+                finger + " right of grip");
+            assertBandsTouchGrip(front, c -> c.x, 2, TOUCHING, finger + " front strap");
         }
     }
 
     @Test
     void palmLiesOnTheBackOfTheRealGripAndAlongItsRightSide() {
+        assertPalmLiesOnGrip(corners("palm"));
+    }
+
+    @Test
+    void palmTouchCheckFailsWhenAMiddleBandFloatsThreeMillimetresOffTheGrip() {
         float gripSide = 0f;
         for (int i = 0; i < GRIP.vertexCount; i++) gripSide = Math.max(gripSide, pistolCorner(GRIP, i).x);
-        // The right side of the grip is judged only by the part of the palm that lies beside it, not behind it.
+        List<Vector3> floated = new ArrayList<>();
+        for (Vector3 corner : corners("palm")) {
+            Vector3 copy = new Vector3(corner);
+            if (copy.x > gripSide && copy.z >= 0.068f && copy.z <= 0.084f) copy.x += 0.003f;
+            floated.add(copy);
+        }
+
+        // The global minimum across the whole right side still passes (< STUDS + TOUCHING), so band checks catch it.
+        List<Vector3> right = new ArrayList<>();
         float[] heights = gripHeights();
         float topBack = 0f;
         for (int i = 0; i < GRIP.vertexCount; i++) {
             Vector3 corner = pistolCorner(GRIP, i);
             if (corner.y == heights[0]) topBack = Math.max(topBack, corner.z);
         }
-        List<Vector3> behind = new ArrayList<>();
-        List<Vector3> right = new ArrayList<>();
-        for (Vector3 corner : corners("palm")) {
-            if (Math.abs(corner.x) < gripSide) behind.add(corner);
-            else if (corner.x > gripSide && corner.z < topBack && corner.y < heights[0] && corner.y > heights[1]) {
+        for (Vector3 corner : floated) {
+            if (corner.x > gripSide && corner.z < topBack && corner.y < heights[0] && corner.y > heights[1]) {
                 right.add(corner);
             }
         }
-
-        assertTrue(nearestToGrip(behind) < TOUCHING, "the palm floats off the back strap by " + nearestToGrip(behind));
-        assertTrue(nearestToGrip(right) < STUDS + TOUCHING,
-            "the palm floats off the right of the grip by " + nearestToGrip(right));
+        assertTrue(nearestToGrip(right) < STUDS + TOUCHING);
+        assertThrows(AssertionError.class, () -> assertPalmLiesOnGrip(floated));
     }
 
     @Test
@@ -445,25 +510,154 @@ class HandModelTest {
         assertTrue(ratio > 0.8f && ratio < 1.15f, "hand width over grip length: " + ratio);
     }
 
+    private static float[] boundsOfSolids(String... solidNames) {
+        float minX = Float.POSITIVE_INFINITY, maxX = Float.NEGATIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
+        float minZ = Float.POSITIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
+        for (String name : solidNames) {
+            PistolModel.Solid solid = pistolSolid(name);
+            for (int i = 0; i < solid.vertexCount; i++) {
+                Vector3 c = pistolCorner(solid, i);
+                minX = Math.min(minX, c.x);
+                maxX = Math.max(maxX, c.x);
+                minY = Math.min(minY, c.y);
+                maxY = Math.max(maxY, c.y);
+                minZ = Math.min(minZ, c.z);
+                maxZ = Math.max(maxZ, c.z);
+            }
+        }
+        return new float[] {minX, maxX, minY, maxY, minZ, maxZ};
+    }
+
+    private static double[] readDoubleArrayField(Class<?> type, String name) throws ReflectiveOperationException {
+        Field field = type.getDeclaredField(name);
+        field.setAccessible(true);
+        return (double[]) field.get(null);
+    }
+
+    private static double readDoubleField(Class<?> type, String name) throws ReflectiveOperationException {
+        Field field = type.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.getDouble(null);
+    }
+
+    private static void assertBoxOutlineMatches(double[] outline, float[] bounds, String label) {
+        assertEquals(8, outline.length, label + " should be a 4-corner box outline");
+        double minY = Double.POSITIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
+        double minZ = Double.POSITIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < outline.length; i += 2) {
+            minY = Math.min(minY, outline[i]);
+            maxY = Math.max(maxY, outline[i]);
+            minZ = Math.min(minZ, outline[i + 1]);
+            maxZ = Math.max(maxZ, outline[i + 1]);
+        }
+        assertEquals(bounds[2], minY, 1e-5, label + " minY");
+        assertEquals(bounds[3], maxY, 1e-5, label + " maxY");
+        assertEquals(bounds[4], minZ, 1e-5, label + " minZ");
+        assertEquals(bounds[5], maxZ, 1e-5, label + " maxZ");
+    }
+
+    @Test
+    void handSculptPistolCopiesMatchTheRealPistol(@TempDir Path tempDir)
+        throws IOException, ReflectiveOperationException {
+        Path toolsDir = GeneratedModelsTest.resolveDir("gamex.tools", "tools");
+        Class<?> sculpt = GeneratedModelsTest.compileTool(
+            toolsDir.resolve("viewmodel").resolve("HandSculpt.java"), "HandSculpt", tempDir);
+
+        assertEquals(GRIP_HALF_WIDTH, readDoubleField(sculpt, "GRIP_HALF_WIDTH"), 1e-5, "GRIP_HALF_WIDTH");
+        double[] gripOutline = readDoubleArrayField(sculpt, "GRIP_OUTLINE");
+        assertEquals(12, gripOutline.length);
+        for (int i = 0; i < gripOutline.length; i += 2) {
+            double y = gripOutline[i];
+            double z = gripOutline[i + 1];
+            boolean found = false;
+            for (int v = 0; v < GRIP.vertexCount; v++) {
+                Vector3 c = pistolCorner(GRIP, v);
+                if (Math.abs(c.y - y) < 1e-5 && Math.abs(c.z - z) < 1e-5) {
+                    found = true;
+                    break;
+                }
+            }
+            assertTrue(found, "GRIP_OUTLINE corner (" + y + ", " + z + ") not found in PistolModel");
+        }
+
+        float[] frameBounds = boundsOfSolids("frame");
+        float[] frameControlsBounds = boundsOfSolids("frame", "stop lever", "magazine release");
+        assertBoxOutlineMatches(readDoubleArrayField(sculpt, "FRAME_OUTLINE"), frameBounds, "FRAME_OUTLINE");
+        assertEquals(Math.max(Math.abs(frameControlsBounds[0]), Math.abs(frameControlsBounds[1])),
+            readDoubleField(sculpt, "FRAME_HALF_WIDTH"), 1e-5, "FRAME_HALF_WIDTH");
+
+        float[] slideBounds = boundsOfSolids("slide", "slide top");
+        List<String> slideParts = new ArrayList<>();
+        for (PistolModel.Solid solid : PISTOL.solids) {
+            if (solid.group == PistolModel.Group.SLIDE && !solid.name.contains("sight")
+                && !solid.name.contains("groove")) {
+                slideParts.add(solid.name);
+            }
+        }
+        float[] slideFullBounds = boundsOfSolids(slideParts.toArray(new String[0]));
+        assertBoxOutlineMatches(readDoubleArrayField(sculpt, "SLIDE_OUTLINE"), slideBounds, "SLIDE_OUTLINE");
+        assertEquals(Math.max(Math.abs(slideFullBounds[0]), Math.abs(slideFullBounds[1])),
+            readDoubleField(sculpt, "SLIDE_HALF_WIDTH"), 1e-5, "SLIDE_HALF_WIDTH");
+
+        float[] beavertailBounds = boundsOfSolids("beavertail");
+        assertBoxOutlineMatches(readDoubleArrayField(sculpt, "BEAVERTAIL_OUTLINE"), beavertailBounds,
+            "BEAVERTAIL_OUTLINE");
+        assertEquals(Math.max(Math.abs(beavertailBounds[0]), Math.abs(beavertailBounds[1])),
+            readDoubleField(sculpt, "BEAVERTAIL_HALF_WIDTH"), 1e-5, "BEAVERTAIL_HALF_WIDTH");
+
+        float[] plateBounds = boundsOfSolids("magazine plate");
+        assertBoxOutlineMatches(readDoubleArrayField(sculpt, "PLATE_OUTLINE"), plateBounds, "PLATE_OUTLINE");
+        assertEquals(Math.max(Math.abs(plateBounds[0]), Math.abs(plateBounds[1])),
+            readDoubleField(sculpt, "PLATE_HALF_WIDTH"), 1e-5, "PLATE_HALF_WIDTH");
+    }
+
     @Test
     void indexFingerReachesTheTriggerAndTheThumbLiesAlongTheLeftOfTheFrame() {
+        float[] triggerBounds = boundsOfSolids("trigger", "trigger tip");
+        float triggerHalfX = Math.max(Math.abs(triggerBounds[0]), Math.abs(triggerBounds[1]));
+        float triggerBottomY = triggerBounds[2];
+        float triggerTopY = triggerBounds[3];
+        float triggerFrontZ = triggerBounds[4];
+
         boolean onTrigger = false;
         for (Vector3 corner : corners("index_finger")) {
-            // The trigger hangs below the frame on the centre line, between z = -0.013 and -0.002.
-            if (Math.abs(corner.x) < 0.004f && corner.z < -0.012f && corner.z > -0.035f && corner.y < -0.018f) {
+            if (Math.abs(corner.x) <= triggerHalfX + 0.001f
+                && corner.z < triggerFrontZ + 0.001f && corner.z > triggerFrontZ - 0.022f
+                && corner.y < triggerTopY && corner.y > triggerBottomY) {
                 onTrigger = true;
             }
         }
         assertTrue(onTrigger, "the index finger crosses in front of the trigger");
 
+        float[] frameBounds = boundsOfSolids("frame");
+        float frameLeftX = frameBounds[0];
+        float frameFrontZ = frameBounds[4];
+        float frameBackZ = frameBounds[5];
         float foremost = Float.MAX_VALUE;
         for (Vector3 corner : corners("thumb")) {
             foremost = Math.min(foremost, corner.z);
-            if (corner.z < 0.06f) {
-                assertTrue(corner.x < -0.012f, "the thumb's front half is left of the frame: " + corner);
+            if (corner.z < frameBackZ - 0.022f) {
+                assertTrue(corner.x < frameLeftX + 0.001f, "the thumb's front half is left of the frame: " + corner);
             }
         }
-        assertTrue(foremost < 0.01f, "the thumb points forward to z = " + foremost);
+        assertTrue(foremost < (frameFrontZ + frameBackZ) * 0.5f + 0.015f, "the thumb points forward to z = " + foremost);
+    }
+
+    @Test
+    void modelReadErrorNamesBothTheHandFileAndTheLineOrMaterial() {
+        IllegalArgumentException parseError = assertThrows(IllegalArgumentException.class,
+            () -> ModelVertices.read(HandModel.ASSET_PATH, "hand", "v 0 0 0\nl 1 1\n", HandModel::vertices));
+        assertTrue(parseError.getMessage().contains("hand"), parseError.getMessage());
+        assertTrue(parseError.getMessage().contains(HandModel.ASSET_PATH), parseError.getMessage());
+        assertTrue(parseError.getMessage().contains("Line 2"), parseError.getMessage());
+
+        IllegalArgumentException materialError = assertThrows(IllegalArgumentException.class,
+            () -> ModelVertices.read(HandModel.ASSET_PATH, "hand",
+                "v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl chrome\nf 1 2 3\n", HandModel::vertices));
+        assertTrue(materialError.getMessage().contains("hand"), materialError.getMessage());
+        assertTrue(materialError.getMessage().contains(HandModel.ASSET_PATH), materialError.getMessage());
+        assertTrue(materialError.getMessage().contains("chrome"), materialError.getMessage());
     }
 
     @Test

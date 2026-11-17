@@ -19,11 +19,9 @@ final class ModelMesh {
     static <T> T load(String assetPath, String label, Function<ObjModel, T> converter) {
         String text = Gdx.files.internal(assetPath).readString("UTF-8");
         try {
-            return converter.apply(ObjModel.parse(text));
+            return ModelVertices.read(assetPath, label, text, converter);
         } catch (IllegalArgumentException e) {
-            // The parser or converter names the line or material; say which file it was reading as well.
-            throw new GdxRuntimeException("The " + label + " model " + assetPath + " could not be read: "
-                + e.getMessage(), e);
+            throw new GdxRuntimeException(e.getMessage(), e);
         }
     }
 

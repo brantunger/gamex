@@ -6,7 +6,7 @@ files at start-up (into `HandModel` and `PistolModel`).
 
 ## Regenerate the models
 
-From the repository root, with a JDK (11 or later) and nothing else:
+From the repository root, with Java 21 or later and nothing else:
 
 ```
 java tools/viewmodel/HandSculpt.java assets/models/viewmodel-hand.obj
@@ -26,10 +26,12 @@ If `HandSculpt.java` cannot uncross the rings of a part (see "How the sculpt is 
 ```
 
 `PistolModelTest` checks that every solid in `viewmodel-pistol.obj` is closed, convex, and faces outwards.
-`HandModelTest` loads both written files and checks the hand against the real pistol: every part is a closed surface that
-faces outwards, no quad folds when it is split into two triangles, no glove vertex is inside the pistol, the fingers
-and the palm lie on the grip's surface, the fingers wrap the grip and end on its left side, the index finger reaches
-the trigger, and the forearm leaves towards the lower right.
+`GeneratedModelsTest` compiles and runs `HandSculpt.java`, `PistolSculpt.java`, and `WorldSculpt.java` to verify every
+committed `.obj` matches its generator byte-for-byte. `HandModelTest` checks `HandSculpt`'s copied pistol outlines against
+`PistolModel` and checks the hand against the real pistol: every part is a closed surface that faces outwards, no quad
+folds when it is split into two triangles, no glove vertex is inside the pistol, bands of the fingers and palm lie on
+the grip's surface, the fingers wrap the grip and end on its left side, the index finger reaches the trigger, and the
+forearm leaves towards the lower right.
 
 To look at it, run the game's debug views (the variables are described in `DemoRun`):
 
