@@ -147,4 +147,19 @@ class CollisionTest {
         assertFalse(Collision.overlapsWall(ROOM, 1.26f, 2.5f, RADIUS));
         assertTrue(Collision.overlapsWall(ROOM, 1.24f, 2.5f, RADIUS));
     }
+
+    @Test
+    void closedDoorBlocksMovementUntilClearedPastThreshold() {
+        Door door = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 2);
+        List<Door> doors = Collections.singletonList(door);
+        Vector2 position = new Vector2(2.5f, 2.5f);
+
+        Collision.move(ROOM, Collections.<Damageable>emptyList(), doors, position, 2.5f, 0f, RADIUS);
+        assertTrue(position.x < 3.5f - Door.HALF_THICKNESS, "stopped on west face of door: " + position.x);
+
+        assertTrue(door.open());
+        door.update(Door.OPEN_DURATION);
+        Collision.move(ROOM, Collections.<Damageable>emptyList(), doors, position, 2.5f, 0f, RADIUS);
+        assertTrue(position.x > 4.5f, "passes freely once door has opened: " + position.x);
+    }
 }

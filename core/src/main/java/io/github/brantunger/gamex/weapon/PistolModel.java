@@ -31,6 +31,29 @@ public final class PistolModel {
     public static final float MUZZLE_Y = 0.0125f;
     /** The z of the muzzle's face in gun space. */
     public static final float MUZZLE_Z = -0.111f;
+    /** Point in gun space that the first-person viewmodel rotates around: the middle of the grip. */
+    public static final float GRIP_PIVOT_Y = -0.060f;
+    public static final float GRIP_PIVOT_Z = 0.065f;
+
+    /** Canonical pistol side profiles shared by pistol generation, hand fitting, and validation tests. */
+    public static final float[] GRIP_OUTLINE = {
+        -0.018f, 0.022f, -0.018f, 0.082f, -0.045f, 0.093f, -0.075f, 0.104f, -0.105f, 0.110f, -0.105f, 0.050f
+    };
+    public static final float GRIP_BODY_HALF_WIDTH = 0.013f;
+    public static final float GRIP_HALF_WIDTH = 0.0146f;
+    public static final float[] FRAME_OUTLINE = {0f, -0.092f, 0f, 0.082f, -0.018f, 0.082f, -0.018f, -0.092f};
+    public static final float FRAME_HALF_WIDTH = 0.0152f;
+    public static final float[] SLIDE_OUTLINE = {0.0275f, -0.105f, 0.0275f, 0.082f, 0f, 0.082f, 0f, -0.105f};
+    public static final float SLIDE_HALF_WIDTH = 0.0147f;
+    public static final float[] BEAVERTAIL_OUTLINE = {-0.004f, 0.080f, -0.004f, 0.102f, -0.018f, 0.102f, -0.018f, 0.080f};
+    public static final float BEAVERTAIL_HALF_WIDTH = 0.011f;
+    public static final float[] PLATE_OUTLINE = {-0.105f, 0.046f, -0.105f, 0.115f, -0.112f, 0.115f, -0.112f, 0.046f};
+    public static final float PLATE_HALF_WIDTH = 0.0145f;
+
+    /** @return the Z coordinate of the front strap of the raked grip at height {@code y}. */
+    public static float frontStrap(float y) {
+        return 0.022f + (-0.018f - y) * (0.050f - 0.022f) / (0.105f - 0.018f);
+    }
 
     /** The groups the model is split into. */
     public enum Group {
@@ -100,17 +123,24 @@ public final class PistolModel {
     public final float[] body;
     /** The triangles of the {@link Group#SLIDE} group. */
     public final float[] slide;
+    /** Deduplicated indexed GPU buffer for {@link Group#BODY}. */
+    public final ModelVertices.IndexedMesh bodyMesh;
+    /** Deduplicated indexed GPU buffer for {@link Group#SLIDE}. */
+    public final ModelVertices.IndexedMesh slideMesh;
     /** Every solid of the model, in file order. */
     public final List<Solid> solids;
 
-    private PistolModel(float[] body, float[] slide, List<Solid> solids) {
+    private PistolModel(float[] body, float[] slide, ModelVertices.IndexedMesh bodyMesh,
+                        ModelVertices.IndexedMesh slideMesh, List<Solid> solids) {
         this.body = body;
         this.slide = slide;
+        this.bodyMesh = bodyMesh;
+        this.slideMesh = slideMesh;
         this.solids = Collections.unmodifiableList(solids);
     }
 
     /**
-     * Turns a parsed pistol model into separated {@link Group#BODY} and {@link Group#SLIDE} vertex arrays.
+     * Turns a parsed pistol model into separated {@link Group#BODY} and {@link Group#SLIDE} vertex and indexed arrays.
      * @param model the parsed OBJ model
      * @return the pistol model
      * @throws IllegalArgumentException if a face has no group or uses a material that {@link Material} does not list
@@ -125,7 +155,7 @@ public final class PistolModel {
                 throw new IllegalArgumentException("The pistol model has a face with no group");
             }
             Material.named(model.getMaterial(triangle));
-            if (groupName.startsWith("slide")) slideTriangles++;
+            if (isSlide(model, triangle, groupName)) slideTriangles++;
             else bodyTriangles++;
         }
 
@@ -142,7 +172,7 @@ public final class PistolModel {
 
         for (int triangle = 0; triangle < triangleCount; triangle++) {
             String groupName = model.getGroup(triangle);
-            Group group = groupName.startsWith("slide") ? Group.SLIDE : Group.BODY;
+            Group group = isSlide(model, triangle, groupName) ? Group.SLIDE : Group.BODY;
             float[] colour = Material.named(model.getMaterial(triangle)).colour;
 
             if (!groupName.equals(currentName)) {
@@ -167,7 +197,19 @@ public final class PistolModel {
         if (currentName != null) {
             solids.add(new Solid(currentName, currentGroup, runStart, runCount));
         }
-        return new PistolModel(body, slide, solids);
+        ModelVertices.IndexedMesh bodyIndexed = bodyTriangles > 0
+            ? ModelVertices.packIndexed(model, t -> !isSlide(model, t, model.getGroup(t)),
+                0f, 0f, 0f, name -> Material.named(name).colour)
+            : null;
+        ModelVertices.IndexedMesh slideIndexed = slideTriangles > 0
+            ? ModelVertices.packIndexed(model, t -> isSlide(model, t, model.getGroup(t)),
+                0f, 0f, 0f, name -> Material.named(name).colour)
+            : null;
+        return new PistolModel(body, slide, bodyIndexed, slideIndexed, solids);
+    }
+
+    private static boolean isSlide(ObjModel model, int triangle, String groupName) {
+        return "slide".equals(model.getPart(triangle)) || groupName.startsWith("slide");
     }
 
     /**

@@ -10,12 +10,14 @@ import com.badlogic.gdx.graphics.g3d.decals.Decal;
 import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Matrix3;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.HandModel;
@@ -41,9 +43,6 @@ public final class ViewmodelRenderer implements Disposable {
     private static final float REST_X = 0.140f;
     private static final float REST_Y = -0.066f;
     private static final float REST_Z = -0.550f;
-    /** The point of the gun, in gun space, that it turns about: the middle of the grip. */
-    private static final float PIVOT_Y = -0.060f;
-    private static final float PIVOT_Z = 0.065f;
     /** The yaw, in degrees, that points the muzzle inwards, towards the centre of the view. */
     private static final float REST_YAW = 12f;
     /** The pitch, in degrees, that raises the muzzle a little at rest. */
@@ -70,14 +69,17 @@ public final class ViewmodelRenderer implements Disposable {
             + "attribute vec3 a_normal;\n"
             + "attribute vec3 a_colour;\n"
             + "attribute float a_gloss;\n"
+            + "attribute float a_accent;\n"
             + "uniform mat4 u_projTrans;\n"
             + "uniform mat4 u_model;\n"
+            + "uniform mat3 u_normalMatrix;\n"
             + "uniform mat4 u_viewToWorld;\n"
+            + "uniform vec4 u_accentColour;\n"
             + "uniform float u_light;\n"
             + "uniform float u_charge;\n"
             + "varying vec3 v_colour;\n"
             + "void main() {\n"
-            + "    vec3 viewNormal = normalize((u_model * vec4(a_normal, 0.0)).xyz);\n"
+            + "    vec3 viewNormal = normalize(u_normalMatrix * a_normal);\n"
             + "    vec3 worldNormal = (u_viewToWorld * vec4(viewNormal, 0.0)).xyz;\n"
             // The same shades as the world's faces: north-south 1.0, east-west 0.72, floor 0.9, ceiling 0.62.
             + "    vec3 weight = worldNormal * worldNormal;\n"
@@ -86,12 +88,14 @@ public final class ViewmodelRenderer implements Disposable {
             + "    float key = 0.5 + 0.75 * max(dot(viewNormal, normalize(vec3(-0.3, 0.9, 0.3))), 0.0);\n"
             // The blast charge glows violet towards the muzzle, which is at negative z in gun space.
             + "    float front = clamp((-a_position.z - 0.01) / 0.1, 0.0, 1.0);\n"
+            + "    vec3 baseColour = mix(a_colour, u_accentColour.rgb, a_accent);\n"
+            + "    float baseGloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
             // Glossy faces that sit halfway between the light and the eye pick up a sheen.
             + "    float facing = max(dot(viewNormal, normalize(vec3(-0.3, 0.9, 1.3))), 0.0);\n"
-            + "    float sheen = a_gloss * pow(facing, 10.0) * 0.3;\n"
+            + "    float sheen = baseGloss * pow(facing, 10.0) * 0.3;\n"
             // Faces seen nearly edge-on catch a faint rim of light, which lifts dark shapes off a dark background.
             + "    float rim = pow(1.0 - abs(viewNormal.z), 2.0) * 0.09;\n"
-            + "    v_colour = (a_colour * shade * key + vec3(sheen + rim)) * u_light\n"
+            + "    v_colour = (baseColour * shade * key + vec3(sheen + rim)) * u_light\n"
             + "        + vec3(0.5, 0.22, 1.0) * u_charge * front * 0.55;\n"
             + "    gl_Position = u_projTrans * u_model * vec4(a_position, 1.0);\n"
             + "}\n";
@@ -119,6 +123,8 @@ public final class ViewmodelRenderer implements Disposable {
     private final Matrix4 gunTransform = new Matrix4();
     private final Matrix4 slideTransform = new Matrix4();
     private final Matrix4 viewToWorld = new Matrix4();
+    private final Matrix3 normalMatrix = new Matrix3();
+    private final ObjModel.SocketSpec muzzleSocket;
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
     private final Vector3 up = new Vector3();
@@ -141,11 +147,13 @@ public final class ViewmodelRenderer implements Disposable {
         if (!shader.isCompiled()) {
             throw new GdxRuntimeException("The viewmodel shader did not compile: " + shader.getLog());
         }
-        PistolModel pistol = ModelMesh.load(PistolModel.ASSET_PATH, "pistol", PistolModel::from);
-        body = ModelMesh.build(pistol.body);
-        slide = ModelMesh.build(pistol.slide);
+        ObjModel pistolObj = ModelMesh.loadModel(PistolModel.ASSET_PATH, "pistol");
+        PistolModel pistol = PistolModel.from(pistolObj);
+        muzzleSocket = pistolObj.getSocket("muzzle");
+        body = ModelMesh.buildIndexed(pistol.bodyMesh);
+        slide = ModelMesh.buildIndexed(pistol.slideMesh);
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
-        hand = ModelMesh.loadMesh(HandModel.ASSET_PATH, "hand", HandModel::vertices);
+        hand = ModelMesh.loadIndexedMesh(HandModel.ASSET_PATH, "hand", HandModel::packIndexed);
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
@@ -183,12 +191,12 @@ public final class ViewmodelRenderer implements Disposable {
         gunTransform.idt()
             .translate(restX + bobX, REST_Y + bobY + recoil * KICK_UP,
                 REST_Z + recoil * KICK_BACK)
-            .translate(0f, PIVOT_Y, PIVOT_Z)
+            .translate(0f, PistolModel.GRIP_PIVOT_Y, PistolModel.GRIP_PIVOT_Z)
             // A positive turn about y swings the muzzle left, so a lag to the left (negative sway) adds to it.
             .rotate(Vector3.Y, REST_YAW - animation.getSwayYaw())
             .rotate(Vector3.X, REST_PITCH + recoil * KICK_PITCH + animation.getSwayPitch())
             .rotate(Vector3.Z, REST_ROLL)
-            .translate(0f, -PIVOT_Y, -PIVOT_Z);
+            .translate(0f, -PistolModel.GRIP_PIVOT_Y, -PistolModel.GRIP_PIVOT_Z);
         slideTransform.set(gunTransform).translate(0f, 0f, animation.getSlide() * SLIDE_TRAVEL);
 
         // The rotation from view space to world space, built from the player's view axes.
@@ -213,8 +221,10 @@ public final class ViewmodelRenderer implements Disposable {
 
         // The flash and the charge glow sit just ahead of the muzzle, wherever the animation has put it.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        muzzle.set(PistolModel.MUZZLE_X, PistolModel.MUZZLE_Y, PistolModel.MUZZLE_Z - 0.012f)
-            .mul(gunTransform);
+        float mx = muzzleSocket != null ? muzzleSocket.x : PistolModel.MUZZLE_X;
+        float my = muzzleSocket != null ? muzzleSocket.y : PistolModel.MUZZLE_Y;
+        float mz = muzzleSocket != null ? muzzleSocket.z : PistolModel.MUZZLE_Z;
+        muzzle.set(mx, my, mz - 0.012f).mul(gunTransform);
         if (flashing) {
             float size = 0.085f;
             flash.setDimensions(size, size);
@@ -274,12 +284,17 @@ public final class ViewmodelRenderer implements Disposable {
         shader.bind();
         shader.setUniformMatrix("u_projTrans", camera.combined);
         shader.setUniformMatrix("u_viewToWorld", viewToWorld);
+        shader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
         shader.setUniformf("u_light", light);
         shader.setUniformf("u_charge", charge);
         shader.setUniformMatrix("u_model", gunTransform);
+        normalMatrix.set(gunTransform).inv().transpose();
+        shader.setUniformMatrix("u_normalMatrix", normalMatrix);
         body.render(shader, GL20.GL_TRIANGLES);
         hand.render(shader, GL20.GL_TRIANGLES);
         shader.setUniformMatrix("u_model", slideTransform);
+        normalMatrix.set(slideTransform).inv().transpose();
+        shader.setUniformMatrix("u_normalMatrix", normalMatrix);
         slide.render(shader, GL20.GL_TRIANGLES);
     }
 

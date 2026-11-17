@@ -4,6 +4,7 @@ gradle-app.setting
 /build/
 /core/build/
 /desktop/build/
+/tools/build/
 
 ## Java:
 *.class
@@ -24,6 +25,7 @@ hs_err_pid*
 .metadata/
 /core/bin/
 /desktop/bin/
+/tools/bin/
 *.tmp
 *.bak
 *.swp

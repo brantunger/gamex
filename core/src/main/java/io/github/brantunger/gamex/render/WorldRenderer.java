@@ -14,6 +14,7 @@ import com.badlogic.gdx.graphics.g3d.decals.Decal;
 import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Matrix3;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
@@ -21,18 +22,23 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.model.ModelRig;
+import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.MapGeometry;
 import io.github.brantunger.gamex.world.Pickup;
+import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -96,8 +102,11 @@ public final class WorldRenderer implements Disposable {
             + "attribute vec3 a_normal;\n"
             + "attribute vec3 a_colour;\n"
             + "attribute float a_gloss;\n"
+            + "attribute float a_accent;\n"
             + "uniform mat4 u_projViewTrans;\n"
             + "uniform mat4 u_model;\n"
+            + "uniform mat3 u_normalMatrix;\n"
+            + "uniform vec4 u_accentColour;\n"
             + "uniform vec3 u_cameraPosition;\n"
             + "uniform vec2 u_fogRange;\n"
             + "uniform vec3 u_fogColour;\n"
@@ -106,7 +115,7 @@ public final class WorldRenderer implements Disposable {
             + "varying vec3 v_colour;\n"
             + "void main() {\n"
             + "    vec4 worldPos = u_model * vec4(a_position, 1.0);\n"
-            + "    vec3 worldNormal = normalize((u_model * vec4(a_normal, 0.0)).xyz);\n"
+            + "    vec3 worldNormal = normalize(u_normalMatrix * a_normal);\n"
             + "    vec3 weight = worldNormal * worldNormal;\n"
             + "    float shade = weight.z + weight.x * 0.72 + weight.y * (worldNormal.y > 0.0 ? 0.9 : 0.62);\n"
             + "    vec3 lightDir = normalize(vec3(-0.3, 0.9, 0.4));\n"
@@ -115,9 +124,11 @@ public final class WorldRenderer implements Disposable {
             + "    float range = length(delta);\n"
             + "    vec3 toCamera = range > 1e-4 ? delta / range : vec3(0.0, 0.0, 1.0);\n"
             + "    vec3 halfVec = normalize(lightDir + toCamera);\n"
-            + "    float sheen = a_gloss * pow(max(dot(worldNormal, halfVec), 0.0), 12.0) * 0.35;\n"
+            + "    vec3 surfaceColour = mix(a_colour, u_accentColour.rgb, a_accent);\n"
+            + "    float surfaceGloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
+            + "    float sheen = surfaceGloss * pow(max(dot(worldNormal, halfVec), 0.0), 12.0) * 0.35;\n"
             + "    float rim = pow(1.0 - max(dot(worldNormal, toCamera), 0.0), 2.5) * 0.12;\n"
-            + "    vec3 lit = (a_colour * shade * key + vec3(sheen + rim)) * u_light;\n"
+            + "    vec3 lit = (surfaceColour * shade * key + vec3(sheen + rim)) * u_light;\n"
             + "    lit = mix(lit, vec3(1.0, 0.25, 0.25), u_hitFlash * 0.65);\n"
             + "    float fog = clamp((range - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
             + "    v_colour = mix(lit, u_fogColour, fog);\n"
@@ -158,10 +169,21 @@ public final class WorldRenderer implements Disposable {
     private final Mesh energyCellMesh;
     private final Mesh turretBaseMesh;
     private final Mesh turretHeadMesh;
+    private final Mesh turretBarrelsMesh;
     private final Mesh droneMesh;
-    private final Mesh guardBaseMesh;
-    private final Mesh guardHeadMesh;
+    private final Mesh guardPelvisMesh;
+    private final Mesh guardLegLeftMesh;
+    private final Mesh guardLegRightMesh;
+    private final Mesh guardTorsoMesh;
+    private final Mesh guardArmLeftMesh;
+    private final Mesh guardArmRightMesh;
     private final Mesh enemyBoltMesh;
+    private final Mesh doorMesh;
+    private final Mesh keycardMesh;
+    private final Mesh consoleMesh;
+    private final ModelRig turretRig;
+    private final ModelRig droneRig;
+    private final ModelRig guardRig;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
@@ -174,6 +196,16 @@ public final class WorldRenderer implements Disposable {
     private final TextureRegion exitPad;
 
     private final Matrix4 modelTransform = new Matrix4();
+    private final Matrix4 rootTransform = new Matrix4();
+    private final Matrix3 normalMatrix = new Matrix3();
+    private final Matrix4 rotYaw = new Matrix4();
+    private final Matrix4 rotPitch = new Matrix4();
+    private final Matrix4 rotLegL = new Matrix4();
+    private final Matrix4 rotLegR = new Matrix4();
+    private final Matrix4 rotArmL = new Matrix4();
+    private final Matrix4 rotArmR = new Matrix4();
+    private final Map<String, Matrix4> turretRotations = new HashMap<>();
+    private final Map<String, Matrix4> guardRotations = new HashMap<>();
     private final Vector3 direction = new Vector3();
     private final Vector3 scratch = new Vector3();
 
@@ -198,22 +230,45 @@ public final class WorldRenderer implements Disposable {
 
         setMap(map);
 
-        canisterMesh = ModelMesh.loadMesh(WorldModels.CANISTER_PATH, "canister", WorldModels::vertices);
-        ringBoardMesh = ModelMesh.loadMesh(WorldModels.RING_BOARD_PATH, "ring board", WorldModels::vertices);
-        blastOrbMesh = ModelMesh.loadMesh(WorldModels.BLAST_ORB_PATH, "blast orb", WorldModels::vertices);
-        medkitMesh = ModelMesh.loadMesh(WorldModels.MEDKIT_PATH, "medkit", WorldModels::vertices);
-        armorMesh = ModelMesh.loadMesh(WorldModels.ARMOR_PATH, "armor", WorldModels::vertices);
-        energyCellMesh = ModelMesh.loadMesh(WorldModels.ENERGY_CELL_PATH, "energy cell", WorldModels::vertices);
-        turretBaseMesh = ModelMesh.loadMesh(WorldModels.TURRET_PATH, "turret base",
-            m -> WorldModels.verticesForGroupPrefix(m, "base_"));
-        turretHeadMesh = ModelMesh.loadMesh(WorldModels.TURRET_PATH, "turret head",
-            m -> WorldModels.verticesForGroupPrefix(m, "head_"));
-        droneMesh = ModelMesh.loadMesh(WorldModels.DRONE_PATH, "drone", WorldModels::vertices);
-        guardBaseMesh = ModelMesh.loadMesh(WorldModels.GUARD_PATH, "guard base",
-            m -> WorldModels.verticesForGroupPrefix(m, "base_"));
-        guardHeadMesh = ModelMesh.loadMesh(WorldModels.GUARD_PATH, "guard head",
-            m -> WorldModels.verticesForGroupPrefix(m, "head_"));
-        enemyBoltMesh = ModelMesh.loadMesh(WorldModels.ENEMY_BOLT_PATH, "enemy bolt", WorldModels::vertices);
+        canisterMesh = ModelMesh.loadIndexedMesh(WorldModels.CANISTER_PATH, "canister", WorldModels::packIndexed);
+        ringBoardMesh = ModelMesh.loadIndexedMesh(WorldModels.RING_BOARD_PATH, "ring board", WorldModels::packIndexed);
+        blastOrbMesh = ModelMesh.loadIndexedMesh(WorldModels.BLAST_ORB_PATH, "blast orb", WorldModels::packIndexed);
+        medkitMesh = ModelMesh.loadIndexedMesh(WorldModels.MEDKIT_PATH, "medkit", WorldModels::packIndexed);
+        armorMesh = ModelMesh.loadIndexedMesh(WorldModels.ARMOR_PATH, "armor", WorldModels::packIndexed);
+        energyCellMesh = ModelMesh.loadIndexedMesh(WorldModels.ENERGY_CELL_PATH, "energy cell",
+            WorldModels::packIndexed);
+
+        ObjModel turretObj = ModelMesh.loadModel(WorldModels.TURRET_PATH, "turret");
+        turretRig = new ModelRig(turretObj);
+        turretBaseMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(turretObj, "base"));
+        turretHeadMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(turretObj, "head"));
+        turretBarrelsMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(turretObj, "barrels"));
+
+        ObjModel droneObj = ModelMesh.loadModel(WorldModels.DRONE_PATH, "drone");
+        droneRig = new ModelRig(droneObj);
+        droneMesh = ModelMesh.buildIndexed(WorldModels.packIndexed(droneObj));
+
+        ObjModel guardObj = ModelMesh.loadModel(WorldModels.GUARD_PATH, "guard");
+        guardRig = new ModelRig(guardObj);
+        guardPelvisMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "pelvis"));
+        guardLegLeftMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "leg_l"));
+        guardLegRightMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "leg_r"));
+        guardTorsoMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "torso"));
+        guardArmLeftMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "arm_l"));
+        guardArmRightMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "arm_r"));
+
+        enemyBoltMesh = ModelMesh.loadIndexedMesh(WorldModels.ENEMY_BOLT_PATH, "enemy bolt", WorldModels::packIndexed);
+        doorMesh = ModelMesh.loadIndexedMesh(WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead", WorldModels::packIndexed);
+        keycardMesh = ModelMesh.loadIndexedMesh(WorldModels.KEYCARD_PATH, "keycard", WorldModels::packIndexed);
+        consoleMesh = ModelMesh.loadIndexedMesh(WorldModels.SECURITY_CONSOLE_PATH, "security console",
+            WorldModels::packIndexed);
+
+        turretRotations.put("head", rotYaw);
+        turretRotations.put("barrels", rotPitch);
+        guardRotations.put("leg_l", rotLegL);
+        guardRotations.put("leg_r", rotLegR);
+        guardRotations.put("arm_l", rotArmL);
+        guardRotations.put("arm_r", rotArmR);
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
@@ -299,6 +354,7 @@ public final class WorldRenderer implements Disposable {
         decalsUsed = 0;
         addExitPad(simulation.map, simulation.getTime());
         addPickupGlows(simulation);
+        addConsoleGlows(simulation);
         addProjectiles(simulation);
         addEnemyTelegraphsAndBolts(simulation);
         addEffects(simulation);
@@ -330,6 +386,7 @@ public final class WorldRenderer implements Disposable {
         decalsUsed = 0;
         addExitPad(simulation.map, previewTime);
         addPickupGlows(simulation);
+        addConsoleGlows(simulation);
         addEnemyTelegraphsAndBolts(simulation);
         decalBatch.flush();
         endWorldPass();
@@ -371,6 +428,7 @@ public final class WorldRenderer implements Disposable {
         modelShader.setUniformf("u_fogColour", FOG_COLOUR.r, FOG_COLOUR.g, FOG_COLOUR.b);
 
         modelShader.setUniformf("u_light", roomLight);
+        setAccent(null);
         for (Target target : simulation.targets) {
             if (target.isDestroyed()) continue;
             float dx = camera.position.x - target.getX();
@@ -380,13 +438,12 @@ public final class WorldRenderer implements Disposable {
             modelTransform.idt()
                 .translate(target.getX(), 0f, target.getZ())
                 .rotate(Vector3.Y, yaw);
-            modelShader.setUniformMatrix("u_model", modelTransform);
             modelShader.setUniformf("u_hitFlash", target.getHitFlash());
             Mesh mesh = target.getKind() == Target.Kind.CANISTER ? canisterMesh : ringBoardMesh;
-            mesh.render(modelShader, GL20.GL_TRIANGLES);
+            drawModelMesh(mesh, modelTransform);
         }
 
-        // Hostile 3D enemies with articulated parts and wind-up luminance.
+        // Hostile 3D enemies with hierarchical local-pivot articulation and wind-up luminance.
         for (Enemy enemy : simulation.enemies) {
             if (enemy.isDestroyed()) continue;
             float windup = enemy.getWindupProgress();
@@ -394,43 +451,33 @@ public final class WorldRenderer implements Disposable {
             modelShader.setUniformf("u_hitFlash", enemy.getHitFlash());
             switch (enemy.getKind()) {
                 case TURRET:
-                    modelTransform.idt().translate(enemy.getX(), 0f, enemy.getZ());
-                    modelShader.setUniformMatrix("u_model", modelTransform);
-                    turretBaseMesh.render(modelShader, GL20.GL_TRIANGLES);
-
-                    modelTransform.idt()
-                        .translate(enemy.getX(), 0f, enemy.getZ())
-                        .rotate(Vector3.Y, -enemy.getYaw());
-                    modelShader.setUniformMatrix("u_model", modelTransform);
-                    turretHeadMesh.render(modelShader, GL20.GL_TRIANGLES);
+                    prepareTurretPose(enemy);
+                    drawModelMesh(turretBaseMesh,
+                        turretRig.evaluatePartTransform("base", turretRotations, rootTransform, modelTransform));
+                    drawModelMesh(turretHeadMesh,
+                        turretRig.evaluatePartTransform("head", turretRotations, rootTransform, modelTransform));
+                    drawModelMesh(turretBarrelsMesh,
+                        turretRig.evaluatePartTransform("barrels", turretRotations, rootTransform, modelTransform));
                     break;
                 case GUARD:
-                    float bobY = Math.abs(MathUtils.sin(enemy.getWalkPhase())) * 0.022f;
-                    modelTransform.idt()
-                        .translate(enemy.getX(), 0f, enemy.getZ())
-                        .rotate(Vector3.Y, -enemy.getYaw());
-                    modelShader.setUniformMatrix("u_model", modelTransform);
-                    guardBaseMesh.render(modelShader, GL20.GL_TRIANGLES);
-
-                    modelTransform.idt()
-                        .translate(enemy.getX(), bobY, enemy.getZ())
-                        .rotate(Vector3.Y, -enemy.getYaw());
-                    modelShader.setUniformMatrix("u_model", modelTransform);
-                    guardHeadMesh.render(modelShader, GL20.GL_TRIANGLES);
+                    prepareGuardPose(enemy);
+                    drawModelMesh(guardPelvisMesh,
+                        guardRig.evaluatePartTransform("pelvis", guardRotations, rootTransform, modelTransform));
+                    drawModelMesh(guardLegLeftMesh,
+                        guardRig.evaluatePartTransform("leg_l", guardRotations, rootTransform, modelTransform));
+                    drawModelMesh(guardLegRightMesh,
+                        guardRig.evaluatePartTransform("leg_r", guardRotations, rootTransform, modelTransform));
+                    drawModelMesh(guardTorsoMesh,
+                        guardRig.evaluatePartTransform("torso", guardRotations, rootTransform, modelTransform));
+                    drawModelMesh(guardArmLeftMesh,
+                        guardRig.evaluatePartTransform("arm_l", guardRotations, rootTransform, modelTransform));
+                    drawModelMesh(guardArmRightMesh,
+                        guardRig.evaluatePartTransform("arm_r", guardRotations, rootTransform, modelTransform));
                     break;
                 case DRONE:
                 default:
-                    float hoverY = 0.03f * MathUtils.sin(simulation.getTime() * 5.5f + enemy.getX() * 2f);
-                    float tiltPitch = (enemy.getState() == Enemy.State.WINDUP
-                        || enemy.getState() == Enemy.State.LUNGING)
-                        ? -16f
-                        : (enemy.getState() == Enemy.State.PURSUING ? -7f : 0f);
-                    modelTransform.idt()
-                        .translate(enemy.getX(), hoverY, enemy.getZ())
-                        .rotate(Vector3.Y, -enemy.getYaw())
-                        .rotate(Vector3.X, tiltPitch);
-                    modelShader.setUniformMatrix("u_model", modelTransform);
-                    droneMesh.render(modelShader, GL20.GL_TRIANGLES);
+                    prepareDronePose(enemy, simulation.getTime());
+                    drawModelMesh(droneMesh, rootTransform);
                     break;
             }
         }
@@ -445,11 +492,11 @@ public final class WorldRenderer implements Disposable {
             modelTransform.idt()
                 .translate(pickup.getX(), hover, pickup.getZ())
                 .rotate(Vector3.Y, pickupSpin + (pickup.getX() + pickup.getZ()) * 45f);
-            modelShader.setUniformMatrix("u_model", modelTransform);
-            Mesh mesh = pickupMesh(pickup.getKind());
-            mesh.render(modelShader, GL20.GL_TRIANGLES);
+            setAccent(pickupAccent(pickup.getKind()));
+            drawModelMesh(pickupMesh(pickup.getKind()), modelTransform);
         }
 
+        setAccent(null);
         modelShader.setUniformf("u_light", 1.35f);
         modelShader.setUniformf("u_hitFlash", 0f);
         float spin = simulation.getTime() * 180f;
@@ -460,8 +507,7 @@ public final class WorldRenderer implements Disposable {
                 .rotate(Vector3.Z, 26f)
                 .rotate(Vector3.Y, spin)
                 .scale(scale, scale, scale);
-            modelShader.setUniformMatrix("u_model", modelTransform);
-            blastOrbMesh.render(modelShader, GL20.GL_TRIANGLES);
+            drawModelMesh(blastOrbMesh, modelTransform);
         }
 
         modelShader.setUniformf("u_light", 1.4f);
@@ -471,8 +517,98 @@ public final class WorldRenderer implements Disposable {
                 .translate(bolt.position)
                 .rotate(Vector3.Z, 26f)
                 .rotate(Vector3.Y, boltSpin);
-            modelShader.setUniformMatrix("u_model", modelTransform);
-            enemyBoltMesh.render(modelShader, GL20.GL_TRIANGLES);
+            drawModelMesh(enemyBoltMesh, modelTransform);
+        }
+
+        // Sliding 3D bulkhead doors and security console pedestals (single shared mesh each with u_accentColour).
+        modelShader.setUniformf("u_hitFlash", 0f);
+        for (Door door : simulation.doors) {
+            float yaw = door.getOrientation() == Door.Orientation.SPAN_Z ? 90f : 0f;
+            modelTransform.idt()
+                .translate(door.getX(), door.getBottomY(), door.getZ())
+                .rotate(Vector3.Y, yaw);
+            modelShader.setUniformf("u_light", door.isOpening() ? Math.max(roomLight, 1.08f) : roomLight);
+            setAccent(doorAccent(door));
+            drawModelMesh(doorMesh, modelTransform);
+        }
+
+        modelShader.setUniformf("u_light", Math.max(roomLight, 1.05f));
+        for (SecurityConsole console : simulation.consoles) {
+            modelTransform.idt().translate(console.getX(), 0f, console.getZ());
+            setAccent(console.isActivated() ? WorldModels.ACCENT_CONSOLE_ACTIVE : WorldModels.ACCENT_CONSOLE_LOCKED);
+            drawModelMesh(consoleMesh, modelTransform);
+        }
+    }
+
+    private void drawModelMesh(Mesh mesh, Matrix4 transform) {
+        modelShader.setUniformMatrix("u_model", transform);
+        normalMatrix.set(transform).inv().transpose();
+        modelShader.setUniformMatrix("u_normalMatrix", normalMatrix);
+        mesh.render(modelShader, GL20.GL_TRIANGLES);
+    }
+
+    private void setAccent(float[] rgbaGloss) {
+        if (rgbaGloss == null) {
+            modelShader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
+        } else {
+            modelShader.setUniformf("u_accentColour", rgbaGloss[0], rgbaGloss[1], rgbaGloss[2], rgbaGloss[3]);
+        }
+    }
+
+    private void prepareTurretPose(Enemy enemy) {
+        rootTransform.idt().translate(enemy.getX(), 0f, enemy.getZ());
+        rotYaw.setToRotation(Vector3.Y, -enemy.getYaw());
+        rotPitch.setToRotation(Vector3.X, enemy.getAimPitch());
+    }
+
+    private void prepareGuardPose(Enemy enemy) {
+        float swing = MathUtils.sin(enemy.getWalkPhase());
+        float bobY = Math.abs(swing) * 0.018f;
+        float strideDeg = swing * 26f;
+        rootTransform.idt()
+            .translate(enemy.getX(), bobY, enemy.getZ())
+            .rotate(Vector3.Y, -enemy.getYaw());
+        rotLegL.setToRotation(Vector3.X, strideDeg);
+        rotLegR.setToRotation(Vector3.X, -strideDeg);
+        rotArmL.setToRotation(Vector3.X, -strideDeg * 0.8f);
+        rotArmR.setToRotation(Vector3.X, -strideDeg * 0.15f);
+    }
+
+    private void prepareDronePose(Enemy enemy, float time) {
+        float hoverY = 0.03f * MathUtils.sin(time * 5.5f + enemy.getX() * 2f);
+        float tiltPitch = (enemy.getState() == Enemy.State.WINDUP
+            || enemy.getState() == Enemy.State.LUNGING)
+            ? -16f
+            : (enemy.getState() == Enemy.State.PURSUING ? -7f : 0f);
+        rootTransform.idt()
+            .translate(enemy.getX(), hoverY, enemy.getZ())
+            .rotate(Vector3.Y, -enemy.getYaw())
+            .rotate(Vector3.X, tiltPitch);
+    }
+
+    private static float[] doorAccent(Door door) {
+        if (door.isOpening()) return WorldModels.ACCENT_DOOR_OPEN;
+        switch (door.getLockKind()) {
+            case AMBER_KEY:
+                return WorldModels.ACCENT_DOOR_AMBER;
+            case CYAN_KEY:
+                return WorldModels.ACCENT_DOOR_CYAN;
+            case LOCKDOWN:
+                return WorldModels.ACCENT_DOOR_LOCKDOWN;
+            case NONE:
+            default:
+                return WorldModels.ACCENT_DOOR_UNLOCKED;
+        }
+    }
+
+    private static float[] pickupAccent(Pickup.Kind kind) {
+        switch (kind) {
+            case AMBER_KEYCARD:
+                return WorldModels.ACCENT_KEYCARD_AMBER;
+            case CYAN_KEYCARD:
+                return WorldModels.ACCENT_KEYCARD_CYAN;
+            default:
+                return null;
         }
     }
 
@@ -482,6 +618,9 @@ public final class WorldRenderer implements Disposable {
                 return medkitMesh;
             case ARMOR:
                 return armorMesh;
+            case AMBER_KEYCARD:
+            case CYAN_KEYCARD:
+                return keycardMesh;
             case ENERGY_CELL:
             default:
                 return energyCellMesh;
@@ -517,11 +656,28 @@ public final class WorldRenderer implements Disposable {
                 case ARMOR:
                     halo.setColor(0.3f, 0.78f, 1f, 0.45f);
                     break;
+                case AMBER_KEYCARD:
+                    halo.setColor(1f, 0.74f, 0.18f, 0.52f);
+                    break;
+                case CYAN_KEYCARD:
+                    halo.setColor(0.2f, 0.92f, 1f, 0.52f);
+                    break;
                 case ENERGY_CELL:
                 default:
                     halo.setColor(0.75f, 0.42f, 1f, 0.48f);
                     break;
             }
+            decalBatch.add(halo);
+        }
+    }
+
+    private void addConsoleGlows(GameSimulation simulation) {
+        for (SecurityConsole console : simulation.consoles) {
+            Decal halo = nextDecal(orb, 0.46f, 0.46f, true);
+            halo.setPosition(console.getX(), FLOOR_GLOW_HEIGHT, console.getZ());
+            halo.setRotation(Vector3.Y, Vector3.Z);
+            if (console.isActivated()) halo.setColor(0.25f, 0.96f, 0.52f, 0.42f);
+            else halo.setColor(1f, 0.28f, 0.22f, 0.38f);
             decalBatch.add(halo);
         }
     }
@@ -556,24 +712,24 @@ public final class WorldRenderer implements Disposable {
             if (enemy.isDestroyed()) continue;
             float windup = enemy.getWindupProgress();
             if (windup <= 0f) continue;
-            double rad = Math.toRadians(enemy.getYaw());
-            float fx = (float) Math.sin(rad);
-            float fz = (float) -Math.cos(rad);
-            float rx = (float) Math.cos(rad);
-            float rz = (float) Math.sin(rad);
-            float gx = enemy.getX() + fx * 0.18f;
-            float gy = 0.44f;
-            float gz = enemy.getZ() + fz * 0.18f;
-            if (enemy.getKind() == Enemy.Kind.GUARD) {
-                gx = enemy.getX() + fx * 0.17f + rx * 0.162f;
-                gy = 0.46f;
-                gz = enemy.getZ() + fz * 0.17f + rz * 0.162f;
-            } else if (enemy.getKind() == Enemy.Kind.DRONE) {
-                gy = 0.34f;
+            switch (enemy.getKind()) {
+                case TURRET:
+                    prepareTurretPose(enemy);
+                    turretRig.evaluateSocketWorld("telegraph", turretRotations, rootTransform, scratch);
+                    break;
+                case GUARD:
+                    prepareGuardPose(enemy);
+                    guardRig.evaluateSocketWorld("telegraph", guardRotations, rootTransform, scratch);
+                    break;
+                case DRONE:
+                default:
+                    prepareDronePose(enemy, simulation.getTime());
+                    droneRig.evaluateSocketWorld("telegraph", null, rootTransform, scratch);
+                    break;
             }
             float size = 0.14f + 0.18f * windup;
             Decal flare = nextDecal(orb, size, size, true);
-            flare.setPosition(gx, gy, gz);
+            flare.setPosition(scratch);
             flare.lookAt(camera.position, camera.up);
             flare.setColor(1f, 0.35f + 0.25f * windup, 0.18f, 0.45f + 0.45f * windup);
             decalBatch.add(flare);
@@ -661,10 +817,18 @@ public final class WorldRenderer implements Disposable {
         energyCellMesh.dispose();
         turretBaseMesh.dispose();
         turretHeadMesh.dispose();
+        turretBarrelsMesh.dispose();
         droneMesh.dispose();
-        guardBaseMesh.dispose();
-        guardHeadMesh.dispose();
+        guardPelvisMesh.dispose();
+        guardLegLeftMesh.dispose();
+        guardLegRightMesh.dispose();
+        guardTorsoMesh.dispose();
+        guardArmLeftMesh.dispose();
+        guardArmRightMesh.dispose();
         enemyBoltMesh.dispose();
+        doorMesh.dispose();
+        keycardMesh.dispose();
+        consoleMesh.dispose();
         shader.dispose();
         modelShader.dispose();
         decalBatch.dispose();

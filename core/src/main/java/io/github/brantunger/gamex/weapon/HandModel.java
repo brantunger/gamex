@@ -63,4 +63,13 @@ public final class HandModel {
     public static float[] vertices(ObjModel model) {
         return ModelVertices.pack(model, name -> Material.named(name).colour);
     }
+
+    /**
+     * Turns the hand model into deduplicated indexed vertices and 16-bit triangle indices.
+     * @param model the parsed model file
+     * @return indexed vertex and index buffers
+     */
+    public static ModelVertices.IndexedMesh packIndexed(ObjModel model) {
+        return ModelVertices.packIndexed(model, name -> Material.named(name).colour);
+    }
 }

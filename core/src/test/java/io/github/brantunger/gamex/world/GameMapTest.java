@@ -145,29 +145,63 @@ class GameMapTest {
         List<Levels.Stage> stages = new ArrayList<>();
         stages.add(Levels.trainingRange());
         stages.addAll(Levels.campaign());
-        assertEquals(4, stages.size());
+        assertEquals(6, stages.size());
         for (Levels.Stage stage : stages) {
             GameMap map = stage.map;
             assertFalse(Collision.overlapsWall(map, map.getSpawnX(), map.getSpawnZ(), Player.RADIUS), stage.id);
-            boolean[][] reached = new boolean[map.getHeight()][map.getWidth()];
-            ArrayDeque<int[]> open = new ArrayDeque<>();
-            open.add(new int[] {(int) map.getSpawnX(), (int) map.getSpawnZ()});
-            while (!open.isEmpty()) {
-                int[] cell = open.poll();
-                int col = cell[0];
-                int row = cell[1];
-                if (map.isSolid(col, row) || reached[row][col]) continue;
-                reached[row][col] = true;
-                open.add(new int[] {col + 1, row});
-                open.add(new int[] {col - 1, row});
-                open.add(new int[] {col, row + 1});
-                open.add(new int[] {col, row - 1});
+            Door.LockKind[][] locks = new Door.LockKind[map.getHeight()][map.getWidth()];
+            for (GameMap.DoorSpawn ds : map.getDoorSpawns()) {
+                locks[ds.row][ds.col] = ds.lockKind;
             }
+
+            boolean haveAmber = false;
+            boolean haveCyan = false;
+            boolean consoleActive = false;
+            boolean[][] reached = floodReachable(map, locks, false, false, false);
+            if (!map.getDoorSpawns().isEmpty() && map.hasExit()) {
+                boolean sealedExit = false;
+                for (GameMap.DoorSpawn ds : map.getDoorSpawns()) {
+                    if (ds.lockKind != Door.LockKind.NONE) {
+                        sealedExit = true;
+                        break;
+                    }
+                }
+                if (sealedExit) {
+                    assertFalse(reached[(int) map.getExitZ()][(int) map.getExitX()],
+                        stage.id + " exit should be sealed behind locked bulkheads initially");
+                }
+            }
+
+            boolean progressed = true;
+            while (progressed) {
+                progressed = false;
+                reached = floodReachable(map, locks, haveAmber, haveCyan, consoleActive);
+                for (GameMap.PickupSpawn p : map.getPickupSpawns()) {
+                    if (!reached[(int) p.z][(int) p.x]) continue;
+                    if (p.kind == Pickup.Kind.AMBER_KEYCARD && !haveAmber) {
+                        haveAmber = true;
+                        progressed = true;
+                    } else if (p.kind == Pickup.Kind.CYAN_KEYCARD && !haveCyan) {
+                        haveCyan = true;
+                        progressed = true;
+                    }
+                }
+                for (GameMap.ConsoleSpawn c : map.getConsoleSpawns()) {
+                    if (reached[(int) c.z][(int) c.x] && !consoleActive) {
+                        consoleActive = true;
+                        progressed = true;
+                    }
+                }
+            }
+
             for (GameMap.TargetSpawn t : map.getTargetSpawns()) {
                 assertTrue(reached[(int) t.z][(int) t.x], stage.id + " unreachable target at " + t.x + "," + t.z);
             }
             for (GameMap.PickupSpawn p : map.getPickupSpawns()) {
                 assertTrue(reached[(int) p.z][(int) p.x], stage.id + " unreachable pickup at " + p.x + "," + p.z);
+            }
+            for (GameMap.ConsoleSpawn c : map.getConsoleSpawns()) {
+                assertTrue(reached[(int) c.z][(int) c.x], stage.id + " unreachable console at " + c.x + "," + c.z);
             }
             for (GameMap.EnemySpawn e : map.getEnemySpawns()) {
                 assertTrue(reached[(int) e.z][(int) e.x], stage.id + " unreachable enemy at " + e.x + "," + e.z);
@@ -176,6 +210,29 @@ class GameMapTest {
                 assertTrue(reached[(int) map.getExitZ()][(int) map.getExitX()], stage.id + " unreachable exit");
             }
         }
+    }
+
+    private static boolean[][] floodReachable(GameMap map, Door.LockKind[][] locks,
+                                              boolean haveAmber, boolean haveCyan, boolean consoleActive) {
+        boolean[][] reached = new boolean[map.getHeight()][map.getWidth()];
+        ArrayDeque<int[]> open = new ArrayDeque<>();
+        open.add(new int[] {(int) map.getSpawnX(), (int) map.getSpawnZ()});
+        while (!open.isEmpty()) {
+            int[] cell = open.poll();
+            int col = cell[0];
+            int row = cell[1];
+            if (map.isSolid(col, row) || reached[row][col]) continue;
+            Door.LockKind lock = locks[row][col];
+            if (lock == Door.LockKind.AMBER_KEY && !haveAmber) continue;
+            if (lock == Door.LockKind.CYAN_KEY && !haveCyan) continue;
+            if (lock == Door.LockKind.LOCKDOWN && !consoleActive) continue;
+            reached[row][col] = true;
+            open.add(new int[] {col + 1, row});
+            open.add(new int[] {col - 1, row});
+            open.add(new int[] {col, row + 1});
+            open.add(new int[] {col, row - 1});
+        }
+        return reached;
     }
 
     @Test
@@ -188,5 +245,32 @@ class GameMapTest {
         assertEquals(Enemy.Kind.DRONE, map.getEnemySpawns().get(0).kind);
         assertEquals(Enemy.Kind.TURRET, map.getEnemySpawns().get(1).kind);
         assertEquals(Enemy.Kind.GUARD, map.getEnemySpawns().get(2).kind);
+    }
+
+    @Test
+    void parsesBulkheadDoorsKeycardsAndSecurityConsolesAndOrientsDoorsToFlankingWalls() {
+        GameMap map = GameMap.parse(
+            "###########",
+            "#>k#.#.#S.#",
+            "#..=.A.Cc.#",
+            "#####L#####",
+            "#.........#",
+            "###########");
+        assertEquals(4, map.getDoorSpawns().size());
+        assertEquals(Door.LockKind.NONE, map.getDoorSpawns().get(0).lockKind);
+        assertEquals(Door.Orientation.SPAN_Z, map.getDoorSpawns().get(0).orientation);
+        assertEquals(Door.LockKind.AMBER_KEY, map.getDoorSpawns().get(1).lockKind);
+        assertEquals(Door.Orientation.SPAN_Z, map.getDoorSpawns().get(1).orientation);
+        assertEquals(Door.LockKind.CYAN_KEY, map.getDoorSpawns().get(2).lockKind);
+        assertEquals(Door.Orientation.SPAN_Z, map.getDoorSpawns().get(2).orientation);
+        assertEquals(Door.LockKind.LOCKDOWN, map.getDoorSpawns().get(3).lockKind);
+        assertEquals(Door.Orientation.SPAN_X, map.getDoorSpawns().get(3).orientation);
+
+        assertEquals(2, map.getPickupSpawns().size());
+        assertEquals(Pickup.Kind.AMBER_KEYCARD, map.getPickupSpawns().get(0).kind);
+        assertEquals(Pickup.Kind.CYAN_KEYCARD, map.getPickupSpawns().get(1).kind);
+        assertEquals(1, map.getConsoleSpawns().size());
+        assertEquals(8.5f, map.getConsoleSpawns().get(0).x, EPSILON);
+        assertEquals(1.5f, map.getConsoleSpawns().get(0).z, EPSILON);
     }
 }

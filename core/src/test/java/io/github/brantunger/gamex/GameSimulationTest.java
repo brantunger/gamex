@@ -2,6 +2,7 @@ package io.github.brantunger.gamex;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.audio.SoundEvent;
@@ -12,8 +13,10 @@ import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.world.Effect;
+import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Levels;
+import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.Target;
 import org.junit.jupiter.api.Test;
 
@@ -593,5 +596,120 @@ class GameSimulationTest {
         List<SoundEvent> turretEvents = turretSim.drainSoundEvents();
         assertTrue(countSound(turretEvents, SoundEvent.Type.ENEMY_SHOOT) >= 1);
         assertEquals(1, countSound(turretEvents, SoundEvent.Type.PLAYER_DEATH));
+    }
+
+    @Test
+    void unlockedBulkheadDoorOpensWithEStaysOpenAndUnblocksMovement() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#######",
+            "#.#...#",
+            "#.>=.X#",
+            "#.#...#",
+            "#######"));
+        PlayerInput input = new PlayerInput();
+
+        // Closed bulkhead shows interact prompt and blocks movement into the east hall.
+        assertEquals("[E] OPEN BULKHEAD", sim.getInteractionPrompt());
+        input.moveForward = 1f;
+        for (int i = 0; i < 40; i++) sim.update(FRAME, input);
+        assertTrue(sim.player.position.x < 3.5f, "blocked by closed bulkhead: " + sim.player.position.x);
+
+        // Pressing E opens the bulkhead and emits spatial DOOR_OPEN.
+        sim.drainSoundEvents();
+        input.moveForward = 0f;
+        input.interact = true;
+        sim.update(FRAME, input);
+        input.interact = false;
+        assertTrue(sim.doors.get(0).isOpening());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.DOOR_OPEN));
+        assertNull(sim.getInteractionPrompt(), "opening doors clear the interact prompt");
+
+        // After retracting smoothly into ceiling, it remains open permanently and lets player reach X.
+        for (int i = 0; i < 35; i++) sim.update(FRAME, input);
+        assertTrue(sim.doors.get(0).isOpen());
+        input.moveForward = 1f;
+        for (int i = 0; i < 60 && !sim.isLevelCleared(); i++) sim.update(FRAME, input);
+        assertTrue(sim.doors.get(0).isOpen());
+        assertTrue(sim.isLevelCleared(), "walked through permanently open bulkhead to exit");
+    }
+
+    @Test
+    void keycardsUnlockMatchingAmberAndCyanBulkheadsWhileRefusingWithoutCard() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#########",
+            "###...###",
+            "#k>A.C.c#",
+            "###...###",
+            "#########"));
+        PlayerInput input = new PlayerInput();
+
+        // Attempt Amber bulkhead before picking up Amber keycard.
+        assertEquals("NEEDS AMBER KEYCARD", sim.getInteractionPrompt());
+        input.interact = true;
+        sim.update(FRAME, input);
+        input.interact = false;
+        assertFalse(sim.doors.get(0).isOpening());
+        assertEquals("NEEDS AMBER KEYCARD", sim.getToastMessage());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.DOOR_LOCKED));
+
+        // Walk west to pick up Amber keycard.
+        input.moveForward = -1f;
+        for (int i = 0; i < 35; i++) sim.update(FRAME, input);
+        assertTrue(sim.hasKeycard(Pickup.Kind.AMBER_KEYCARD));
+        assertFalse(sim.hasKeycard(Pickup.Kind.CYAN_KEYCARD));
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.PICKUP_KEYCARD));
+
+        // Walk east up to Amber bulkhead and unlock it.
+        input.moveForward = 1f;
+        for (int i = 0; i < 45; i++) sim.update(FRAME, input);
+        assertEquals("[E] UNLOCK AMBER BULKHEAD", sim.getInteractionPrompt());
+        input.moveForward = 0f;
+        input.interact = true;
+        sim.update(FRAME, input);
+        input.interact = false;
+        assertTrue(sim.doors.get(0).isOpening());
+        assertEquals("AMBER BULKHEAD UNLOCKED", sim.getToastMessage());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.DOOR_OPEN));
+
+        // Let Amber door open, cross through, confirm Cyan bulkhead still refuses.
+        for (int i = 0; i < 35; i++) sim.update(FRAME, input);
+        input.moveForward = 1f;
+        for (int i = 0; i < 45; i++) sim.update(FRAME, input);
+        assertEquals("NEEDS CYAN KEYCARD", sim.getInteractionPrompt());
+    }
+
+    @Test
+    void securityConsoleIsIndestructibleCoverOverridingAllLockdownsAndAlertingEnemies() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#########",
+            "#..#....#",
+            "#>S...LD#",
+            "#..#....#",
+            "#..L....#",
+            "#########"));
+        PlayerInput input = new PlayerInput();
+
+        // Shooting the Security Console acts as indestructible cover without fake hitmarkers.
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+        assertFalse(sim.consoles.get(0).isDestroyed());
+        assertEquals(0f, sim.getHitMarker(), 1e-6f);
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.WALL_IMPACT));
+        assertEquals(Enemy.State.DORMANT, sim.enemies.get(0).getState());
+
+        // Activating the console overrides every L lockdown door simultaneously and wakes the ambush drone.
+        assertEquals("[E] OVERRIDE LOCKDOWN", sim.getInteractionPrompt());
+        input.interact = true;
+        sim.update(FRAME, input);
+        input.interact = false;
+        assertTrue(sim.consoles.get(0).isActivated());
+        assertEquals("LOCKDOWN OVERRIDDEN", sim.getToastMessage());
+        assertTrue(sim.doors.get(0).isOpening());
+        assertTrue(sim.doors.get(1).isOpening());
+        assertTrue(sim.enemies.get(0).getState() != Enemy.State.DORMANT);
+        List<SoundEvent> events = sim.drainSoundEvents();
+        assertEquals(1, countSound(events, SoundEvent.Type.CONSOLE_ACTIVATE));
+        assertEquals(2, countSound(events, SoundEvent.Type.DOOR_OPEN));
     }
 }

@@ -4,12 +4,13 @@ An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
 blast, and a horizontal energy dash. Battle three hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
-and **Guard Bots**), chain explosive coolant canisters, collect 3D health, armor and energy pickups, and clear the
-3-stage campaign (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**) across Easy, Normal or Hard
-difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training Range**. Surface and
-effect textures as well as every weapon, combat and menu sound are synthesised in code at start-up, while every 3D
-graphical object — the pistol, the gloved hand holding it, targets, enemies, projectiles and pickups — is loaded from a
-Wavefront `.obj` model in `assets/models/`.
+and **Guard Bots**), chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
+keycards, override Security Consoles, collect 3D health, armor and energy pickups, and clear the 5-stage campaign
+(**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**) across
+Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
+Range**. Surface and effect textures as well as every weapon, combat and menu sound are synthesised in code at
+start-up, while every 3D graphical object — the pistol, the gloved hand holding it, targets, enemies, projectiles,
+pickups, bulkheads, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
 
@@ -42,6 +43,7 @@ While playing:
 | Mouse | Look around |
 | Left mouse button | Fire the pistol; hold to keep firing |
 | Right mouse button | Hold to charge the blast, release to fire it |
+| `E` | Open unlocked bulkheads, unlock matching keycard doors, or override Security Consoles |
 | `R` | Quick-restart the current stage from your entry state |
 | `Esc` | Open the pause menu and free the cursor; `Esc` again resumes |
 
@@ -74,7 +76,9 @@ campaign stages with their best rank and lets you start a fresh run from any unl
 
 - **01: Outer Breach** introduces Rusher Drones and Sentry Turrets and ends at the extraction pad.
 - **02: Coolant Core** adds mobile Guard Bots across multi-lane reactor conduits.
-- **03: Security Hub** combines coordinated squads of all three archetypes before final extraction (`CAMPAIGN COMPLETE`).
+- **03: Security Hub** combines coordinated squads of all three archetypes before extraction.
+- **04: Lockdown Wing** introduces sliding bulkhead doors (`=`), Amber keycard wing gating (`k` -> `A`), and a Security Console lockdown override (`S` -> `L`) protecting extraction and ambush bays.
+- **05: Command Vault** chains Amber and Cyan keycard clearances (`k` -> `A`, `c` -> `C`) to a vault Security Console override and flanking ambush before final extraction (`CAMPAIGN COMPLETE`).
 - The **Training Range** ends when every target is destroyed. It is always played on Normal.
 - A cleared stage shows a tally: clear time against par, hostiles cleared on combat stages (or targets cleared in the
   Training Range), damage taken and a rank from `S` down to `C`. The best time and rank for each stage and difficulty
@@ -136,6 +140,11 @@ Dodged enemy bolts detonate coolant canisters on impact while stopping harmlessl
 medkit restores 25 health, a vest adds 25 armor and a cell adds 35 energy. Walk over a pickup to take it; one whose meter
 is already full stays where it is.
 
+**Bulkheads, Keycards & Consoles.** Sliding steel bulkhead doors (`=`) open permanently with `E` once breached,
+unlocking sightlines and enemy pathfinding routes. Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C`
+bulkheads in the stage and appear on the HUD while held; `S` Security Consoles act as indestructible cover until
+activated with `E`, simultaneously unsealing all `L` lockdown bulkheads and alerting nearby hostiles.
+
 ## Debug screenshot mode
 
 For checking a launch with nobody at the keyboard, the game can save one frame as a PNG and quit. It is switched
@@ -145,7 +154,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach` or `title`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown` or `stages`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
@@ -209,9 +218,10 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `weapon`: the pistol, the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
     `EnemyProjectile`), explosion damage, the pistol's 3D model and materials (`PistolModel`), the colours for the
     hand's mesh (`HandModel`) and the numbers that animate both.
-  - `model`: a parser for Wavefront OBJ model files (`ObjModel`) and vertex packing (`ModelVertices`). Neither uses
-    graphics types.
-  - `render`: the 3D view, the pass that draws the pistol and hand over it, and the textures painted in code.
+  - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
+    a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
+    indexed deduplication). None use graphics types.
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the pistol and hand over it (`ViewmodelRenderer`), and the textures painted in code.
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
     or input types) and the built-in pixel font.
@@ -221,17 +231,17 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
     (`LookAccumulator`), and handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings and the window icons.
+- `tools`: the Gradle model authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
+  DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `HandSculpt`, `GenerateAllModels`, and the interactive LWJGL3
+  previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads at start-up:
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`: the mesh of the first-person pistol (body and animated slide).
   - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/pickup-*.obj`: 3D meshes for
-    targets, pickups and blast projectiles.
+    targets, pickups, keycards and blast projectiles.
+  - `models/door-bulkhead.obj`, `models/security-console.obj`: 3D meshes for sliding bulkhead doors and security consoles.
   - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-bolt.obj`: 3D meshes
     for articulated enemies and enemy plasma bolts.
-- `tools`: standalone single-file Java generators that build the `.obj` models:
-  - `tools/viewmodel/HandSculpt.java` and `tools/viewmodel/PistolSculpt.java` (see
-    [tools/viewmodel/README.md](tools/viewmodel/README.md)).
-  - `tools/world/WorldSculpt.java` (`java tools/world/WorldSculpt.java assets/models`).
 
 ## Tests
 
@@ -239,19 +249,17 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ./gradlew test
 ```
 
-The tests are JUnit Jupiter tests in `core/src/test` and `desktop/src/test`. They need no window or graphics context.
-`GeneratedModelsTest`, `HandModelTest`, `PistolModelTest` and `WorldModelsTest` read `.obj` models from `assets` and
-run the standalone generators in `tools/`; the `core` test task tracks both folders and reruns when any model or
-generator changes. They cover:
+The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
+graphics context. `HandModelTest`, `PistolModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
+track model changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest`) invokes `GenerateAllModels` directly
+to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex deduplication. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
   a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
   hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, headless sound
   events (weapon, target, enemy, pickup, charge-audio and edge-triggered `LOW ENERGY`), and a stage ending when its
   last target breaks.
-- `world`: layout parsing (including pickups, enemies and exit), the first level (the spawn is clear of walls and every
-  target can be reached), the Training Range and all three campaign stages (every target, enemy, pickup and exit can be
-  reached), collision, hitscan, grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
+- `world`: layout parsing (including doors, keycards, consoles, pickups, enemies and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all five campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, hitscan, grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
 - `player`: view angles and movement, armor absorbing damage, death, and the dash (its cost, distance, cooldown
@@ -286,7 +294,9 @@ The project uses the [Gradle](https://gradle.org/) wrapper: run tasks with `./gr
 Windows.
 
 - `desktop:run`: starts the game.
-- `test`: runs the unit tests.
+- `tools:generateModels`: regenerates every sculpted `.obj` model in `assets/models/`.
+- `tools:preview`: launches the interactive 3D OBJ model previewer (`R` rebuilds & reloads live).
+- `test`: runs the unit tests across `core`, `desktop`, and `tools`.
 - `build`: builds and tests every project.
 - `desktop:jar`: builds a runnable jar in `desktop/build/libs`.
 - `clean`: removes the `build` folders.

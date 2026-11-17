@@ -7,9 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
 
 class ObjModelTest {
 
@@ -461,5 +465,45 @@ class ObjModelTest {
         for (int c = 0; c < 3; c++) {
             assertArrayEquals(new float[] {0f, 0f, 1f}, corner(extremeFlat.getNormals(), 0, c), EPSILON);
         }
+    }
+
+    @Test
+    void parsesDirectivesAndMultiWordMaterialsAndEvaluatesModelRig() {
+        String text = ""
+            + "# @accent neon trim\n"
+            + "# @part base parent=root pivot=0,0,0\n"
+            + "# @part turret parent=base pivot=0,1,0\n"
+            + "# @part barrel parent=turret pivot=0,2,-0.5\n"
+            + "# @socket muzzle part=barrel pos=0,2,-1.5\n"
+            + "usemtl brushed steel\n"
+            + "v 0 0 0\nv 1 0 0\nv 0 1 0\n"
+            + "# @part turret\n"
+            + "f 1 2 3\n";
+        ObjModel model = ObjModel.parse(text);
+        assertEquals("brushed steel", model.getMaterial(0));
+        assertEquals("turret", model.getPart(0));
+        assertTrue(model.isAccentMaterial("neon trim"));
+        assertFalse(model.isAccentMaterial("brushed steel"));
+        assertEquals("turret", model.getPartSpec("barrel").parent);
+
+        ModelRig rig = new ModelRig(model);
+        Matrix4 root = new Matrix4().translate(10f, 0f, 0f);
+        Map<String, Matrix4> rot = Collections.singletonMap("barrel", new Matrix4().rotate(Vector3.X, 90f));
+        Vector3 muzzleWorld = rig.evaluateSocketWorld("muzzle", rot, root, new Vector3());
+        // Local offset (0, 0, -1) from barrel pivot (0, 2, -0.5) rotated +90 deg around +X gives (0, +1, 0),
+        // added to world pivot (10, 2, -0.5) -> (10, 3, -0.5).
+        assertEquals(10f, muzzleWorld.x, 1e-4f);
+        assertEquals(3f, muzzleWorld.y, 1e-4f);
+        assertEquals(-0.5f, muzzleWorld.z, 1e-4f);
+
+        assertAll(
+            () -> rejectsSaying("# @part\n", "Line 1", "@part"),
+            () -> rejectsSaying("# @socket\n", "Line 1", "@socket"),
+            () -> rejectsSaying("# @accent\n", "Line 1", "@accent"),
+            () -> rejectsSaying("# @part bad pivot=1,2\n", "Line 1", "@part pivot"));
+
+        ObjModel cyclic = ObjModel.parse("# @part a parent=b pivot=0,0,0\n# @part b parent=a pivot=0,0,0\n");
+        assertThrows(IllegalStateException.class,
+            () -> new ModelRig(cyclic).evaluatePartTransform("a", null, new Matrix4(), new Matrix4()));
     }
 }

@@ -7,6 +7,7 @@ import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -101,6 +102,7 @@ public final class Enemy implements Damageable {
     private float strafeSign = 1f;
     private float strafeTimer = STRAFE_SWITCH_TIME;
     private float walkPhase;
+    private float aimPitch;
 
     /**
      * Spawns an enemy at {@code (x, z)} facing the longest unobstructed cardinal sightline.
@@ -197,6 +199,11 @@ public final class Enemy implements Damageable {
         return walkPhase;
     }
 
+    /** @return vertical barrel aim pitch in degrees (positive pitches slightly upward). */
+    public float getAimPitch() {
+        return aimPitch;
+    }
+
     /**
      * @return wind-up intensity in [0, 1] during attack telegraphing or burst fire, otherwise 0.
      */
@@ -234,6 +241,17 @@ public final class Enemy implements Damageable {
      */
     public void update(float dt, GameMap map, Pathfinder pathfinder, Player player, Difficulty difficulty,
                        List<? extends Damageable> worldBlockers, List<EnemyProjectile> outProjectiles) {
+        update(dt, map, pathfinder, player, difficulty, worldBlockers,
+            Collections.<Door>emptyList(), outProjectiles);
+    }
+
+    /**
+     * Advances enemy perception, pathing, attack state machine and projectile firing for one step, respecting
+     * bulkhead doors for sightlines, BFS routing, and movement collision.
+     */
+    public void update(float dt, GameMap map, Pathfinder pathfinder, Player player, Difficulty difficulty,
+                       List<? extends Damageable> worldBlockers, List<Door> doors,
+                       List<EnemyProjectile> outProjectiles) {
         if (dt <= 0f) return;
         hitFlash = Math.max(0f, hitFlash - dt);
         if (isDestroyed() || player == null || player.isDead()) {
@@ -249,7 +267,7 @@ public final class Enemy implements Damageable {
         float dx = player.position.x - position.x;
         float dz = player.position.y - position.y;
         float dist = (float) Math.hypot(dx, dz);
-        boolean hasLos = dist < 1e-4f || Hitscan.hasLineOfSight(map, position.x, position.y,
+        boolean hasLos = dist < 1e-4f || Hitscan.hasLineOfSight(map, doors, position.x, position.y,
             player.position.x, player.position.y);
 
         if (state == State.DORMANT) {
@@ -277,13 +295,13 @@ public final class Enemy implements Damageable {
                 updateTurret(dt, dx, dz, dist, hasLos, speedScale, player, outProjectiles);
                 break;
             case GUARD:
-                updateGuard(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, player, worldBlockers,
+                updateGuard(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, player, worldBlockers, doors,
                     outProjectiles);
                 break;
             case DRONE:
             default:
                 updateDrone(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, damageScale, player,
-                    worldBlockers);
+                    worldBlockers, doors);
                 break;
         }
     }
@@ -303,6 +321,12 @@ public final class Enemy implements Damageable {
         if (hasLos && dist > 1e-4f) {
             float targetYaw = yawToward(dx, dz);
             yaw = turnToward(yaw, targetYaw, TURRET_TURN_RATE * dt);
+            float targetPitch = (float) Math.toDegrees(
+                Math.atan2((Player.EYE_HEIGHT - 0.06f) - WorldModels.TURRET_MUZZLE_Y, Math.max(0.1f, dist)));
+            targetPitch = Math.max(-28f, Math.min(28f, targetPitch));
+            aimPitch = moveToward(aimPitch, targetPitch, 90f * dt);
+        } else {
+            aimPitch = moveToward(aimPitch, 0f, 60f * dt);
         }
 
         if (state == State.WINDUP) {
@@ -352,10 +376,11 @@ public final class Enemy implements Damageable {
         float fz = (float) -Math.cos(rad);
         float rx = (float) Math.cos(rad);
         float rz = (float) Math.sin(rad);
-        float side = alternateBarrel ? 0.070f : -0.070f;
+        float side = alternateBarrel ? WorldModels.TURRET_BARREL_X : -WorldModels.TURRET_BARREL_X;
         alternateBarrel = !alternateBarrel;
-        Vector3 muzzle = new Vector3(position.x + fx * 0.16f + rx * side, 0.44f,
-            position.y + fz * 0.16f + rz * side);
+        float fwd = -WorldModels.TURRET_MUZZLE_Z;
+        Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * side, WorldModels.TURRET_MUZZLE_Y,
+            position.y + fz * fwd + rz * side);
         Vector3 aim = new Vector3(player.position.x - muzzle.x, (Player.EYE_HEIGHT - 0.06f) - muzzle.y,
             player.position.y - muzzle.z).nor();
         outProjectiles.add(new EnemyProjectile(muzzle, aim, TURRET_BOLT_SPEED * speedScale, TURRET_BOLT_DAMAGE, this));
@@ -363,7 +388,8 @@ public final class Enemy implements Damageable {
 
     private void updateGuard(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
                              boolean hasLos, float speedScale, Player player,
-                             List<? extends Damageable> worldBlockers, List<EnemyProjectile> outProjectiles) {
+                             List<? extends Damageable> worldBlockers, List<Door> doors,
+                             List<EnemyProjectile> outProjectiles) {
         strafeTimer -= dt;
         if (strafeTimer <= 0f) {
             strafeSign = -strafeSign;
@@ -390,7 +416,7 @@ public final class Enemy implements Damageable {
                 moveZ = rightZ * strafeSign + dirZ * rangeAdjust;
             }
             yaw = turnToward(yaw, yawToward(dx, dz), 420f * dt);
-        } else if (pathfinder != null && pathfinder.nextDirection(map, position.x, position.y, steerDir)) {
+        } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
             yaw = turnToward(yaw, yawToward(moveX, moveZ), 360f * dt);
@@ -401,7 +427,7 @@ public final class Enemy implements Damageable {
             float step = kind.moveSpeed * moveScale * dt;
             float beforeX = position.x;
             float beforeZ = position.y;
-            moveSolid(map, worldBlockers, player, moveX / moveLen * step, moveZ / moveLen * step, true);
+            moveSolid(map, worldBlockers, doors, player, moveX / moveLen * step, moveZ / moveLen * step, true);
             float moved = Vector2.dst(beforeX, beforeZ, position.x, position.y);
             walkPhase += moved * 7.5f;
             if (moved < step * 0.25f) {
@@ -436,8 +462,9 @@ public final class Enemy implements Damageable {
         float fz = (float) -Math.cos(rad);
         float rx = (float) Math.cos(rad);
         float rz = (float) Math.sin(rad);
-        Vector3 muzzle = new Vector3(position.x + fx * 0.16f + rx * 0.162f, 0.46f,
-            position.y + fz * 0.16f + rz * 0.162f);
+        float fwd = -WorldModels.GUARD_MUZZLE_Z;
+        Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * WorldModels.GUARD_MUZZLE_X,
+            WorldModels.GUARD_MUZZLE_Y, position.y + fz * fwd + rz * WorldModels.GUARD_MUZZLE_X);
         Vector3 aim = new Vector3(player.position.x - muzzle.x, (Player.EYE_HEIGHT - 0.06f) - muzzle.y,
             player.position.y - muzzle.z).nor();
         outProjectiles.add(new EnemyProjectile(muzzle, aim, GUARD_BOLT_SPEED * speedScale, GUARD_BOLT_DAMAGE, this));
@@ -445,7 +472,7 @@ public final class Enemy implements Damageable {
 
     private void updateDrone(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
                              boolean hasLos, float speedScale, float damageScale, Player player,
-                             List<? extends Damageable> worldBlockers) {
+                             List<? extends Damageable> worldBlockers, List<Door> doors) {
         if (state == State.WINDUP) {
             stateTimer -= dt;
             if (stateTimer <= 0f) {
@@ -460,18 +487,18 @@ public final class Enemy implements Damageable {
         if (state == State.LUNGING) {
             stateTimer -= dt;
             float step = DRONE_LUNGE_SPEED * dt;
-            moveSolid(map, worldBlockers, player, lungeDirX * step, lungeDirZ * step, false);
+            moveSolid(map, worldBlockers, doors, player, lungeDirX * step, lungeDirZ * step, false);
             float nowDist = Vector2.dst(position.x, position.y, player.position.x, player.position.y);
             float contactDist = Player.RADIUS + kind.radius + 0.12f;
             if (!lungeHitDealt && nowDist <= contactDist) {
                 player.damage(DRONE_LUNGE_DAMAGE * damageScale, position.x, position.y);
                 lungeHitDealt = true;
-                keepOutsidePlayer(map, worldBlockers, player);
+                keepOutsidePlayer(map, worldBlockers, doors, player);
                 enterRecovering(speedScale);
                 return;
             }
             if (stateTimer <= 0f) {
-                keepOutsidePlayer(map, worldBlockers, player);
+                keepOutsidePlayer(map, worldBlockers, doors, player);
                 enterRecovering(speedScale);
             }
             return;
@@ -507,14 +534,14 @@ public final class Enemy implements Damageable {
         if (hasLos && dist > 1e-4f) {
             moveX = dx / dist;
             moveZ = dz / dist;
-        } else if (pathfinder != null && pathfinder.nextDirection(map, position.x, position.y, steerDir)) {
+        } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
         }
         if (Math.hypot(moveX, moveZ) > 1e-4f) {
             yaw = turnToward(yaw, yawToward(moveX, moveZ), 540f * dt);
             float step = kind.moveSpeed * dt;
-            moveSolid(map, worldBlockers, player, moveX * step, moveZ * step, true);
+            moveSolid(map, worldBlockers, doors, player, moveX * step, moveZ * step, true);
         }
     }
 
@@ -524,16 +551,16 @@ public final class Enemy implements Damageable {
         stateTimer = stateDuration;
     }
 
-    private void moveSolid(GameMap map, List<? extends Damageable> worldBlockers, Player player,
+    private void moveSolid(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors, Player player,
                            float moveX, float moveZ, boolean separateFromPlayer) {
         float beforeX = position.x;
         float beforeZ = position.y;
         List<Damageable> blockers = blockersExcludingSelf(worldBlockers);
-        Collision.move(map, blockers, position, moveX, moveZ, kind.radius);
+        Collision.move(map, blockers, doors, position, moveX, moveZ, kind.radius);
         if (separateFromPlayer && player != null && !player.isDead()) {
-            keepOutsidePlayer(map, blockers, player);
+            keepOutsidePlayer(map, blockers, doors, player);
         }
-        if (Collision.overlapsWall(map, position.x, position.y, kind.radius)) {
+        if (Collision.overlapsWall(map, doors, position.x, position.y, kind.radius)) {
             position.set(beforeX, beforeZ);
         }
     }
@@ -551,7 +578,8 @@ public final class Enemy implements Damageable {
         return otherBlockers;
     }
 
-    private void keepOutsidePlayer(GameMap map, List<? extends Damageable> worldBlockers, Player player) {
+    private void keepOutsidePlayer(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors,
+                                   Player player) {
         List<? extends Damageable> blockers = worldBlockers == otherBlockers
             ? worldBlockers
             : blockersExcludingSelf(worldBlockers);
@@ -570,7 +598,7 @@ public final class Enemy implements Damageable {
         }
         float pushX = player.position.x + dx / dist * minDist;
         float pushZ = player.position.y + dz / dist * minDist;
-        if (!Collision.overlapsWall(map, pushX, pushZ, kind.radius)) {
+        if (!Collision.overlapsWall(map, doors, pushX, pushZ, kind.radius)) {
             position.set(pushX, pushZ);
             if (Collision.overlapsSolid(blockers, position, kind.radius)) {
                 position.set(beforeX, beforeZ);
@@ -586,6 +614,12 @@ public final class Enemy implements Damageable {
         float diff = angleDiff(current, target);
         if (Math.abs(diff) <= maxStep) return target;
         return normalizeYaw(current + Math.copySign(maxStep, diff));
+    }
+
+    private static float moveToward(float current, float target, float maxStep) {
+        float diff = target - current;
+        if (Math.abs(diff) <= maxStep) return target;
+        return current + Math.copySign(maxStep, diff);
     }
 
     private static float angleDiff(float from, float to) {

@@ -4,8 +4,10 @@ import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.GameMap;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -93,6 +95,21 @@ public final class BlastProjectile {
      */
     public boolean update(float dt, GameMap map, List<? extends Damageable> targets, Player player,
                           float playerDamageScale) {
+        return update(dt, map, targets, Collections.<Door>emptyList(), player, playerDamageScale);
+    }
+
+    /**
+     * Flies for one time step against map walls, bulkhead door slabs, and live {@link Damageable} targets.
+     * @param dt the time step in seconds
+     * @param map the map to collide with
+     * @param targets the objects the ball can hit and its explosion can damage
+     * @param doors bulkhead doors that block both flight and blast splash while closed
+     * @param player optional player to take scaled splash self-damage, or null
+     * @param playerDamageScale multiplier applied to splash damage on {@code player}
+     * @return whether the ball exploded during this step
+     */
+    public boolean update(float dt, GameMap map, List<? extends Damageable> targets, List<Door> doors,
+                          Player player, float playerDamageScale) {
         if (exploded) return false;
         float distance = SPEED * dt;
         int steps = Math.max(1, (int) Math.ceil(distance / MAX_STEP));
@@ -101,7 +118,7 @@ public final class BlastProjectile {
             float x = position.x + direction.x * step;
             float y = position.y + direction.y * step;
             float z = position.z + direction.z * step;
-            if (touches(x, y, z, map, targets)) {
+            if (touches(x, y, z, map, targets, doors)) {
                 float freeX = position.x;
                 float freeY = position.y;
                 float freeZ = position.z;
@@ -112,7 +129,7 @@ public final class BlastProjectile {
                     float midX = (freeX + blockedX) * 0.5f;
                     float midY = (freeY + blockedY) * 0.5f;
                     float midZ = (freeZ + blockedZ) * 0.5f;
-                    if (touches(midX, midY, midZ, map, targets)) {
+                    if (touches(midX, midY, midZ, map, targets, doors)) {
                         blockedX = midX;
                         blockedY = midY;
                         blockedZ = midZ;
@@ -124,7 +141,7 @@ public final class BlastProjectile {
                 }
                 position.set(freeX, freeY, freeZ);
                 exploded = true;
-                Explosion.apply(map, position.x, position.z, blastRadius(charge), blastDamage(charge), targets,
+                Explosion.apply(map, doors, position.x, position.z, blastRadius(charge), blastDamage(charge), targets,
                     player, playerDamageScale);
                 return true;
             }
@@ -133,9 +150,15 @@ public final class BlastProjectile {
         return false;
     }
 
-    private static boolean touches(float x, float y, float z, GameMap map, List<? extends Damageable> targets) {
+    private static boolean touches(float x, float y, float z, GameMap map, List<? extends Damageable> targets,
+                                   List<Door> doors) {
         if (y - RADIUS <= 0f || y + RADIUS >= GameMap.WALL_HEIGHT) return true;
         if (Collision.overlapsWall(map, x, z, RADIUS)) return true;
+        if (doors != null) {
+            for (int i = 0; i < doors.size(); i++) {
+                if (doors.get(i).overlapsSphere(x, y, z, RADIUS)) return true;
+            }
+        }
         for (int i = 0; i < targets.size(); i++) {
             Damageable target = targets.get(i);
             if (target.isDestroyed() || y - RADIUS > target.getHeight()) continue;

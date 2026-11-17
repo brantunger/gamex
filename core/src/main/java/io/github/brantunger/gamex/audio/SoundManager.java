@@ -183,6 +183,14 @@ public final class SoundManager implements Disposable {
             case PICKUP_ARMOR:
             case PICKUP_ENERGY:
                 return 0.65f;
+            case PICKUP_KEYCARD:
+                return 0.68f;
+            case DOOR_LOCKED:
+                return 0.62f;
+            case DOOR_OPEN:
+                return 0.72f;
+            case CONSOLE_ACTIVATE:
+                return 0.75f;
             case LOW_ENERGY:
                 return 0.58f;
             case TARGET_DESTROYED:
