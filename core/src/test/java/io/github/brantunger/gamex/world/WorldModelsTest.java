@@ -37,9 +37,12 @@ class WorldModelsTest {
     private static final ObjModel DRONE = load(WorldModels.DRONE_PATH);
     private static final ObjModel GUARD = load(WorldModels.GUARD_PATH);
     private static final ObjModel ENEMY_BOLT = load(WorldModels.ENEMY_BOLT_PATH);
+    private static final ObjModel DOOR_BULKHEAD = load(WorldModels.DOOR_BULKHEAD_PATH);
+    private static final ObjModel KEYCARD = load(WorldModels.KEYCARD_PATH);
+    private static final ObjModel SECURITY_CONSOLE = load(WorldModels.SECURITY_CONSOLE_PATH);
     private static final ObjModel[] ALL_MODELS = {
         CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL,
-        TURRET, DRONE, GUARD, ENEMY_BOLT
+        TURRET, DRONE, GUARD, ENEMY_BOLT, DOOR_BULKHEAD, KEYCARD, SECURITY_CONSOLE
     };
 
     private static ObjModel load(String assetPath) {
@@ -182,7 +185,7 @@ class WorldModelsTest {
 
     @Test
     void pickupModelsStandOnTheFloorAndFitWithinPickupRadius() {
-        ObjModel[] pickups = {MEDKIT, ARMOR, ENERGY_CELL};
+        ObjModel[] pickups = {MEDKIT, ARMOR, ENERGY_CELL, KEYCARD};
         for (ObjModel pickup : pickups) {
             float minY = Float.POSITIVE_INFINITY;
             float maxY = Float.NEGATIVE_INFINITY;
@@ -263,6 +266,38 @@ class WorldModelsTest {
         assertEquals(EnemyProjectile.RADIUS, maxY, 1e-5f);
         assertEquals(-EnemyProjectile.RADIUS, minZ, 1e-5f);
         assertEquals(EnemyProjectile.RADIUS, maxZ, 1e-5f);
+    }
+
+    @Test
+    void bulkheadDoorAndSecurityConsoleMatchCollisionDimensionsAndMaterialSwap() {
+        float minX = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        float minZ = Float.POSITIVE_INFINITY;
+        float maxZ = Float.NEGATIVE_INFINITY;
+        for (int triangle = 0; triangle < DOOR_BULKHEAD.getTriangleCount(); triangle++) {
+            for (int corner = 0; corner < 3; corner++) {
+                Vector3 p = position(DOOR_BULKHEAD, triangle, corner);
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+                minZ = Math.min(minZ, p.z);
+                maxZ = Math.max(maxZ, p.z);
+            }
+        }
+        assertEquals(-Door.HALF_SPAN, minX, 1e-5f);
+        assertEquals(Door.HALF_SPAN, maxX, 1e-5f);
+        assertEquals(0f, minY, 1e-5f);
+        assertEquals(GameMap.WALL_HEIGHT, maxY, 1e-5f);
+        assertTrue(minZ >= -Door.HALF_THICKNESS - 1e-5f && maxZ <= Door.HALF_THICKNESS + 1e-5f);
+
+        float[] swapped = WorldModels.verticesReplacingMaterial(
+            DOOR_BULKHEAD, "door_status", WorldModels.Material.DOOR_OPEN);
+        assertEquals(WorldModels.vertices(DOOR_BULKHEAD).length, swapped.length);
+
+        assertBoundsFitCylinder(SECURITY_CONSOLE, 0f, SecurityConsole.HEIGHT, SecurityConsole.RADIUS, true);
     }
 
     private static void assertBoundsFitCylinder(ObjModel model, float minExpectedY, float expectedHeight,

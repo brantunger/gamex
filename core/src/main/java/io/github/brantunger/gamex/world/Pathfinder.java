@@ -3,6 +3,8 @@ package io.github.brantunger.gamex.world;
 import com.badlogic.gdx.math.Vector2;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Reusable zero-allocation grid BFS flow-field over {@link GameMap} for routing mobile enemies cleanly around walls,
@@ -36,6 +38,18 @@ public final class Pathfinder {
      * @param goalZ target world z coordinate
      */
     public void compute(GameMap map, float goalX, float goalZ) {
+        compute(map, Collections.<Door>emptyList(), goalX, goalZ);
+    }
+
+    /**
+     * Computes grid distances from {@code (goalX, goalZ)} across all reachable cells, treating closed bulkhead doors
+     * as impassable until opened past their clearance threshold.
+     * @param map the level grid
+     * @param doors bulkhead doors in the level
+     * @param goalX target world x coordinate
+     * @param goalZ target world z coordinate
+     */
+    public void compute(GameMap map, List<Door> doors, float goalX, float goalZ) {
         this.width = map.getWidth();
         this.height = map.getHeight();
         this.goalX = goalX;
@@ -49,7 +63,7 @@ public final class Pathfinder {
 
         int goalCol = (int) Math.floor(goalX);
         int goalRow = (int) Math.floor(goalZ);
-        if (map.isSolid(goalCol, goalRow)) return;
+        if (isBlocked(map, doors, goalCol, goalRow)) return;
 
         int startIdx = goalRow * width + goalCol;
         distances[startIdx] = 0;
@@ -65,7 +79,7 @@ public final class Pathfinder {
             for (int d = 0; d < 8; d += 2) {
                 int nc = col + DIRS[d];
                 int nr = row + DIRS[d + 1];
-                if (map.isSolid(nc, nr)) continue;
+                if (isBlocked(map, doors, nc, nr)) continue;
                 int nIdx = nr * width + nc;
                 if (distances[nIdx] <= nextDist) continue;
                 distances[nIdx] = nextDist;
@@ -85,6 +99,19 @@ public final class Pathfinder {
      * @return true if a steering direction was found, false if unreachable or already inside the goal cell
      */
     public boolean nextDirection(GameMap map, float fromX, float fromZ, Vector2 outDirection) {
+        return nextDirection(map, Collections.<Door>emptyList(), fromX, fromZ, outDirection);
+    }
+
+    /**
+     * Finds the unit steering direction toward the goal while avoiding closed bulkhead doorway cells.
+     * @param map the level grid
+     * @param doors bulkhead doors in the level
+     * @param fromX starting world x
+     * @param fromZ starting world z
+     * @param outDirection receives the normalised direction when a step exists
+     * @return true if a steering direction was found, false if unreachable or already inside the goal cell
+     */
+    public boolean nextDirection(GameMap map, List<Door> doors, float fromX, float fromZ, Vector2 outDirection) {
         int col = (int) Math.floor(fromX);
         int row = (int) Math.floor(fromZ);
         if (col < 0 || row < 0 || col >= width || row >= height) return false;
@@ -101,8 +128,9 @@ public final class Pathfinder {
             int dr = DIRS[i + 1];
             int nc = col + dc;
             int nr = row + dr;
-            if (map.isSolid(nc, nr)) continue;
-            if (dc != 0 && dr != 0 && (map.isSolid(col + dc, row) || map.isSolid(col, row + dr))) {
+            if (isBlocked(map, doors, nc, nr)) continue;
+            if (dc != 0 && dr != 0
+                && (isBlocked(map, doors, col + dc, row) || isBlocked(map, doors, col, row + dr))) {
                 continue;
             }
             int d = distances[nr * width + nc];
@@ -125,5 +153,15 @@ public final class Pathfinder {
         if (len < 1e-6f) return false;
         outDirection.set(dx / len, dz / len);
         return true;
+    }
+
+    private static boolean isBlocked(GameMap map, List<Door> doors, int col, int row) {
+        if (map.isSolid(col, row)) return true;
+        if (doors == null) return false;
+        for (int i = 0; i < doors.size(); i++) {
+            Door door = doors.get(i);
+            if (door.isBlockingPassage() && door.getCol() == col && door.getRow() == row) return true;
+        }
+        return false;
     }
 }

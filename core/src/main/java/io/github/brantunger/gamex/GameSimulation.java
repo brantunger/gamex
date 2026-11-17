@@ -15,6 +15,7 @@ import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
@@ -22,10 +23,14 @@ import io.github.brantunger.gamex.world.Hitscan;
 import io.github.brantunger.gamex.world.Pathfinder;
 import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.RayHit;
+import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The whole game state and the rules that advance it. It uses neither graphics nor audio types, so it runs without a
@@ -69,6 +74,10 @@ public final class GameSimulation {
     public final List<Enemy> enemies = new ArrayList<>();
     /** Every pickup item of the level, collected ones included. */
     public final List<Pickup> pickups = new ArrayList<>();
+    /** Every sliding bulkhead door in the level. */
+    public final List<Door> doors = new ArrayList<>();
+    /** Every security console pedestal in the level. */
+    public final List<SecurityConsole> consoles = new ArrayList<>();
     /** The pistol. */
     public final Pistol pistol = new Pistol();
     /** The energy that pays for blasts and dashes. */
@@ -99,6 +108,7 @@ public final class GameSimulation {
     private final float[] targetHealthBefore;
     private final float[] enemyHealthBefore;
     private final List<SoundEvent> soundEvents = new ArrayList<>();
+    private final Set<Pickup.Kind> heldKeycards = EnumSet.noneOf(Pickup.Kind.class);
     private float time;
     private float damageTaken;
     private boolean levelCleared;
@@ -108,6 +118,7 @@ public final class GameSimulation {
     private float toastTimer;
     private boolean prevDashInput;
     private boolean prevChargeRefused;
+    private boolean prevInteractInput;
 
     /** @param map the level to play on Normal difficulty */
     public GameSimulation(GameMap map) {
@@ -138,6 +149,14 @@ public final class GameSimulation {
         for (GameMap.PickupSpawn spawn : map.getPickupSpawns()) {
             pickups.add(new Pickup(spawn.kind, spawn.x, spawn.z));
         }
+        for (GameMap.DoorSpawn spawn : map.getDoorSpawns()) {
+            doors.add(new Door(spawn.lockKind, spawn.orientation, spawn.col, spawn.row));
+        }
+        for (GameMap.ConsoleSpawn spawn : map.getConsoleSpawns()) {
+            SecurityConsole console = new SecurityConsole(spawn.x, spawn.z);
+            consoles.add(console);
+            allDamageables.add(console);
+        }
         breakHandled = new boolean[targets.size()];
         enemyBreakHandled = new boolean[enemies.size()];
         targetHealthBefore = new float[targets.size()];
@@ -159,6 +178,7 @@ public final class GameSimulation {
             charger.cancel();
             prevDashInput = false;
             prevChargeRefused = false;
+            prevInteractInput = false;
             viewmodel.update(dt, false, 0f, 0f, 0f);
             updateEnemiesWhenInactive(dt);
             updateTargetsAndEffects(dt);
@@ -184,8 +204,13 @@ public final class GameSimulation {
 
         float beforeX = player.position.x;
         float beforeZ = player.position.y;
-        player.move(map, allDamageables, input.moveForward, input.moveStrafe, dt);
+        player.move(map, allDamageables, doors, input.moveForward, input.moveStrafe, dt);
         collectPickups();
+        boolean interactPressedEdge = input.interact && !prevInteractInput;
+        prevInteractInput = input.interact;
+        if (interactPressedEdge) {
+            handleInteract();
+        }
         checkExitReached();
 
         player.eye(eye);
@@ -215,7 +240,7 @@ public final class GameSimulation {
             BlastProjectile projectile = projectiles.get(i);
             int aliveBefore = getTargetsRemaining() + getEnemiesRemaining();
             float healthBefore = totalDamageableHealth();
-            if (!projectile.update(dt, map, allDamageables, player, selfScale)) continue;
+            if (!projectile.update(dt, map, allDamageables, doors, player, selfScale)) continue;
             projectiles.remove(i);
             float radius = BlastProjectile.blastRadius(projectile.getCharge());
             effects.add(new Effect(Effect.Type.EXPLOSION, projectile.position, Vector3.Y, radius));
@@ -232,13 +257,13 @@ public final class GameSimulation {
         }
 
         if (!enemies.isEmpty()) {
-            pathfinder.compute(map, player.position.x, player.position.y);
+            pathfinder.compute(map, doors, player.position.x, player.position.y);
             for (int i = 0; i < enemies.size(); i++) {
                 Enemy enemy = enemies.get(i);
                 Enemy.State stateBefore = enemy.getState();
                 int boltsBefore = enemyProjectiles.size();
                 enemy.update(dt, map, pathfinder, player, entryLoadout.difficulty,
-                    allDamageables, enemyProjectiles);
+                    allDamageables, doors, enemyProjectiles);
                 for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
                     EnemyProjectile bolt = enemyProjectiles.get(b);
                     emitWorldSound(SoundEvent.Type.ENEMY_SHOOT, bolt.position.x, bolt.position.y, bolt.position.z, 1f);
@@ -252,7 +277,7 @@ public final class GameSimulation {
         }
         for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
             if (enemyProjectiles.get(i).update(dt, map, player, entryLoadout.difficulty.damageTakenScale,
-                targets, enemies, effects)) {
+                targets, enemies, doors, consoles, effects)) {
                 enemyProjectiles.remove(i);
             }
         }
@@ -346,6 +371,46 @@ public final class GameSimulation {
         charger.cancel();
         prevDashInput = false;
         prevChargeRefused = false;
+        prevInteractInput = false;
+    }
+
+    /**
+     * @param kind keycard kind to check
+     * @return whether the player currently holds that stage-local keycard
+     */
+    public boolean hasKeycard(Pickup.Kind kind) {
+        return kind != null && heldKeycards.contains(kind);
+    }
+
+    /** @return unmodifiable view of keycards collected in this stage. */
+    public Set<Pickup.Kind> getHeldKeycards() {
+        return Collections.unmodifiableSet(heldKeycards);
+    }
+
+    /**
+     * @return contextual HUD interaction prompt when near an operable bulkhead or security console, or {@code null}
+     */
+    public String getInteractionPrompt() {
+        if (levelCleared || player.isDead()) return null;
+        Object target = findInteractTarget();
+        if (target instanceof SecurityConsole) return "[E] OVERRIDE LOCKDOWN";
+        if (!(target instanceof Door)) return null;
+        Door door = (Door) target;
+        switch (door.getLockKind()) {
+            case AMBER_KEY:
+                return hasKeycard(Pickup.Kind.AMBER_KEYCARD)
+                    ? "[E] UNLOCK AMBER BULKHEAD"
+                    : "NEEDS AMBER KEYCARD";
+            case CYAN_KEY:
+                return hasKeycard(Pickup.Kind.CYAN_KEYCARD)
+                    ? "[E] UNLOCK CYAN BULKHEAD"
+                    : "NEEDS CYAN KEYCARD";
+            case LOCKDOWN:
+                return "SEALED BY SECURITY CONSOLE";
+            case NONE:
+            default:
+                return "[E] OPEN BULKHEAD";
+        }
     }
 
     /** @return the number of targets that are not destroyed. */
@@ -388,13 +453,143 @@ public final class GameSimulation {
     private void collectPickups() {
         for (int i = 0; i < pickups.size(); i++) {
             Pickup pickup = pickups.get(i);
-            String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale);
+            String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale, heldKeycards);
             if (message != null) {
-                toastMessage = message;
-                toastTimer = TOAST_TIME;
+                showToast(message);
                 emitPlayerSound(pickupSoundFor(pickup.getKind()), 1f);
             }
         }
+    }
+
+    private void showToast(String message) {
+        toastMessage = message;
+        toastTimer = TOAST_TIME;
+    }
+
+    private Object findInteractTarget() {
+        Door door = findInteractDoor(Door.INTERACT_RADIUS);
+        SecurityConsole console = findInteractConsole(SecurityConsole.INTERACT_RADIUS);
+        if (door == null) return console;
+        if (console == null) return door;
+        float consoleDist2 = Vector2.dst2(player.position.x, player.position.y, console.getX(), console.getZ());
+        float doorDist2 = Vector2.dst2(player.position.x, player.position.y, door.getX(), door.getZ());
+        return consoleDist2 <= doorDist2 ? console : door;
+    }
+
+    private void handleInteract() {
+        Object target = findInteractTarget();
+        if (target instanceof SecurityConsole) {
+            SecurityConsole console = (SecurityConsole) target;
+            if (!console.activate()) return;
+            for (int i = 0; i < doors.size(); i++) {
+                Door candidate = doors.get(i);
+                if (candidate.getLockKind() == Door.LockKind.LOCKDOWN && candidate.open()) {
+                    emitWorldSound(SoundEvent.Type.DOOR_OPEN, candidate.getX(), 0.5f, candidate.getZ(), 1f);
+                }
+            }
+            showToast("LOCKDOWN OVERRIDDEN");
+            emitWorldSound(SoundEvent.Type.CONSOLE_ACTIVATE, console.getX(), SecurityConsole.HEIGHT * 0.8f,
+                console.getZ(), 1f);
+            alertNoise(console.getX(), console.getZ(), 12.0f, 7.0f);
+            return;
+        }
+        if (!(target instanceof Door)) return;
+        Door door = (Door) target;
+        switch (door.getLockKind()) {
+            case NONE:
+                if (door.open()) {
+                    emitWorldSound(SoundEvent.Type.DOOR_OPEN, door.getX(), 0.5f, door.getZ(), 1f);
+                }
+                break;
+            case AMBER_KEY:
+                if (hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
+                    if (door.open()) {
+                        showToast("AMBER BULKHEAD UNLOCKED");
+                        emitWorldSound(SoundEvent.Type.DOOR_OPEN, door.getX(), 0.5f, door.getZ(), 1f);
+                    }
+                } else {
+                    showToast("NEEDS AMBER KEYCARD");
+                    emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
+                }
+                break;
+            case CYAN_KEY:
+                if (hasKeycard(Pickup.Kind.CYAN_KEYCARD)) {
+                    if (door.open()) {
+                        showToast("CYAN BULKHEAD UNLOCKED");
+                        emitWorldSound(SoundEvent.Type.DOOR_OPEN, door.getX(), 0.5f, door.getZ(), 1f);
+                    }
+                } else {
+                    showToast("NEEDS CYAN KEYCARD");
+                    emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
+                }
+                break;
+            case LOCKDOWN:
+            default:
+                showToast("SEALED BY SECURITY CONSOLE");
+                emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
+                break;
+        }
+    }
+
+    private Door findInteractDoor(float reach) {
+        double yawRad = Math.toRadians(player.getYaw());
+        float fx = (float) Math.sin(yawRad);
+        float fz = (float) -Math.cos(yawRad);
+        float maxDist2 = reach * reach;
+        Door best = null;
+        float bestDist2 = maxDist2;
+        for (int i = 0; i < doors.size(); i++) {
+            Door door = doors.get(i);
+            if (door.isOpening()) continue;
+            float dx = door.getX() - player.position.x;
+            float dz = door.getZ() - player.position.y;
+            float dist2 = dx * dx + dz * dz;
+            if (dist2 > bestDist2 || dist2 < 1e-6f) continue;
+            float dist = (float) Math.sqrt(dist2);
+            if ((fx * dx + fz * dz) / dist < 0.2f) continue;
+            if (!Hitscan.hasLineOfSight(map, player.position.x, player.position.y, door.getX(), door.getZ())) {
+                continue;
+            }
+            boolean blockedByOtherDoor = false;
+            for (int j = 0; j < doors.size(); j++) {
+                Door other = doors.get(j);
+                if (other != door && other.intersectsSegment2D(player.position.x, player.position.y,
+                    door.getX(), door.getZ())) {
+                    blockedByOtherDoor = true;
+                    break;
+                }
+            }
+            if (!blockedByOtherDoor) {
+                bestDist2 = dist2;
+                best = door;
+            }
+        }
+        return best;
+    }
+
+    private SecurityConsole findInteractConsole(float reach) {
+        double yawRad = Math.toRadians(player.getYaw());
+        float fx = (float) Math.sin(yawRad);
+        float fz = (float) -Math.cos(yawRad);
+        float maxDist2 = reach * reach;
+        SecurityConsole best = null;
+        float bestDist2 = maxDist2;
+        for (int i = 0; i < consoles.size(); i++) {
+            SecurityConsole console = consoles.get(i);
+            if (console.isActivated()) continue;
+            float dx = console.getX() - player.position.x;
+            float dz = console.getZ() - player.position.y;
+            float dist2 = dx * dx + dz * dz;
+            if (dist2 > bestDist2 || dist2 < 1e-6f) continue;
+            float dist = (float) Math.sqrt(dist2);
+            if ((fx * dx + fz * dz) / dist < 0.2f) continue;
+            if (Hitscan.hasLineOfSight(map, doors, player.position.x, player.position.y,
+                console.getX(), console.getZ())) {
+                bestDist2 = dist2;
+                best = console;
+            }
+        }
+        return best;
     }
 
     private static SoundEvent.Type pickupSoundFor(Pickup.Kind kind) {
@@ -403,6 +598,9 @@ public final class GameSimulation {
                 return SoundEvent.Type.PICKUP_HEALTH;
             case ARMOR:
                 return SoundEvent.Type.PICKUP_ARMOR;
+            case AMBER_KEYCARD:
+            case CYAN_KEYCARD:
+                return SoundEvent.Type.PICKUP_KEYCARD;
             case ENERGY_CELL:
             default:
                 return SoundEvent.Type.PICKUP_ENERGY;
@@ -418,7 +616,7 @@ public final class GameSimulation {
     }
 
     private void spawnBlast(float charge) {
-        RayHit aim = Hitscan.cast(map, allDamageables, eye, direction, Pistol.RANGE);
+        RayHit aim = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
         if (aim.isHit()) {
             aimPoint.set(aim.point);
         } else {
@@ -441,7 +639,7 @@ public final class GameSimulation {
         blastOrigin.y = Math.max(minY, Math.min(maxY, blastOrigin.y));
 
         spawnCheckPos.set(blastOrigin.x, blastOrigin.z);
-        if (Collision.overlapsWall(map, blastOrigin.x, blastOrigin.z, BlastProjectile.RADIUS + 0.01f)
+        if (Collision.overlapsWall(map, doors, blastOrigin.x, blastOrigin.z, BlastProjectile.RADIUS + 0.01f)
             || Collision.overlapsSolid(allDamageables, spawnCheckPos, BlastProjectile.RADIUS + 0.01f)) {
             blastOrigin.set(eye.x, Math.max(minY, eye.y - 0.05f), eye.z);
         }
@@ -456,12 +654,22 @@ public final class GameSimulation {
     private void firePistol() {
         emitPlayerSound(SoundEvent.Type.PISTOL_SHOT, 1f);
         alertNoise(player.position.x, player.position.y, 9.0f, 4.5f);
-        RayHit hit = Hitscan.cast(map, allDamageables, eye, direction, Pistol.RANGE);
+        RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
         if (!hit.isHit()) return;
         // Lift the effect off the surface towards the open side.
         hit.point.mulAdd(hit.normal, MARK_OFFSET);
+        if (hit.kind == RayHit.Kind.DOOR) {
+            effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.16f));
+            emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
+            return;
+        }
         if (hit.kind != RayHit.Kind.TARGET) {
             effects.add(new Effect(Effect.Type.IMPACT, hit.point, hit.normal, 0.11f));
+            emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
+            return;
+        }
+        if (hit.target instanceof SecurityConsole) {
+            effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.16f));
             emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
             return;
         }
@@ -487,8 +695,8 @@ public final class GameSimulation {
                 if (target.getKind() == Target.Kind.CANISTER) {
                     Vector3 centre = new Vector3(target.getX(), target.getHeight() * 0.5f, target.getZ());
                     effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, CANISTER_BLAST_RADIUS));
-                    Explosion.apply(map, target.getX(), target.getZ(), CANISTER_BLAST_RADIUS, CANISTER_BLAST_DAMAGE,
-                        allDamageables, player, canisterPlayerScale);
+                    Explosion.apply(map, doors, target.getX(), target.getZ(), CANISTER_BLAST_RADIUS,
+                        CANISTER_BLAST_DAMAGE, allDamageables, player, canisterPlayerScale);
                     emitWorldSound(SoundEvent.Type.EXPLOSION, centre.x, centre.y, centre.z, 1.0f);
                     alertNoise(target.getX(), target.getZ(), 11.0f, 5.5f);
                 } else {
@@ -556,7 +764,7 @@ public final class GameSimulation {
             float dist2 = dx * dx + dz * dz;
             if (dist2 <= muffledRange2) {
                 enemy.alert();
-            } else if (dist2 <= losRange2 && Hitscan.hasLineOfSight(map, x, z, enemy.getX(), enemy.getZ())) {
+            } else if (dist2 <= losRange2 && Hitscan.hasLineOfSight(map, doors, x, z, enemy.getX(), enemy.getZ())) {
                 enemy.alert();
             }
         }
@@ -584,17 +792,18 @@ public final class GameSimulation {
 
     private void updateEnemiesWhenInactive(float dt) {
         for (int i = 0; i < enemies.size(); i++) {
-            enemies.get(i).update(dt, map, null, player, entryLoadout.difficulty, allDamageables, null);
+            enemies.get(i).update(dt, map, null, player, entryLoadout.difficulty, allDamageables, doors, null);
         }
         for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
             if (enemyProjectiles.get(i).update(dt, map, player, entryLoadout.difficulty.damageTakenScale,
-                targets, enemies, effects)) {
+                targets, enemies, doors, consoles, effects)) {
                 enemyProjectiles.remove(i);
             }
         }
     }
 
     private void updateTargetsAndEffects(float dt) {
+        for (int i = 0; i < doors.size(); i++) doors.get(i).update(dt);
         for (int i = 0; i < targets.size(); i++) targets.get(i).update(dt);
         for (int i = effects.size() - 1; i >= 0; i--) {
             Effect effect = effects.get(i);

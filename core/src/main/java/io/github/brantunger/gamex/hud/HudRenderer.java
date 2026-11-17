@@ -12,6 +12,7 @@ import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.world.Levels;
+import io.github.brantunger.gamex.world.Pickup;
 
 import java.util.List;
 import java.util.Locale;
@@ -143,7 +144,7 @@ public final class HudRenderer implements Disposable {
             case TITLE:
                 return cy + 22f * u;
             case STAGE_SELECT:
-                return cy + 36f * u;
+                return cy + 58f * u;
             case DIFFICULTY_SELECT:
                 return cy + 28f * u;
             case BRIEFING:
@@ -167,11 +168,30 @@ public final class HudRenderer implements Disposable {
         drawHurtOverlay(simulation.player);
         if (!simulation.player.isDead()) {
             drawCrosshair(simulation);
+            drawInteractionPrompt(simulation);
             drawCharge(simulation.charger, simulation.player);
         }
-        drawVitalsAndEnergy(simulation.player, simulation.energy, simulation.charger);
+        drawVitalsAndEnergy(simulation);
         drawStatus(simulation);
         drawToast(simulation);
+    }
+
+    private void drawInteractionPrompt(GameSimulation simulation) {
+        String prompt = simulation.getInteractionPrompt();
+        if (prompt == null) return;
+        float pixel = 2.4f * unit;
+        float textW = PixelFont.width(prompt, pixel);
+        float padX = 10f * unit;
+        float padY = 5f * unit;
+        float boxW = textW + padX * 2f;
+        float boxH = PixelFont.height(pixel) + padY * 2f;
+        float cx = width * 0.5f;
+        float bottom = height * 0.5f - 44f * unit;
+        batch.setColor(0.06f, 0.08f, 0.14f, 0.78f);
+        rect(cx - boxW * 0.5f, bottom, boxW, boxH);
+        if (prompt.startsWith("[E]")) batch.setColor(0.62f, 1f, 0.86f, 0.95f);
+        else batch.setColor(1f, 0.72f, 0.30f, 0.95f);
+        PixelFont.drawCentred(batch, textures.white, prompt, cx, bottom + padY, pixel);
     }
 
     private void drawHurtOverlay(Player player) {
@@ -278,7 +298,10 @@ public final class HudRenderer implements Disposable {
         PixelFont.drawCentred(batch, textures.white, "CHARGE", centreX, bottom - 26f * unit, 3f * unit);
     }
 
-    private void drawVitalsAndEnergy(Player player, EnergyMeter energy, BlastCharger charger) {
+    private void drawVitalsAndEnergy(GameSimulation simulation) {
+        Player player = simulation.player;
+        EnergyMeter energy = simulation.energy;
+        BlastCharger charger = simulation.charger;
         float left = 28f * unit;
         float energyBottom = 24f * unit;
         float segmentWidth = 20f * unit;
@@ -343,9 +366,23 @@ public final class HudRenderer implements Disposable {
         PixelFont.draw(batch, textures.white, "ARMOR " + Math.round(player.getArmor()),
             left + barW + 10f * unit, armorY + unit, 2.6f * unit);
 
-        // Active weapon readout.
+        // Active weapon readout and held security keycards.
         batch.setColor(0.8f, 1f, 0.88f, 0.88f);
         PixelFont.draw(batch, textures.white, "1: PISTOL [INF]", left, 114f * unit, 2.5f * unit);
+
+        float keyX = left;
+        float keyY = 138f * unit;
+        float keySize = 2.4f * unit;
+        if (simulation.hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
+            batch.setColor(1f, 0.76f, 0.22f, 0.96f);
+            String badge = "[AMBER KEY]";
+            PixelFont.draw(batch, textures.white, badge, keyX, keyY, keySize);
+            keyX += PixelFont.width(badge, keySize) + 14f * unit;
+        }
+        if (simulation.hasKeycard(Pickup.Kind.CYAN_KEYCARD)) {
+            batch.setColor(0.26f, 0.94f, 1f, 0.96f);
+            PixelFont.draw(batch, textures.white, "[CYAN KEY]", keyX, keyY, keySize);
+        }
     }
 
     private void drawStatus(GameSimulation simulation) {
@@ -411,18 +448,18 @@ public final class HudRenderer implements Disposable {
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
         PixelFont.drawCentred(batch, textures.white,
-            "WASD: MOVE   SHIFT/SPACE: DASH   LMB: PISTOL   RMB: BLAST", cx, 32f * unit, 2.3f * unit);
+            "WASD: MOVE   SHIFT: DASH   E: INTERACT   LMB: PISTOL   RMB: BLAST", cx, 32f * unit, 2.1f * unit);
     }
 
     private void drawStageSelectScreen(MenuState menuState) {
         drawBackdropShade(0.62f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy, 620f * unit, 360f * unit);
+        drawPanel(cx, cy + 6f * unit, 620f * unit, 444f * unit);
         batch.setColor(0.55f, 0.95f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 122f * unit, 5.5f * unit);
+        PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 152f * unit, 5.5f * unit);
         batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
-        PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 92f * unit,
+        PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 122f * unit,
             2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
     }

@@ -30,6 +30,12 @@ public final class WorldModels {
     public static final String GUARD_PATH = "models/enemy-guard.obj";
     /** The path of the enemy plasma bolt projectile model file inside the assets folder. */
     public static final String ENEMY_BOLT_PATH = "models/enemy-bolt.obj";
+    /** The path of the sliding bulkhead door model file inside the assets folder. */
+    public static final String DOOR_BULKHEAD_PATH = "models/door-bulkhead.obj";
+    /** The path of the rotating security keycard pickup model file inside the assets folder. */
+    public static final String KEYCARD_PATH = "models/pickup-keycard.obj";
+    /** The path of the security console pedestal model file inside the assets folder. */
+    public static final String SECURITY_CONSOLE_PATH = "models/security-console.obj";
     /** The number of floats per vertex. */
     public static final int VERTEX_SIZE = ModelVertices.VERTEX_SIZE;
 
@@ -61,7 +67,29 @@ public final class WorldModels {
         BOT_VISOR("bot_visor", 1.00f, 0.22f, 0.28f, 0.95f),
         BOT_CORE("bot_core", 1.00f, 0.48f, 0.18f, 0.90f),
         BOLT_CORE("bolt_core", 1.00f, 0.82f, 0.78f, 1.00f),
-        BOLT_SHELL("bolt_shell", 1.00f, 0.22f, 0.26f, 0.85f);
+        BOLT_SHELL("bolt_shell", 1.00f, 0.22f, 0.26f, 0.85f),
+        DOOR_ARMOR("door_armor", 0.36f, 0.40f, 0.46f, 0.55f),
+        DOOR_TRIM("door_trim", 0.22f, 0.25f, 0.30f, 0.65f),
+        DOOR_DARK("door_dark", 0.13f, 0.15f, 0.18f, 0.35f),
+        DOOR_STATUS("door_status", 0.62f, 0.78f, 0.92f, 0.85f),
+        DOOR_UNLOCKED("door_unlocked", 0.62f, 0.78f, 0.92f, 0.85f),
+        DOOR_AMBER("door_amber", 1.00f, 0.72f, 0.16f, 0.95f),
+        DOOR_CYAN("door_cyan", 0.18f, 0.92f, 0.98f, 0.95f),
+        DOOR_LOCKDOWN("door_lockdown", 0.98f, 0.22f, 0.24f, 0.95f),
+        DOOR_OPEN("door_open", 0.24f, 0.96f, 0.48f, 0.95f),
+        KEYCARD_BODY("keycard_body", 1.00f, 0.72f, 0.16f, 0.85f),
+        KEYCARD_AMBER("keycard_amber", 1.00f, 0.72f, 0.16f, 0.85f),
+        KEYCARD_CYAN("keycard_cyan", 0.18f, 0.92f, 0.98f, 0.85f),
+        KEYCARD_TRIM("keycard_trim", 0.22f, 0.25f, 0.30f, 0.70f),
+        KEYCARD_STRIPE("keycard_stripe", 0.12f, 0.14f, 0.18f, 0.50f),
+        KEYCARD_CHIP("keycard_chip", 0.98f, 0.94f, 0.68f, 0.95f),
+        CONSOLE_DARK("console_dark", 0.16f, 0.19f, 0.23f, 0.45f),
+        CONSOLE_BODY("console_body", 0.30f, 0.34f, 0.40f, 0.60f),
+        CONSOLE_TRIM("console_trim", 0.48f, 0.52f, 0.58f, 0.75f),
+        CONSOLE_KEYPAD("console_keypad", 0.20f, 0.24f, 0.28f, 0.40f),
+        CONSOLE_SCREEN("console_screen", 0.98f, 0.28f, 0.22f, 0.95f),
+        CONSOLE_LOCKED("console_locked", 0.98f, 0.28f, 0.22f, 0.95f),
+        CONSOLE_ACTIVE("console_active", 0.24f, 0.96f, 0.48f, 0.95f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;
@@ -97,6 +125,18 @@ public final class WorldModels {
      */
     public static float[] vertices(ObjModel model) {
         return ModelVertices.pack(model, name -> Material.named(name).colour);
+    }
+
+    /**
+     * Turns a parsed world model into packed vertices while substituting one material's colour.
+     * @param model the parsed model file
+     * @param targetMaterial material name to override
+     * @param replacement material colour to use in place of {@code targetMaterial}
+     * @return three vertices per triangle
+     */
+    public static float[] verticesReplacingMaterial(ObjModel model, String targetMaterial, Material replacement) {
+        return ModelVertices.pack(model, name ->
+            name.equals(targetMaterial) ? replacement.colour : Material.named(name).colour);
     }
 
     /**

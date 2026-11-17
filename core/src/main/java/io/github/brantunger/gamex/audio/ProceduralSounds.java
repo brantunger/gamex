@@ -90,9 +90,26 @@ public final class ProceduralSounds {
                     new double[] {440.0, 660.0, 880.0}, 0.30);
                 peakScale = 18_000.0;
                 break;
+            case PICKUP_KEYCARD:
+                samples = renderToneSteps(0.24, new double[] {0.0, 0.06, 0.12}, new double[] {0.075, 0.135, 0.24},
+                    new double[] {587.33, 880.0, 1174.66}, 0.22);
+                peakScale = 19_000.0;
+                break;
             case LOW_ENERGY:
                 samples = renderLowEnergy();
                 peakScale = 17_000.0;
+                break;
+            case DOOR_OPEN:
+                samples = renderDoorOpen();
+                peakScale = 23_000.0;
+                break;
+            case DOOR_LOCKED:
+                samples = renderDoorLocked();
+                peakScale = 19_000.0;
+                break;
+            case CONSOLE_ACTIVATE:
+                samples = renderConsoleActivate();
+                peakScale = 22_000.0;
                 break;
             case MENU_MOVE:
                 samples = renderMenuMove();
@@ -434,6 +451,68 @@ public final class ProceduralSounds {
             double t = (double) i / SAMPLE_RATE;
             double wave = 0.78 * Math.sin(TWO_PI * 880.0 * t) + 0.22 * Math.sin(TWO_PI * 1760.0 * t);
             buf[i] = wave * Math.exp(-t / 0.008);
+        }
+        return buf;
+    }
+
+    private static double[] renderDoorOpen() {
+        double[] buf = alloc(0.36);
+        int rng = 0x51A8D00D;
+        double motorPhase = 0.0;
+        double lp = 0.0;
+        double endPhase = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double freq = 78.0 + 92.0 * Math.min(1.0, t / 0.28);
+            motorPhase += TWO_PI * freq / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.24 * (rngFloat(rng) - lp);
+            double latch = Math.sin(TWO_PI * 240.0 * t) * Math.exp(-t / 0.018) * 0.55;
+            double pneumatic = lp * pulseWindow(t, 0.005, 0.30, 0.025) * 0.65;
+            double servo = (0.65 * Math.sin(motorPhase) + 0.30 * Math.sin(2.0 * motorPhase))
+                * pulseWindow(t, 0.01, 0.33, 0.03) * 0.50;
+            double stopThud = 0.0;
+            if (t >= 0.27) {
+                double dt = t - 0.27;
+                endPhase += TWO_PI * (48.0 + 42.0 * Math.exp(-dt / 0.022)) / SAMPLE_RATE;
+                stopThud = Math.sin(endPhase) * Math.exp(-dt / 0.032) * 0.65;
+            }
+            buf[i] = Math.tanh((latch + pneumatic + servo + stopThud) * 1.25);
+        }
+        return buf;
+    }
+
+    private static double[] renderDoorLocked() {
+        double[] buf = alloc(0.18);
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double w1 = pulseWindow(t, 0.0, 0.075, 0.005);
+            double w2 = pulseWindow(t, 0.095, 0.175, 0.005);
+            double b1 = (0.62 * Math.sin(TWO_PI * 165.0 * t) + 0.28 * Math.sin(TWO_PI * 330.0 * t)
+                + 0.18 * Math.sin(TWO_PI * 495.0 * t)) * w1;
+            double b2 = (0.62 * Math.sin(TWO_PI * 138.0 * t) + 0.28 * Math.sin(TWO_PI * 276.0 * t)
+                + 0.18 * Math.sin(TWO_PI * 414.0 * t)) * w2;
+            buf[i] = Math.tanh((b1 + b2) * 1.25);
+        }
+        return buf;
+    }
+
+    private static double[] renderConsoleActivate() {
+        double[] buf = alloc(0.32);
+        double relayPhase = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double w1 = pulseWindow(t, 0.0, 0.065, 0.004);
+            double w2 = pulseWindow(t, 0.070, 0.155, 0.004);
+            double chirp = (Math.sin(TWO_PI * 620.0 * t) * 0.7 + Math.sin(TWO_PI * 1240.0 * t) * 0.25) * w1
+                + (Math.sin(TWO_PI * 930.0 * t) * 0.7 + Math.sin(TWO_PI * 1860.0 * t) * 0.25) * w2;
+            double clunk = 0.0;
+            if (t >= 0.145) {
+                double dt = t - 0.145;
+                relayPhase += TWO_PI * (54.0 + 76.0 * Math.exp(-dt / 0.030)) / SAMPLE_RATE;
+                clunk = Math.sin(relayPhase) * Math.exp(-dt / 0.055) * 0.85;
+            }
+            buf[i] = Math.tanh((chirp * 0.65 + clunk) * 1.25);
         }
         return buf;
     }

@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.world;
 import com.badlogic.gdx.math.Vector2;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
+import java.util.Set;
 
 /**
  * An item hovering above the floor that restores health, armor or energy when the player walks over it. If the
@@ -20,7 +21,11 @@ public final class Pickup {
         /** Adds damage-absorbing armor. */
         ARMOR(25f, "ARMOR"),
         /** Immediately refills blast/dash energy. */
-        ENERGY_CELL(35f, "ENERGY");
+        ENERGY_CELL(35f, "ENERGY"),
+        /** Grants access to amber-locked bulkheads in the current stage. */
+        AMBER_KEYCARD(0f, "AMBER KEYCARD"),
+        /** Grants access to cyan-locked bulkheads in the current stage. */
+        CYAN_KEYCARD(0f, "CYAN KEYCARD");
 
         /** Baseline restoration amount on Normal difficulty. */
         public final float baseAmount;
@@ -30,6 +35,11 @@ public final class Pickup {
         Kind(float baseAmount, String label) {
             this.baseAmount = baseAmount;
             this.label = label;
+        }
+
+        /** @return whether this pickup grants a stage security keycard rather than restoring a vital stat. */
+        public boolean isKeycard() {
+            return this == AMBER_KEYCARD || this == CYAN_KEYCARD;
         }
     }
 
@@ -77,9 +87,26 @@ public final class Pickup {
      * @return a HUD toast string such as {@code "+25 HEALTH"} when collected, or null if untouched
      */
     public String tryCollect(Player player, EnergyMeter energy, float pickupScale) {
+        return tryCollect(player, energy, pickupScale, null);
+    }
+
+    /**
+     * Collects the pickup if the player overlaps it and can benefit from it (or does not yet hold this keycard).
+     * @param player the player
+     * @param energy the player's energy meter
+     * @param pickupScale difficulty multiplier applied to {@link Kind#baseAmount}
+     * @param heldKeycards optional set updated when collecting a keycard
+     * @return a HUD toast string such as {@code "+25 HEALTH"} or {@code "+ AMBER KEYCARD"}, or null if untouched
+     */
+    public String tryCollect(Player player, EnergyMeter energy, float pickupScale, Set<Kind> heldKeycards) {
         if (collected || player.isDead()) return null;
         float reach = Player.RADIUS + RADIUS;
         if (Vector2.dst2(player.position.x, player.position.y, x, z) >= reach * reach) return null;
+        if (kind.isKeycard()) {
+            if (heldKeycards == null || !heldKeycards.add(kind)) return null;
+            collected = true;
+            return "+ " + kind.label;
+        }
         float amount = Math.max(1f, Math.round(kind.baseAmount * pickupScale));
         float applied;
         switch (kind) {

@@ -42,6 +42,23 @@ public final class Collision {
     }
 
     /**
+     * @param map the map
+     * @param doors bulkhead doors in the level; closed ones act as solid barriers
+     * @param x the circle centre's world x
+     * @param z the circle centre's world z
+     * @param radius the circle's radius
+     * @return whether the circle overlaps any wall cell or blocking bulkhead door
+     */
+    public static boolean overlapsWall(GameMap map, List<Door> doors, float x, float z, float radius) {
+        if (overlapsWall(map, x, z, radius)) return true;
+        if (doors == null) return false;
+        for (int i = 0; i < doors.size(); i++) {
+            if (doors.get(i).overlapsCircle(x, z, radius)) return true;
+        }
+        return false;
+    }
+
+    /**
      * Moves a circle by a displacement, stopping at walls. Each axis is resolved on its own, so a circle pushed
      * diagonally into a wall keeps the part of its movement that runs along the wall. The displacement is walked in
      * sub-steps shorter than the radius, so no displacement, however large, carries the circle through a wall.
@@ -68,6 +85,21 @@ public final class Collision {
      */
     public static void move(GameMap map, List<? extends Damageable> solids, Vector2 position, float dx, float dz,
                             float radius) {
+        move(map, solids, Collections.<Door>emptyList(), position, dx, dz, radius);
+    }
+
+    /**
+     * Moves a circle while stopping at walls, blocking bulkhead doors, and live {@link Damageable} solids.
+     * @param map the map
+     * @param solids the objects that block the circle while they are not destroyed
+     * @param doors bulkhead doors in the level; closed ones block movement
+     * @param position the circle centre as (x, z), updated in place
+     * @param dx the displacement along x
+     * @param dz the displacement along z
+     * @param radius the circle's radius
+     */
+    public static void move(GameMap map, List<? extends Damageable> solids, List<Door> doors, Vector2 position,
+                            float dx, float dz, float radius) {
         float longest = Math.max(Math.abs(dx), Math.abs(dz));
         int steps = Math.max(1, (int) Math.ceil(longest / (radius * 0.5f)));
         float stepX = dx / steps;
@@ -75,11 +107,11 @@ public final class Collision {
         for (int i = 0; i < steps; i++) {
             float beforeX = position.x;
             float beforeZ = position.y;
-            position.x += freeDistance(map, position.x, position.y, stepX, 0f, radius);
-            position.y += freeDistance(map, position.x, position.y, 0f, stepZ, radius);
+            position.x += freeDistance(map, doors, position.x, position.y, stepX, 0f, radius);
+            position.y += freeDistance(map, doors, position.x, position.y, 0f, stepZ, radius);
             if (!pushOut(solids, position, radius, stepX, stepZ)) continue;
-            // The push must not end in a wall or in another object; if it does, this sub-step is not taken.
-            if (overlapsWall(map, position.x, position.y, radius) || overlapsSolid(solids, position, radius)) {
+            // The push must not end in a wall, door or another object; if it does, this sub-step is not taken.
+            if (overlapsWall(map, doors, position.x, position.y, radius) || overlapsSolid(solids, position, radius)) {
                 position.set(beforeX, beforeZ);
             }
         }
@@ -135,18 +167,19 @@ public final class Collision {
      * expected to be non-zero.
      * @return the signed distance to move along that axis
      */
-    private static float freeDistance(GameMap map, float x, float z, float stepX, float stepZ, float radius) {
+    private static float freeDistance(GameMap map, List<Door> doors, float x, float z, float stepX, float stepZ,
+                                      float radius) {
         float step = stepX != 0f ? stepX : stepZ;
         if (step == 0f) return 0f;
         float unitX = stepX != 0f ? 1f : 0f;
         float unitZ = 1f - unitX;
-        if (!overlapsWall(map, x + unitX * step, z + unitZ * step, radius)) return step;
-        // Blocked: bisect for the longest free part of the step, so the circle ends up against the wall.
+        if (!overlapsWall(map, doors, x + unitX * step, z + unitZ * step, radius)) return step;
+        // Blocked: bisect for the longest free part of the step, so the circle ends up against the barrier.
         float free = 0f;
         float blocked = step;
         for (int i = 0; i < REFINE_STEPS; i++) {
             float middle = (free + blocked) * 0.5f;
-            if (overlapsWall(map, x + unitX * middle, z + unitZ * middle, radius)) {
+            if (overlapsWall(map, doors, x + unitX * middle, z + unitZ * middle, radius)) {
                 blocked = middle;
             } else {
                 free = middle;

@@ -3,11 +3,14 @@ package io.github.brantunger.gamex.weapon;
 import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Collision;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
+import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -70,6 +73,17 @@ public final class EnemyProjectile {
      */
     public boolean update(float dt, GameMap map, Player player, float playerDamageScale,
                           List<Target> targets, List<Enemy> enemies, List<Effect> effects) {
+        return update(dt, map, player, playerDamageScale, targets, enemies,
+            Collections.<Door>emptyList(), Collections.<SecurityConsole>emptyList(), effects);
+    }
+
+    /**
+     * Advances the bolt for one time step against walls, doors, consoles, player, targets, and other enemies.
+     * @return whether the bolt finished during this update
+     */
+    public boolean update(float dt, GameMap map, Player player, float playerDamageScale,
+                          List<Target> targets, List<Enemy> enemies, List<Door> doors,
+                          List<SecurityConsole> consoles, List<Effect> effects) {
         if (finished || dt <= 0f) return finished;
         float distance = speed * dt;
         int steps = Math.max(1, (int) Math.ceil(distance / MAX_STEP));
@@ -79,7 +93,8 @@ public final class EnemyProjectile {
             float ny = position.y + direction.y * step;
             float nz = position.z + direction.z * step;
             if (ny - RADIUS <= 0f || ny + RADIUS >= GameMap.WALL_HEIGHT
-                || Collision.overlapsWall(map, nx, nz, RADIUS)) {
+                || Collision.overlapsWall(map, nx, nz, RADIUS)
+                || overlapsDoor3D(doors, nx, ny, nz)) {
                 finish(effects);
                 return true;
             }
@@ -93,6 +108,20 @@ public final class EnemyProjectile {
                     player.damage(damage * playerDamageScale, nx, nz);
                     finish(effects);
                     return true;
+                }
+            }
+            if (consoles != null) {
+                for (int c = 0; c < consoles.size(); c++) {
+                    SecurityConsole console = consoles.get(c);
+                    if (ny - RADIUS > console.getHeight() || ny + RADIUS < 0f) continue;
+                    float dx = console.getX() - nx;
+                    float dz = console.getZ() - nz;
+                    float reach = console.getRadius() + RADIUS;
+                    if (dx * dx + dz * dz < reach * reach) {
+                        position.set(nx, ny, nz);
+                        finish(effects);
+                        return true;
+                    }
                 }
             }
             if (targets != null) {
@@ -128,6 +157,14 @@ public final class EnemyProjectile {
                 }
             }
             position.set(nx, ny, nz);
+        }
+        return false;
+    }
+
+    private static boolean overlapsDoor3D(List<Door> doors, float x, float y, float z) {
+        if (doors == null) return false;
+        for (int i = 0; i < doors.size(); i++) {
+            if (doors.get(i).overlapsSphere(x, y, z, RADIUS)) return true;
         }
         return false;
     }

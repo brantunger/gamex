@@ -212,4 +212,24 @@ class HitscanTest {
         assertTrue(Hitscan.hasLineOfSight(MAP, 2.5f, 1.5f, 5.5f, 1.5f));
         assertFalse(Hitscan.hasLineOfSight(MAP, 2.5f, 2.5f, 5.5f, 2.5f), "blocked by panel pillar at (4,2)");
     }
+
+    @Test
+    void closedDoorBlocksRaysAndSightUntilItLiftsClear() {
+        Door door = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 1);
+        List<Door> doors = Collections.singletonList(door);
+        Vector3 corridorOrigin = new Vector3(1.5f, 0.5f, 1.5f);
+
+        RayHit closedHit = Hitscan.cast(MAP, NO_TARGETS, doors, corridorOrigin, new Vector3(1f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.DOOR, closedHit.kind);
+        assertSame(door, closedHit.door);
+        assertEquals(2f - Door.HALF_THICKNESS, closedHit.distance, EPSILON);
+        assertFalse(Hitscan.hasLineOfSight(MAP, doors, 1.5f, 1.5f, 5.5f, 1.5f));
+
+        door.open();
+        door.update(Door.OPEN_DURATION * 0.8f);
+        assertTrue(door.getBottomY() > 0.5f);
+        RayHit openHit = Hitscan.cast(MAP, NO_TARGETS, doors, corridorOrigin, new Vector3(1f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.WALL, openHit.kind);
+        assertTrue(Hitscan.hasLineOfSight(MAP, doors, 1.5f, 1.5f, 5.5f, 1.5f));
+    }
 }

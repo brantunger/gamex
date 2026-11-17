@@ -15,6 +15,8 @@ public final class RayHit {
         FLOOR,
         /** The ceiling. */
         CEILING,
+        /** A closed or closing {@link Door} bulkhead slab. */
+        DOOR,
         /** A {@link Damageable}. */
         TARGET
     }
@@ -29,6 +31,8 @@ public final class RayHit {
     public final Vector3 normal = new Vector3();
     /** The wall type that was hit, when {@link #kind} is {@link Kind#WALL}. */
     public char wallType;
+    /** The door that was hit, when {@link #kind} is {@link Kind#DOOR}; otherwise null. */
+    public Door door;
     /** The object that was hit, when {@link #kind} is {@link Kind#TARGET}; otherwise null. */
     public Damageable target;
 
