@@ -102,6 +102,7 @@ public final class Enemy implements Damageable {
     private float strafeSign = 1f;
     private float strafeTimer = STRAFE_SWITCH_TIME;
     private float walkPhase;
+    private float aimPitch;
 
     /**
      * Spawns an enemy at {@code (x, z)} facing the longest unobstructed cardinal sightline.
@@ -196,6 +197,11 @@ public final class Enemy implements Damageable {
 
     public float getWalkPhase() {
         return walkPhase;
+    }
+
+    /** @return vertical barrel aim pitch in degrees (positive pitches slightly upward). */
+    public float getAimPitch() {
+        return aimPitch;
     }
 
     /**
@@ -315,6 +321,12 @@ public final class Enemy implements Damageable {
         if (hasLos && dist > 1e-4f) {
             float targetYaw = yawToward(dx, dz);
             yaw = turnToward(yaw, targetYaw, TURRET_TURN_RATE * dt);
+            float targetPitch = (float) Math.toDegrees(
+                Math.atan2((Player.EYE_HEIGHT - 0.06f) - WorldModels.TURRET_MUZZLE_Y, Math.max(0.1f, dist)));
+            targetPitch = Math.max(-28f, Math.min(28f, targetPitch));
+            aimPitch = moveToward(aimPitch, targetPitch, 90f * dt);
+        } else {
+            aimPitch = moveToward(aimPitch, 0f, 60f * dt);
         }
 
         if (state == State.WINDUP) {
@@ -364,10 +376,11 @@ public final class Enemy implements Damageable {
         float fz = (float) -Math.cos(rad);
         float rx = (float) Math.cos(rad);
         float rz = (float) Math.sin(rad);
-        float side = alternateBarrel ? 0.070f : -0.070f;
+        float side = alternateBarrel ? WorldModels.TURRET_BARREL_X : -WorldModels.TURRET_BARREL_X;
         alternateBarrel = !alternateBarrel;
-        Vector3 muzzle = new Vector3(position.x + fx * 0.16f + rx * side, 0.44f,
-            position.y + fz * 0.16f + rz * side);
+        float fwd = -WorldModels.TURRET_MUZZLE_Z;
+        Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * side, WorldModels.TURRET_MUZZLE_Y,
+            position.y + fz * fwd + rz * side);
         Vector3 aim = new Vector3(player.position.x - muzzle.x, (Player.EYE_HEIGHT - 0.06f) - muzzle.y,
             player.position.y - muzzle.z).nor();
         outProjectiles.add(new EnemyProjectile(muzzle, aim, TURRET_BOLT_SPEED * speedScale, TURRET_BOLT_DAMAGE, this));
@@ -449,8 +462,9 @@ public final class Enemy implements Damageable {
         float fz = (float) -Math.cos(rad);
         float rx = (float) Math.cos(rad);
         float rz = (float) Math.sin(rad);
-        Vector3 muzzle = new Vector3(position.x + fx * 0.16f + rx * 0.162f, 0.46f,
-            position.y + fz * 0.16f + rz * 0.162f);
+        float fwd = -WorldModels.GUARD_MUZZLE_Z;
+        Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * WorldModels.GUARD_MUZZLE_X,
+            WorldModels.GUARD_MUZZLE_Y, position.y + fz * fwd + rz * WorldModels.GUARD_MUZZLE_X);
         Vector3 aim = new Vector3(player.position.x - muzzle.x, (Player.EYE_HEIGHT - 0.06f) - muzzle.y,
             player.position.y - muzzle.z).nor();
         outProjectiles.add(new EnemyProjectile(muzzle, aim, GUARD_BOLT_SPEED * speedScale, GUARD_BOLT_DAMAGE, this));
@@ -600,6 +614,12 @@ public final class Enemy implements Damageable {
         float diff = angleDiff(current, target);
         if (Math.abs(diff) <= maxStep) return target;
         return normalizeYaw(current + Math.copySign(maxStep, diff));
+    }
+
+    private static float moveToward(float current, float target, float maxStep) {
+        float diff = target - current;
+        if (Math.abs(diff) <= maxStep) return target;
+        return current + Math.copySign(maxStep, diff);
     }
 
     private static float angleDiff(float from, float to) {

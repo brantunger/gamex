@@ -39,6 +39,40 @@ public final class WorldModels {
     /** The number of floats per vertex. */
     public static final int VERTEX_SIZE = ModelVertices.VERTEX_SIZE;
 
+    /** Shared canonical enemy joint pivots and muzzle/telegraph sockets across generators, AI, and rendering. */
+    public static final float TURRET_HEAD_PIVOT_Y = 0.34f;
+    public static final float TURRET_BARREL_PIVOT_Y = 0.44f;
+    public static final float TURRET_BARREL_PIVOT_Z = -0.04f;
+    public static final float TURRET_BARREL_X = 0.070f;
+    public static final float TURRET_MUZZLE_Y = 0.44f;
+    public static final float TURRET_MUZZLE_Z = -0.205f;
+    public static final float TURRET_FLARE_Z = -0.215f;
+
+    public static final float GUARD_PELVIS_PIVOT_Y = 0.34f;
+    public static final float GUARD_HIP_X = 0.075f;
+    public static final float GUARD_HIP_Y = 0.30f;
+    public static final float GUARD_TORSO_PIVOT_Y = 0.38f;
+    public static final float GUARD_SHOULDER_X = 0.162f;
+    public static final float GUARD_SHOULDER_Y = 0.54f;
+    public static final float GUARD_MUZZLE_X = 0.162f;
+    public static final float GUARD_MUZZLE_Y = 0.46f;
+    public static final float GUARD_MUZZLE_Z = -0.148f;
+    public static final float GUARD_FLARE_Z = -0.160f;
+
+    public static final float DRONE_FLARE_Y = 0.34f;
+    public static final float DRONE_FLARE_Z = -0.180f;
+
+    /** Per-draw accent shader colours ({r, g, b, gloss}) substituting {@code # @accent} surfaces without VBO clones. */
+    public static final float[] ACCENT_DOOR_UNLOCKED = {0.62f, 0.78f, 0.92f, 0.85f};
+    public static final float[] ACCENT_DOOR_AMBER = {1.00f, 0.72f, 0.16f, 0.95f};
+    public static final float[] ACCENT_DOOR_CYAN = {0.18f, 0.92f, 0.98f, 0.95f};
+    public static final float[] ACCENT_DOOR_LOCKDOWN = {0.98f, 0.22f, 0.24f, 0.95f};
+    public static final float[] ACCENT_DOOR_OPEN = {0.24f, 0.96f, 0.48f, 0.95f};
+    public static final float[] ACCENT_KEYCARD_AMBER = {1.00f, 0.72f, 0.16f, 0.85f};
+    public static final float[] ACCENT_KEYCARD_CYAN = {0.18f, 0.92f, 0.98f, 0.85f};
+    public static final float[] ACCENT_CONSOLE_LOCKED = {0.98f, 0.28f, 0.22f, 0.95f};
+    public static final float[] ACCENT_CONSOLE_ACTIVE = {0.24f, 0.96f, 0.48f, 0.95f};
+
     /** The materials the world object model files may use. */
     public enum Material {
         CANISTER_BODY("canister_body", 0.22f, 0.82f, 0.71f, 0.45f),
@@ -72,14 +106,7 @@ public final class WorldModels {
         DOOR_TRIM("door_trim", 0.22f, 0.25f, 0.30f, 0.65f),
         DOOR_DARK("door_dark", 0.13f, 0.15f, 0.18f, 0.35f),
         DOOR_STATUS("door_status", 0.62f, 0.78f, 0.92f, 0.85f),
-        DOOR_UNLOCKED("door_unlocked", 0.62f, 0.78f, 0.92f, 0.85f),
-        DOOR_AMBER("door_amber", 1.00f, 0.72f, 0.16f, 0.95f),
-        DOOR_CYAN("door_cyan", 0.18f, 0.92f, 0.98f, 0.95f),
-        DOOR_LOCKDOWN("door_lockdown", 0.98f, 0.22f, 0.24f, 0.95f),
-        DOOR_OPEN("door_open", 0.24f, 0.96f, 0.48f, 0.95f),
         KEYCARD_BODY("keycard_body", 1.00f, 0.72f, 0.16f, 0.85f),
-        KEYCARD_AMBER("keycard_amber", 1.00f, 0.72f, 0.16f, 0.85f),
-        KEYCARD_CYAN("keycard_cyan", 0.18f, 0.92f, 0.98f, 0.85f),
         KEYCARD_TRIM("keycard_trim", 0.22f, 0.25f, 0.30f, 0.70f),
         KEYCARD_STRIPE("keycard_stripe", 0.12f, 0.14f, 0.18f, 0.50f),
         KEYCARD_CHIP("keycard_chip", 0.98f, 0.94f, 0.68f, 0.95f),
@@ -87,9 +114,7 @@ public final class WorldModels {
         CONSOLE_BODY("console_body", 0.30f, 0.34f, 0.40f, 0.60f),
         CONSOLE_TRIM("console_trim", 0.48f, 0.52f, 0.58f, 0.75f),
         CONSOLE_KEYPAD("console_keypad", 0.20f, 0.24f, 0.28f, 0.40f),
-        CONSOLE_SCREEN("console_screen", 0.98f, 0.28f, 0.22f, 0.95f),
-        CONSOLE_LOCKED("console_locked", 0.98f, 0.28f, 0.22f, 0.95f),
-        CONSOLE_ACTIVE("console_active", 0.24f, 0.96f, 0.48f, 0.95f);
+        CONSOLE_SCREEN("console_screen", 0.98f, 0.28f, 0.22f, 0.95f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;
@@ -128,15 +153,29 @@ public final class WorldModels {
     }
 
     /**
-     * Turns a parsed world model into packed vertices while substituting one material's colour.
-     * @param model the parsed model file
-     * @param targetMaterial material name to override
-     * @param replacement material colour to use in place of {@code targetMaterial}
-     * @return three vertices per triangle
+     * Packs an entire world model into deduplicated vertices and 16-bit triangle indices around origin.
+     * @param model parsed world model
+     * @return indexed vertex and triangle index arrays
      */
-    public static float[] verticesReplacingMaterial(ObjModel model, String targetMaterial, Material replacement) {
-        return ModelVertices.pack(model, name ->
-            name.equals(targetMaterial) ? replacement.colour : Material.named(name).colour);
+    public static ModelVertices.IndexedMesh packIndexed(ObjModel model) {
+        return ModelVertices.packIndexed(model, name -> Material.named(name).colour);
+    }
+
+    /**
+     * Packs one hierarchical part declared via {@code # @part} into an indexed mesh with vertices centered on that
+     * part's local pivot.
+     * @param model parsed world model
+     * @param partName part name to extract
+     * @return pivot-relative indexed vertex and triangle index arrays
+     * @throws IllegalArgumentException if no triangles belong to {@code partName} or a material is unknown
+     */
+    public static ModelVertices.IndexedMesh packPartIndexed(ObjModel model, String partName) {
+        ObjModel.PartSpec spec = model.getPartSpec(partName);
+        float px = spec == null ? 0f : spec.pivotX;
+        float py = spec == null ? 0f : spec.pivotY;
+        float pz = spec == null ? 0f : spec.pivotZ;
+        return ModelVertices.packIndexed(model, t -> partName.equals(model.getPart(t)),
+            px, py, pz, name -> Material.named(name).colour);
     }
 
     /**

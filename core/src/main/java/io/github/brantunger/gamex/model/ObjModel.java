@@ -2,7 +2,12 @@ package io.github.brantunger.gamex.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -29,6 +34,53 @@ public final class ObjModel {
     public static final String NO_MATERIAL = "";
     /** The group name of faces that come before any {@code g} or {@code o} line. */
     public static final String NO_GROUP = "";
+    /** Default hierarchical part name before any {@code # @part} directive. */
+    public static final String ROOT_PART = "root";
+
+    /** Named hierarchical articulated part declared with {@code # @part}. */
+    public static final class PartSpec {
+        /** Unique part identifier. */
+        public final String name;
+        /** Parent part name, or {@code null} when parented directly to {@link #ROOT_PART}. */
+        public final String parent;
+        /** Pivot X in model rest coordinates. */
+        public final float pivotX;
+        /** Pivot Y in model rest coordinates. */
+        public final float pivotY;
+        /** Pivot Z in model rest coordinates. */
+        public final float pivotZ;
+
+        PartSpec(String name, String parent, float pivotX, float pivotY, float pivotZ) {
+            this.name = name;
+            this.parent = parent;
+            this.pivotX = pivotX;
+            this.pivotY = pivotY;
+            this.pivotZ = pivotZ;
+        }
+    }
+
+    /** Named attachment point declared with {@code # @socket}. */
+    public static final class SocketSpec {
+        /** Unique socket identifier (e.g. {@code muzzle}, {@code telegraph}). */
+        public final String name;
+        /** Owning part identifier whose transform carries this socket. */
+        public final String part;
+        /** Rest position X in model coordinates. */
+        public final float x;
+        /** Rest position Y in model coordinates. */
+        public final float y;
+        /** Rest position Z in model coordinates. */
+        public final float z;
+
+        SocketSpec(String name, String part, float x, float y, float z) {
+            this.name = name;
+            this.part = part;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+    }
+
     /** The character some editors put at the very start of a text file. */
     private static final char BYTE_ORDER_MARK = 0xFEFF;
     /** A plain decimal number. {@code Float.parseFloat} alone would also take {@code 1f} and {@code 0x1p1}. */
@@ -43,13 +95,23 @@ public final class ObjModel {
     private final float[] normals;
     private final String[] materials;
     private final String[] groups;
+    private final String[] parts;
+    private final Map<String, PartSpec> partSpecs;
+    private final Map<String, SocketSpec> socketSpecs;
+    private final Set<String> accentMaterials;
 
-    private ObjModel(int vertexCount, float[] positions, float[] normals, String[] materials, String[] groups) {
+    private ObjModel(int vertexCount, float[] positions, float[] normals, String[] materials, String[] groups,
+                     String[] parts, Map<String, PartSpec> partSpecs, Map<String, SocketSpec> socketSpecs,
+                     Set<String> accentMaterials) {
         this.vertexCount = vertexCount;
         this.positions = positions;
         this.normals = normals;
         this.materials = materials;
         this.groups = groups;
+        this.parts = parts;
+        this.partSpecs = Collections.unmodifiableMap(partSpecs);
+        this.socketSpecs = Collections.unmodifiableMap(socketSpecs);
+        this.accentMaterials = Collections.unmodifiableSet(accentMaterials);
     }
 
     /** @return the number of {@code v} lines in the file: the distinct vertices of the model. */
@@ -89,6 +151,44 @@ public final class ObjModel {
     }
 
     /**
+     * @param triangle the index of a triangle
+     * @return the name of its hierarchical part, or {@link #ROOT_PART}
+     */
+    public String getPart(int triangle) {
+        return parts[triangle];
+    }
+
+    /** @return declared parts keyed by name. */
+    public Map<String, PartSpec> getPartSpecs() {
+        return partSpecs;
+    }
+
+    /** @return part metadata for {@code name}, or null if undeclared. */
+    public PartSpec getPartSpec(String name) {
+        return partSpecs.get(name);
+    }
+
+    /** @return declared sockets keyed by name. */
+    public Map<String, SocketSpec> getSocketSpecs() {
+        return socketSpecs;
+    }
+
+    /** @return socket metadata for {@code name}, or null if undeclared. */
+    public SocketSpec getSocket(String name) {
+        return socketSpecs.get(name);
+    }
+
+    /** @return whether {@code material} is marked via {@code # @accent} for shader tinting. */
+    public boolean isAccentMaterial(String material) {
+        return accentMaterials.contains(material);
+    }
+
+    /** @return materials marked via {@code # @accent}. */
+    public Set<String> getAccentMaterials() {
+        return accentMaterials;
+    }
+
+    /**
      * Parses OBJ text.
      * @param text the contents of an OBJ file
      * @return the model
@@ -105,8 +205,14 @@ public final class ObjModel {
         FloatList normals = new FloatList();
         List<String> materials = new ArrayList<>();
         List<String> groups = new ArrayList<>();
+        List<String> triangleParts = new ArrayList<>();
+        Map<String, PartSpec> partSpecs = new LinkedHashMap<>();
+        partSpecs.put(ROOT_PART, new PartSpec(ROOT_PART, null, 0f, 0f, 0f));
+        Map<String, SocketSpec> socketSpecs = new LinkedHashMap<>();
+        Set<String> accentMaterials = new LinkedHashSet<>();
         String material = NO_MATERIAL;
         String group = NO_GROUP;
+        String currentPart = ROOT_PART;
         int textureCount = 0;
 
         // A file may start with a byte-order mark, and may end its lines the Unix, Windows or old Mac way.
@@ -114,9 +220,14 @@ public final class ObjModel {
         String content = marked ? text.substring(1) : text;
         String[] lines = content.split("\r\n|\r|\n", -1);
         for (int number = 1; number <= lines.length; number++) {
-            String line = lines[number - 1];
-            int comment = line.indexOf('#');
-            if (comment >= 0) line = line.substring(0, comment);
+            String rawLine = lines[number - 1];
+            String trimmedRaw = rawLine.trim();
+            if (trimmedRaw.startsWith("# @")) {
+                currentPart = parseDirective(trimmedRaw, number, currentPart, partSpecs, socketSpecs, accentMaterials);
+                continue;
+            }
+            int comment = rawLine.indexOf('#');
+            String line = comment >= 0 ? rawLine.substring(0, comment) : rawLine;
             line = line.trim();
             if (line.isEmpty()) continue;
             String[] words = line.split("\\s+");
@@ -135,6 +246,7 @@ public final class ObjModel {
                     for (int i = 0; i < words.length - 3; i++) {
                         materials.add(material);
                         groups.add(group);
+                        triangleParts.add(currentPart);
                     }
                     break;
                 case "g":
@@ -142,7 +254,7 @@ public final class ObjModel {
                     group = words.length > 1 ? line.substring(words[0].length()).trim() : NO_GROUP;
                     break;
                 case "usemtl":
-                    material = words.length > 1 ? words[1] : NO_MATERIAL;
+                    material = words.length > 1 ? line.substring(words[0].length()).trim() : NO_MATERIAL;
                     break;
                 case "mtllib":
                 case "s":
@@ -153,7 +265,98 @@ public final class ObjModel {
             }
         }
         return new ObjModel(vertices.size(), positions.toArray(), normals.toArray(),
-            materials.toArray(new String[0]), groups.toArray(new String[0]));
+            materials.toArray(new String[0]), groups.toArray(new String[0]), triangleParts.toArray(new String[0]),
+            partSpecs, socketSpecs, accentMaterials);
+    }
+
+    private static String parseDirective(String trimmedComment, int number, String currentPart,
+                                         Map<String, PartSpec> partSpecs, Map<String, SocketSpec> socketSpecs,
+                                         Set<String> accentMaterials) {
+        String body = trimmedComment.substring(2).trim();
+        String[] tokens = body.split("\\s+");
+        if (tokens.length == 0) return currentPart;
+        switch (tokens[0]) {
+            case "@part": {
+                if (tokens.length < 2) {
+                    throw new IllegalArgumentException("Line " + number + ": '@part' requires a part name");
+                }
+                String name = tokens[1];
+                if (tokens.length == 2) {
+                    if (!partSpecs.containsKey(name)) {
+                        partSpecs.put(name, new PartSpec(name, null, 0f, 0f, 0f));
+                    }
+                    return name;
+                }
+                String parent = null;
+                float px = 0f;
+                float py = 0f;
+                float pz = 0f;
+                for (int i = 2; i < tokens.length; i++) {
+                    String tok = tokens[i];
+                    if (tok.startsWith("parent=")) {
+                        String val = tok.substring("parent=".length());
+                        parent = ROOT_PART.equals(val) || val.isEmpty() ? null : val;
+                    } else if (tok.startsWith("pivot=")) {
+                        float[] p = parseTriplet(tok.substring("pivot=".length()), number, "@part pivot");
+                        px = p[0];
+                        py = p[1];
+                        pz = p[2];
+                    }
+                }
+                partSpecs.put(name, new PartSpec(name, parent, px, py, pz));
+                return name;
+            }
+            case "@socket": {
+                if (tokens.length < 2) {
+                    throw new IllegalArgumentException("Line " + number + ": '@socket' requires a socket name");
+                }
+                String name = tokens[1];
+                String part = ROOT_PART;
+                float sx = 0f;
+                float sy = 0f;
+                float sz = 0f;
+                for (int i = 2; i < tokens.length; i++) {
+                    String tok = tokens[i];
+                    if (tok.startsWith("part=")) {
+                        part = tok.substring("part=".length());
+                    } else if (tok.startsWith("pos=")) {
+                        float[] p = parseTriplet(tok.substring("pos=".length()), number, "@socket pos");
+                        sx = p[0];
+                        sy = p[1];
+                        sz = p[2];
+                    }
+                }
+                socketSpecs.put(name, new SocketSpec(name, part, sx, sy, sz));
+                return currentPart;
+            }
+            case "@accent":
+                if (tokens.length < 2) {
+                    throw new IllegalArgumentException("Line " + number + ": '@accent' requires a material name");
+                }
+                accentMaterials.add(body.substring("@accent".length()).trim());
+                return currentPart;
+            default:
+                return currentPart;
+        }
+    }
+
+    private static float[] parseTriplet(String csv, int number, String label) {
+        String[] parts = csv.split(",", -1);
+        if (parts.length != 3) {
+            throw new IllegalArgumentException("Line " + number + ": " + label + " needs x,y,z");
+        }
+        float[] out = new float[3];
+        for (int i = 0; i < 3; i++) {
+            String p = parts[i].trim();
+            if (!NUMBER.matcher(p).matches()) {
+                throw new IllegalArgumentException("Line " + number + ": '" + p + "' in " + label + " is not a number");
+            }
+            out[i] = Float.parseFloat(p);
+            if (Float.isInfinite(out[i])) {
+                throw new IllegalArgumentException("Line " + number + ": '" + p + "' in " + label + " is not finite");
+            }
+        }
+        return out;
     }
 
     private static float[] vector(String[] words, int number) {

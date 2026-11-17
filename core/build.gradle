@@ -8,22 +8,17 @@ dependencies {
   testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
-// Tells the tests where the assets and generator tools folders are. Both are tracked as inputs, so editing a model
-// or generator reruns the tests; they are tracked by relative path to stay out of the build cache key.
+// Tells the tests where the assets folder is. Editing a committed model reruns the tests; it is tracked by
+// relative path to stay out of the build cache key.
 class TestLocations implements CommandLineArgumentProvider {
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
   File models
 
-  @InputDirectory
-  @PathSensitive(PathSensitivity.RELATIVE)
-  File tools
-
   @Override
   Iterable<String> asArguments() {
     [
-      "-Dgamex.assets=${models.parentFile.path}".toString(),
-      "-Dgamex.tools=${tools.path}".toString()
+      "-Dgamex.assets=${models.parentFile.path}".toString()
     ]
   }
 }
@@ -31,8 +26,7 @@ class TestLocations implements CommandLineArgumentProvider {
 test {
   useJUnitPlatform()
   jvmArgumentProviders.add(new TestLocations(
-    models: rootProject.file("assets/models"),
-    tools: rootProject.file("tools")
+    models: rootProject.file("assets/models")
   ))
 }
 

@@ -5,7 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.model.ModelRig;
+import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
@@ -269,7 +272,7 @@ class WorldModelsTest {
     }
 
     @Test
-    void bulkheadDoorAndSecurityConsoleMatchCollisionDimensionsAndMaterialSwap() {
+    void bulkheadDoorAndSecurityConsoleMatchCollisionDimensionsAndAccentMarking() {
         float minX = Float.POSITIVE_INFINITY;
         float maxX = Float.NEGATIVE_INFINITY;
         float minY = Float.POSITIVE_INFINITY;
@@ -277,6 +280,10 @@ class WorldModelsTest {
         float minZ = Float.POSITIVE_INFINITY;
         float maxZ = Float.NEGATIVE_INFINITY;
         for (int triangle = 0; triangle < DOOR_BULKHEAD.getTriangleCount(); triangle++) {
+            boolean allAtFloor = true;
+            boolean allAtCeiling = true;
+            boolean allAtLeftEdge = true;
+            boolean allAtRightEdge = true;
             for (int corner = 0; corner < 3; corner++) {
                 Vector3 p = position(DOOR_BULKHEAD, triangle, corner);
                 minX = Math.min(minX, p.x);
@@ -285,6 +292,14 @@ class WorldModelsTest {
                 maxY = Math.max(maxY, p.y);
                 minZ = Math.min(minZ, p.z);
                 maxZ = Math.max(maxZ, p.z);
+                if (Math.abs(p.y) > 1e-4f) allAtFloor = false;
+                if (Math.abs(p.y - GameMap.WALL_HEIGHT) > 1e-4f) allAtCeiling = false;
+                if (Math.abs(p.x + Door.HALF_SPAN) > 1e-4f) allAtLeftEdge = false;
+                if (Math.abs(p.x - Door.HALF_SPAN) > 1e-4f) allAtRightEdge = false;
+            }
+            if ("door_armor".equals(DOOR_BULKHEAD.getMaterial(triangle))) {
+                assertFalse(allAtFloor || allAtCeiling || allAtLeftEdge || allAtRightEdge,
+                    "Inset door armor must not lie coplanar on outer trim planes");
             }
         }
         assertEquals(-Door.HALF_SPAN, minX, 1e-5f);
@@ -293,11 +308,63 @@ class WorldModelsTest {
         assertEquals(GameMap.WALL_HEIGHT, maxY, 1e-5f);
         assertTrue(minZ >= -Door.HALF_THICKNESS - 1e-5f && maxZ <= Door.HALF_THICKNESS + 1e-5f);
 
-        float[] swapped = WorldModels.verticesReplacingMaterial(
-            DOOR_BULKHEAD, "door_status", WorldModels.Material.DOOR_OPEN);
-        assertEquals(WorldModels.vertices(DOOR_BULKHEAD).length, swapped.length);
+        assertTrue(DOOR_BULKHEAD.isAccentMaterial("door_status"));
+        assertFalse(DOOR_BULKHEAD.isAccentMaterial("door_armor"));
+        assertTrue(KEYCARD.isAccentMaterial("keycard_body"));
+        assertTrue(SECURITY_CONSOLE.isAccentMaterial("console_screen"));
+
+        float[] doorVerts = WorldModels.vertices(DOOR_BULKHEAD);
+        for (int t = 0; t < DOOR_BULKHEAD.getTriangleCount(); t++) {
+            float expectedAccent = DOOR_BULKHEAD.isAccentMaterial(DOOR_BULKHEAD.getMaterial(t)) ? 1f : 0f;
+            for (int c = 0; c < 3; c++) {
+                assertEquals(expectedAccent, doorVerts[(t * 3 + c) * WorldModels.VERTEX_SIZE + 10], 0f);
+            }
+        }
 
         assertBoundsFitCylinder(SECURITY_CONSOLE, 0f, SecurityConsole.HEIGHT, SecurityConsole.RADIUS, true);
+    }
+
+    @Test
+    void articulatedEnemyRigsAndIndexedMeshesMatchWorldConstants() {
+        ModelVertices.IndexedMesh doorIndexed = WorldModels.packIndexed(DOOR_BULKHEAD);
+        assertTrue(doorIndexed.vertexCount() > 0 && doorIndexed.vertexCount() < doorIndexed.indexCount());
+        assertEquals(DOOR_BULKHEAD.getTriangleCount() * 3, doorIndexed.indexCount());
+
+        for (String part : new String[] {"base", "head", "barrels"}) {
+            assertTrue(TURRET.getPartSpec(part) != null, "Missing turret part " + part);
+        }
+        assertEquals("head", TURRET.getPartSpec("barrels").parent);
+        assertEquals(WorldModels.TURRET_BARREL_PIVOT_Y, TURRET.getPartSpec("barrels").pivotY, 1e-5f);
+        assertEquals(WorldModels.TURRET_BARREL_PIVOT_Z, TURRET.getPartSpec("barrels").pivotZ, 1e-5f);
+        ModelRig turretRig = new ModelRig(TURRET);
+        Matrix4 identity = new Matrix4();
+        Vector3 turretMuzzle = turretRig.evaluateSocketWorld("muzzle_l", null, identity, new Vector3());
+        assertEquals(-WorldModels.TURRET_BARREL_X, turretMuzzle.x, 1e-5f);
+        assertEquals(WorldModels.TURRET_MUZZLE_Y, turretMuzzle.y, 1e-5f);
+        assertEquals(WorldModels.TURRET_MUZZLE_Z, turretMuzzle.z, 1e-5f);
+        assertTrue(TURRET.getSocket("muzzle_r") != null && TURRET.getSocket("telegraph") != null);
+
+        for (String part : new String[] {"pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r"}) {
+            assertTrue(GUARD.getPartSpec(part) != null, "Missing guard part " + part);
+        }
+        ModelRig guardRig = new ModelRig(GUARD);
+        Vector3 guardMuzzle = guardRig.evaluateSocketWorld("muzzle", null, identity, new Vector3());
+        assertEquals(WorldModels.GUARD_MUZZLE_X, guardMuzzle.x, 1e-5f);
+        assertEquals(WorldModels.GUARD_MUZZLE_Y, guardMuzzle.y, 1e-5f);
+        assertEquals(WorldModels.GUARD_MUZZLE_Z, guardMuzzle.z, 1e-5f);
+        assertTrue(GUARD.getSocket("telegraph") != null);
+
+        ModelVertices.IndexedMesh guardLeftLeg = WorldModels.packPartIndexed(GUARD, "leg_l");
+        assertTrue(guardLeftLeg.vertexCount() > 0);
+        for (int i = 0; i < guardLeftLeg.vertices.length; i += WorldModels.VERTEX_SIZE) {
+            assertTrue(guardLeftLeg.vertices[i + 1] <= 1e-4f, "leg_l vertices must be relative to hip pivot");
+        }
+
+        ObjModel.SocketSpec droneTelegraph = DRONE.getSocket("telegraph");
+        assertTrue(droneTelegraph != null);
+        assertEquals(0f, droneTelegraph.x, 1e-5f);
+        assertEquals(WorldModels.DRONE_FLARE_Y, droneTelegraph.y, 1e-5f);
+        assertEquals(WorldModels.DRONE_FLARE_Z, droneTelegraph.z, 1e-5f);
     }
 
     private static void assertBoundsFitCylinder(ObjModel model, float minExpectedY, float expectedHeight,

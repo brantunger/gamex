@@ -1,0 +1,64 @@
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+dependencies {
+  implementation project(':core')
+  implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+  implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+
+  constraints {
+    implementation("org.lwjgl:lwjgl:$lwjgl3Version")
+    implementation("org.lwjgl:lwjgl-glfw:$lwjgl3Version")
+    implementation("org.lwjgl:lwjgl-jemalloc:$lwjgl3Version")
+    implementation("org.lwjgl:lwjgl-openal:$lwjgl3Version")
+    implementation("org.lwjgl:lwjgl-opengl:$lwjgl3Version")
+    implementation("org.lwjgl:lwjgl-stb:$lwjgl3Version")
+  }
+
+  testImplementation platform("org.junit:junit-bom:$junitVersion")
+  testImplementation "org.junit.jupiter:junit-jupiter"
+  testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+tasks.register('generateModels', JavaExec) {
+  group = 'gamex'
+  description = 'Regenerates all sculpted .obj models in assets/models/'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.brantunger.gamex.tools.GenerateAllModels'
+  args = [rootProject.file('assets/models').path]
+}
+
+def previewJvmArgs = [
+  '--enable-native-access=ALL-UNNAMED',
+  '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+]
+if (System.properties['os.name'].toLowerCase(Locale.ROOT).contains('mac')) {
+  previewJvmArgs += '-XstartOnFirstThread'
+}
+
+tasks.register('preview', JavaExec) {
+  group = 'gamex'
+  description = 'Launches the interactive 3D OBJ model previewer with live regeneration (R)'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.brantunger.gamex.tools.preview.ModelPreviewApp'
+  workingDir = rootProject.file('assets').path
+  jvmArgs previewJvmArgs
+  systemProperty 'gamex.modelsDir', rootProject.file('assets/models').path
+}
+
+class ToolsAssetsLocation implements CommandLineArgumentProvider {
+  @InputDirectory
+  @PathSensitive(PathSensitivity.RELATIVE)
+  File models
+
+  @Override
+  Iterable<String> asArguments() {
+    ["-Dgamex.assets=${models.parentFile.path}".toString()]
+  }
+}
+
+test {
+  useJUnitPlatform()
+  jvmArgumentProviders.add(new ToolsAssetsLocation(
+    models: rootProject.file('assets/models')
+  ))
+}
