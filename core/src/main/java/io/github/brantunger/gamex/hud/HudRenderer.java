@@ -13,6 +13,7 @@ import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Pickup;
 
@@ -146,7 +147,7 @@ public final class HudRenderer implements Disposable {
             case TITLE:
                 return cy + 22f * u;
             case STAGE_SELECT:
-                return cy + 58f * u;
+                return cy + 78f * u;
             case DIFFICULTY_SELECT:
                 return cy + 28f * u;
             case BRIEFING:
@@ -175,6 +176,7 @@ public final class HudRenderer implements Disposable {
         }
         drawVitalsAndEnergy(simulation);
         drawStatus(simulation);
+        drawBossBar(simulation);
         drawToast(simulation);
     }
 
@@ -455,6 +457,38 @@ public final class HudRenderer implements Disposable {
             width - 28f * unit - PixelFont.width(timer, pixel), topY, pixel);
     }
 
+    private void drawBossBar(GameSimulation simulation) {
+        Enemy boss = simulation.getActiveBoss();
+        if (boss == null) return;
+        boolean overdrive = boss.isOverdrive();
+        float frac = Math.max(0f, Math.min(1f, boss.getHealth() / boss.getKind().maxHealth));
+
+        float barW = 380f * unit;
+        float barH = 14f * unit;
+        float left = (width - barW) * 0.5f;
+        float barBottom = height - 56f * unit;
+        float labelPix = 2.3f * unit;
+        float labelH = PixelFont.height(labelPix);
+
+        batch.setColor(0.05f, 0.06f, 0.11f, 0.80f);
+        rect(left - 12f * unit, barBottom - 8f * unit, barW + 24f * unit, barH + labelH + 22f * unit);
+
+        String title = overdrive ? "WARDEN MECH // OVERDRIVE" : "WARDEN MECH";
+        if (overdrive) batch.setColor(0.42f, 0.86f, 1.00f, 0.98f);
+        else batch.setColor(1.00f, 0.44f, 0.28f, 0.98f);
+        PixelFont.drawCentred(batch, textures.white, title, width * 0.5f, barBottom + barH + 6f * unit, labelPix);
+
+        batch.setColor(0.14f, 0.15f, 0.22f, 0.95f);
+        rect(left, barBottom, barW, barH);
+        if (overdrive) batch.setColor(0.40f, 0.58f, 1.00f, 0.96f);
+        else batch.setColor(0.96f, 0.28f, 0.18f, 0.96f);
+        rect(left, barBottom, barW * frac, barH);
+
+        // 50% Phase 2 Overdrive threshold notch.
+        batch.setColor(0.92f, 0.95f, 1f, 0.78f);
+        rect(left + barW * 0.5f - 1f * unit, barBottom - 1f * unit, 2f * unit, barH + 2f * unit);
+    }
+
     private void drawToast(GameSimulation simulation) {
         String msg = simulation.getToastMessage();
         if (msg == null) return;
@@ -466,7 +500,7 @@ public final class HudRenderer implements Disposable {
         float boxW = textW + padX * 2f;
         float boxH = PixelFont.height(pixel) + padY * 2f;
         float cx = width * 0.5f;
-        float y = height - 64f * unit;
+        float y = height - (simulation.getActiveBoss() != null ? 104f : 64f) * unit;
         batch.setColor(0.06f, 0.08f, 0.14f, 0.78f * alpha);
         rect(cx - boxW * 0.5f, y, boxW, boxH);
         batch.setColor(0.55f, 1f, 0.82f, alpha);
@@ -498,11 +532,11 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.62f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy + 6f * unit, 620f * unit, 444f * unit);
+        drawPanel(cx, cy + 4f * unit, 620f * unit, 468f * unit);
         batch.setColor(0.55f, 0.95f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 152f * unit, 5.5f * unit);
+        PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 174f * unit, 5.5f * unit);
         batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
-        PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 122f * unit,
+        PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 144f * unit,
             2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
     }

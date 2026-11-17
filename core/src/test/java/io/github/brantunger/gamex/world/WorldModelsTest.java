@@ -39,15 +39,17 @@ class WorldModelsTest {
     private static final ObjModel TURRET = load(WorldModels.TURRET_PATH);
     private static final ObjModel DRONE = load(WorldModels.DRONE_PATH);
     private static final ObjModel GUARD = load(WorldModels.GUARD_PATH);
+    private static final ObjModel WARDEN = load(WorldModels.WARDEN_PATH);
     private static final ObjModel ENEMY_BOLT = load(WorldModels.ENEMY_BOLT_PATH);
     private static final ObjModel DOOR_BULKHEAD = load(WorldModels.DOOR_BULKHEAD_PATH);
+    private static final ObjModel HAZARD_GRATE = load(WorldModels.HAZARD_GRATE_PATH);
     private static final ObjModel KEYCARD = load(WorldModels.KEYCARD_PATH);
     private static final ObjModel SECURITY_CONSOLE = load(WorldModels.SECURITY_CONSOLE_PATH);
     private static final ObjModel SCATTERGUN_PICKUP = load(WorldModels.SCATTERGUN_PICKUP_PATH);
     private static final ObjModel SHELLS_PICKUP = load(WorldModels.SHELLS_PICKUP_PATH);
     private static final ObjModel[] ALL_MODELS = {
         CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL,
-        TURRET, DRONE, GUARD, ENEMY_BOLT, DOOR_BULKHEAD, KEYCARD, SECURITY_CONSOLE,
+        TURRET, DRONE, GUARD, WARDEN, ENEMY_BOLT, DOOR_BULKHEAD, HAZARD_GRATE, KEYCARD, SECURITY_CONSOLE,
         SCATTERGUN_PICKUP, SHELLS_PICKUP
     };
 
@@ -244,6 +246,10 @@ class WorldModelsTest {
         float[] guardHead = WorldModels.verticesForGroupPrefix(GUARD, "head_");
         assertEquals(WorldModels.vertices(GUARD).length, guardBase.length + guardHead.length);
 
+        float[] wardenBase = WorldModels.verticesForGroupPrefix(WARDEN, "base_");
+        float[] wardenHead = WorldModels.verticesForGroupPrefix(WARDEN, "head_");
+        assertEquals(WorldModels.vertices(WARDEN).length, wardenBase.length + wardenHead.length);
+
         assertThrows(IllegalArgumentException.class, () -> WorldModels.verticesForGroupPrefix(DRONE, "missing_"));
     }
 
@@ -313,8 +319,26 @@ class WorldModelsTest {
 
         assertTrue(DOOR_BULKHEAD.isAccentMaterial("door_status"));
         assertFalse(DOOR_BULKHEAD.isAccentMaterial("door_armor"));
+        assertTrue(HAZARD_GRATE.isAccentMaterial("hazard_coil"));
+        assertFalse(HAZARD_GRATE.isAccentMaterial("hazard_frame"));
+        assertTrue(WARDEN.isAccentMaterial("warden_core"));
+        assertFalse(WARDEN.isAccentMaterial("warden_armor"));
         assertTrue(KEYCARD.isAccentMaterial("keycard_body"));
         assertTrue(SECURITY_CONSOLE.isAccentMaterial("console_screen"));
+
+        float[] hazardVerts = WorldModels.vertices(HAZARD_GRATE);
+        for (int t = 0; t < HAZARD_GRATE.getTriangleCount(); t++) {
+            for (int c = 0; c < 3; c++) {
+                Vector3 p = position(HAZARD_GRATE, t, c);
+                assertTrue(p.x >= -0.49f && p.x <= 0.49f, "hazard grate X out of cell bounds: " + p.x);
+                assertTrue(p.z >= -0.49f && p.z <= 0.49f, "hazard grate Z out of cell bounds: " + p.z);
+                assertTrue(p.y >= 0.001f && p.y <= 0.03f, "hazard grate Y should stay slightly raised off floor: " + p.y);
+            }
+            float expectedAccent = HAZARD_GRATE.isAccentMaterial(HAZARD_GRATE.getMaterial(t)) ? 1f : 0f;
+            for (int c = 0; c < 3; c++) {
+                assertEquals(expectedAccent, hazardVerts[(t * 3 + c) * WorldModels.VERTEX_SIZE + 10], 0f);
+            }
+        }
 
         float[] doorVerts = WorldModels.vertices(DOOR_BULKHEAD);
         for (int t = 0; t < DOOR_BULKHEAD.getTriangleCount(); t++) {
@@ -362,6 +386,19 @@ class WorldModelsTest {
         for (int i = 0; i < guardLeftLeg.vertices.length; i += WorldModels.VERTEX_SIZE) {
             assertTrue(guardLeftLeg.vertices[i + 1] <= 1e-4f, "leg_l vertices must be relative to hip pivot");
         }
+
+        assertBoundsFitCylinder(WARDEN, 0f, Enemy.Kind.WARDEN.height, Enemy.Kind.WARDEN.radius, true);
+        for (String part : new String[] {"pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r"}) {
+            assertTrue(WARDEN.getPartSpec(part) != null, "Missing warden part " + part);
+        }
+        ModelRig wardenRig = new ModelRig(WARDEN);
+        Vector3 wardenLeftMuzzle = wardenRig.evaluateSocketWorld("muzzle_l", null, identity, new Vector3());
+        assertEquals(-WorldModels.WARDEN_MUZZLE_X, wardenLeftMuzzle.x, 1e-5f);
+        assertEquals(WorldModels.WARDEN_MUZZLE_Y, wardenLeftMuzzle.y, 1e-5f);
+        assertEquals(WorldModels.WARDEN_MUZZLE_Z, wardenLeftMuzzle.z, 1e-5f);
+        Vector3 wardenRightMuzzle = wardenRig.evaluateSocketWorld("muzzle_r", null, identity, new Vector3());
+        assertEquals(WorldModels.WARDEN_MUZZLE_X, wardenRightMuzzle.x, 1e-5f);
+        assertTrue(WARDEN.getSocket("telegraph") != null);
 
         ObjModel.SocketSpec droneTelegraph = DRONE.getSocket("telegraph");
         assertTrue(droneTelegraph != null);

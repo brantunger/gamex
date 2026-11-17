@@ -109,7 +109,27 @@ public final class GameMap {
         }
     }
 
+    /** World and grid coordinates of an always-live shock/thermal floor grate (`~`). */
+    public static final class HazardCell {
+        /** Grid column. */
+        public final int col;
+        /** Grid row. */
+        public final int row;
+        /** World X centre. */
+        public final float x;
+        /** World Z centre. */
+        public final float z;
+
+        HazardCell(int col, int row) {
+            this.col = col;
+            this.row = row;
+            this.x = col + 0.5f;
+            this.z = row + 0.5f;
+        }
+    }
+
     private final char[][] cells;
+    private final boolean[][] hazards;
     private final int width;
     private final int height;
     private final float spawnX;
@@ -123,11 +143,14 @@ public final class GameMap {
     private final List<EnemySpawn> enemySpawns;
     private final List<DoorSpawn> doorSpawns;
     private final List<ConsoleSpawn> consoleSpawns;
+    private final List<HazardCell> hazardCells;
 
-    private GameMap(char[][] cells, float spawnX, float spawnZ, float spawnYaw, boolean hasExit, float exitX,
-                    float exitZ, List<TargetSpawn> targetSpawns, List<PickupSpawn> pickupSpawns,
-                    List<EnemySpawn> enemySpawns, List<DoorSpawn> doorSpawns, List<ConsoleSpawn> consoleSpawns) {
+    private GameMap(char[][] cells, boolean[][] hazards, float spawnX, float spawnZ, float spawnYaw, boolean hasExit,
+                    float exitX, float exitZ, List<TargetSpawn> targetSpawns, List<PickupSpawn> pickupSpawns,
+                    List<EnemySpawn> enemySpawns, List<DoorSpawn> doorSpawns, List<ConsoleSpawn> consoleSpawns,
+                    List<HazardCell> hazardCells) {
         this.cells = cells;
+        this.hazards = hazards;
         this.height = cells.length;
         this.width = cells[0].length;
         this.spawnX = spawnX;
@@ -141,6 +164,7 @@ public final class GameMap {
         this.enemySpawns = Collections.unmodifiableList(enemySpawns);
         this.doorSpawns = Collections.unmodifiableList(doorSpawns);
         this.consoleSpawns = Collections.unmodifiableList(consoleSpawns);
+        this.hazardCells = Collections.unmodifiableList(hazardCells);
     }
 
     /**
@@ -156,11 +180,13 @@ public final class GameMap {
         }
         int width = rows[0].length();
         char[][] cells = new char[rows.length][width];
+        boolean[][] hazards = new boolean[rows.length][width];
         List<TargetSpawn> targets = new ArrayList<>();
         List<PickupSpawn> pickups = new ArrayList<>();
         List<EnemySpawn> enemies = new ArrayList<>();
         List<DoorSpawn> doors = new ArrayList<>();
         List<ConsoleSpawn> consoles = new ArrayList<>();
+        List<HazardCell> hazardCells = new ArrayList<>();
         boolean hasSpawn = false;
         float spawnX = 0f;
         float spawnZ = 0f;
@@ -215,6 +241,11 @@ public final class GameMap {
                     enemies.add(new EnemySpawn(Enemy.Kind.TURRET, centreX, centreZ));
                 } else if (c == 'G') {
                     enemies.add(new EnemySpawn(Enemy.Kind.GUARD, centreX, centreZ));
+                } else if (c == 'B') {
+                    enemies.add(new EnemySpawn(Enemy.Kind.WARDEN, centreX, centreZ));
+                } else if (c == '~') {
+                    hazards[row][col] = true;
+                    hazardCells.add(new HazardCell(col, row));
                 } else if (c == 'X') {
                     if (hasExit) throw new IllegalArgumentException("The layout has more than one exit");
                     hasExit = true;
@@ -235,8 +266,8 @@ public final class GameMap {
             }
         }
         if (!hasSpawn) throw new IllegalArgumentException("The layout has no player spawn");
-        return new GameMap(cells, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ,
-            targets, pickups, enemies, doors, consoles);
+        return new GameMap(cells, hazards, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ,
+            targets, pickups, enemies, doors, consoles, hazardCells);
     }
 
     private static Door.LockKind doorLockKind(char c) {
@@ -245,6 +276,7 @@ public final class GameMap {
             case 'A': return Door.LockKind.AMBER_KEY;
             case 'C': return Door.LockKind.CYAN_KEY;
             case 'L': return Door.LockKind.LOCKDOWN;
+            case 'M': return Door.LockKind.BOSS;
             default: return null;
         }
     }
@@ -267,6 +299,30 @@ public final class GameMap {
     /** @return the number of rows. */
     public int getHeight() {
         return height;
+    }
+
+    /**
+     * @param col the grid column
+     * @param row the grid row
+     * @return whether this cell holds an always-live shock grate hazard (`~`)
+     */
+    public boolean isHazard(int col, int row) {
+        if (col < 0 || row < 0 || col >= width || row >= height) return false;
+        return hazards[row][col];
+    }
+
+    /**
+     * @param worldX world x coordinate
+     * @param worldZ world z coordinate
+     * @return whether the grid cell containing {@code (worldX, worldZ)} holds a shock grate hazard
+     */
+    public boolean isHazardAt(float worldX, float worldZ) {
+        return isHazard((int) Math.floor(worldX), (int) Math.floor(worldZ));
+    }
+
+    /** @return immutable list of all shock grate cells in parse order. */
+    public List<HazardCell> getHazardCells() {
+        return hazardCells;
     }
 
     /**

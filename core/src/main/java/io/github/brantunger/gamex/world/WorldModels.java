@@ -32,6 +32,10 @@ public final class WorldModels {
     public static final String DRONE_PATH = "models/enemy-drone.obj";
     /** The path of the guard bot enemy model file inside the assets folder. */
     public static final String GUARD_PATH = "models/enemy-guard.obj";
+    /** The path of the Warden Mech boss model file inside the assets folder. */
+    public static final String WARDEN_PATH = "models/enemy-warden.obj";
+    /** The path of the shock/thermal floor grate hazard model file inside the assets folder. */
+    public static final String HAZARD_GRATE_PATH = "models/hazard-grate.obj";
     /** The path of the enemy plasma bolt projectile model file inside the assets folder. */
     public static final String ENEMY_BOLT_PATH = "models/enemy-bolt.obj";
     /** The path of the sliding bulkhead door model file inside the assets folder. */
@@ -66,16 +70,32 @@ public final class WorldModels {
     public static final float DRONE_FLARE_Y = 0.34f;
     public static final float DRONE_FLARE_Z = -0.180f;
 
+    public static final float WARDEN_PELVIS_PIVOT_Y = 0.36f;
+    public static final float WARDEN_HIP_X = 0.105f;
+    public static final float WARDEN_HIP_Y = 0.32f;
+    public static final float WARDEN_TORSO_PIVOT_Y = 0.40f;
+    public static final float WARDEN_SHOULDER_X = 0.210f;
+    public static final float WARDEN_SHOULDER_Y = 0.62f;
+    public static final float WARDEN_MUZZLE_X = 0.210f;
+    public static final float WARDEN_MUZZLE_Y = 0.54f;
+    public static final float WARDEN_MUZZLE_Z = -0.175f;
+    public static final float WARDEN_TELEGRAPH_Y = 0.68f;
+    public static final float WARDEN_TELEGRAPH_Z = -0.165f;
+
     /** Per-draw accent shader colours ({r, g, b, gloss}) substituting {@code # @accent} surfaces without VBO clones. */
     public static final float[] ACCENT_DOOR_UNLOCKED = {0.62f, 0.78f, 0.92f, 0.85f};
     public static final float[] ACCENT_DOOR_AMBER = {1.00f, 0.72f, 0.16f, 0.95f};
     public static final float[] ACCENT_DOOR_CYAN = {0.18f, 0.92f, 0.98f, 0.95f};
     public static final float[] ACCENT_DOOR_LOCKDOWN = {0.98f, 0.22f, 0.24f, 0.95f};
+    public static final float[] ACCENT_DOOR_BOSS = {0.84f, 0.24f, 0.96f, 0.95f};
     public static final float[] ACCENT_DOOR_OPEN = {0.24f, 0.96f, 0.48f, 0.95f};
     public static final float[] ACCENT_KEYCARD_AMBER = {1.00f, 0.72f, 0.16f, 0.85f};
     public static final float[] ACCENT_KEYCARD_CYAN = {0.18f, 0.92f, 0.98f, 0.85f};
     public static final float[] ACCENT_CONSOLE_LOCKED = {0.98f, 0.28f, 0.22f, 0.95f};
     public static final float[] ACCENT_CONSOLE_ACTIVE = {0.24f, 0.96f, 0.48f, 0.95f};
+    public static final float[] ACCENT_WARDEN_PHASE1 = {1.00f, 0.30f, 0.14f, 0.96f};
+    public static final float[] ACCENT_WARDEN_OVERDRIVE = {0.42f, 0.54f, 1.00f, 0.98f};
+    public static final float[] ACCENT_HAZARD_LIVE = {0.18f, 0.86f, 1.00f, 0.95f};
 
     /** The materials the world object model files may use. */
     public enum Material {
@@ -124,7 +144,14 @@ public final class WorldModels {
         SHOTGUN_POLYMER("shotgun_polymer", 0.26f, 0.28f, 0.32f, 0.18f),
         SHELL_CRIMSON("shell_crimson", 0.88f, 0.17f, 0.20f, 0.45f),
         SHELL_BRASS("shell_brass", 0.96f, 0.72f, 0.22f, 0.80f),
-        SHELL_CRATE("shell_crate", 0.20f, 0.26f, 0.22f, 0.30f);
+        SHELL_CRATE("shell_crate", 0.20f, 0.26f, 0.22f, 0.30f),
+        WARDEN_ARMOR("warden_armor", 0.24f, 0.26f, 0.32f, 0.70f),
+        WARDEN_DARK("warden_dark", 0.12f, 0.13f, 0.16f, 0.45f),
+        WARDEN_TRIM("warden_trim", 0.48f, 0.50f, 0.56f, 0.82f),
+        WARDEN_CORE("warden_core", 1.00f, 0.30f, 0.14f, 0.96f),
+        HAZARD_FRAME("hazard_frame", 0.22f, 0.25f, 0.30f, 0.65f),
+        HAZARD_DARK("hazard_dark", 0.08f, 0.10f, 0.12f, 0.30f),
+        HAZARD_COIL("hazard_coil", 0.18f, 0.86f, 1.00f, 0.95f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;

@@ -145,7 +145,7 @@ class GameMapTest {
         List<Levels.Stage> stages = new ArrayList<>();
         stages.add(Levels.trainingRange());
         stages.addAll(Levels.campaign());
-        assertEquals(6, stages.size());
+        assertEquals(7, stages.size());
         for (Levels.Stage stage : stages) {
             GameMap map = stage.map;
             assertFalse(Collision.overlapsWall(map, map.getSpawnX(), map.getSpawnZ(), Player.RADIUS), stage.id);
@@ -157,7 +157,8 @@ class GameMapTest {
             boolean haveAmber = false;
             boolean haveCyan = false;
             boolean consoleActive = false;
-            boolean[][] reached = floodReachable(map, locks, false, false, false);
+            boolean wardenDead = false;
+            boolean[][] reached = floodReachable(map, locks, false, false, false, false);
             if (!map.getDoorSpawns().isEmpty() && map.hasExit()) {
                 boolean sealedExit = false;
                 for (GameMap.DoorSpawn ds : map.getDoorSpawns()) {
@@ -175,7 +176,7 @@ class GameMapTest {
             boolean progressed = true;
             while (progressed) {
                 progressed = false;
-                reached = floodReachable(map, locks, haveAmber, haveCyan, consoleActive);
+                reached = floodReachable(map, locks, haveAmber, haveCyan, consoleActive, wardenDead);
                 for (GameMap.PickupSpawn p : map.getPickupSpawns()) {
                     if (!reached[(int) p.z][(int) p.x]) continue;
                     if (p.kind == Pickup.Kind.AMBER_KEYCARD && !haveAmber) {
@@ -189,6 +190,12 @@ class GameMapTest {
                 for (GameMap.ConsoleSpawn c : map.getConsoleSpawns()) {
                     if (reached[(int) c.z][(int) c.x] && !consoleActive) {
                         consoleActive = true;
+                        progressed = true;
+                    }
+                }
+                for (GameMap.EnemySpawn e : map.getEnemySpawns()) {
+                    if (e.kind == Enemy.Kind.WARDEN && reached[(int) e.z][(int) e.x] && !wardenDead) {
+                        wardenDead = true;
                         progressed = true;
                     }
                 }
@@ -211,7 +218,8 @@ class GameMapTest {
             }
             boolean hasWeapon = map.getPickupSpawns().stream().anyMatch(p -> p.kind == Pickup.Kind.SCATTERGUN);
             boolean hasShells = map.getPickupSpawns().stream().anyMatch(p -> p.kind == Pickup.Kind.SHELLS);
-            if ("range".equals(stage.id) || "01_outer_breach".equals(stage.id)) {
+            if ("range".equals(stage.id) || "01_outer_breach".equals(stage.id)
+                || "06_warden_core".equals(stage.id)) {
                 assertTrue(hasWeapon, stage.id + " should contain a Scattergun pickup");
             }
             assertTrue(hasShells, stage.id + " should contain at least one Shell Box pickup");
@@ -219,7 +227,8 @@ class GameMapTest {
     }
 
     private static boolean[][] floodReachable(GameMap map, Door.LockKind[][] locks,
-                                              boolean haveAmber, boolean haveCyan, boolean consoleActive) {
+                                              boolean haveAmber, boolean haveCyan, boolean consoleActive,
+                                              boolean wardenDead) {
         boolean[][] reached = new boolean[map.getHeight()][map.getWidth()];
         ArrayDeque<int[]> open = new ArrayDeque<>();
         open.add(new int[] {(int) map.getSpawnX(), (int) map.getSpawnZ()});
@@ -232,6 +241,7 @@ class GameMapTest {
             if (lock == Door.LockKind.AMBER_KEY && !haveAmber) continue;
             if (lock == Door.LockKind.CYAN_KEY && !haveCyan) continue;
             if (lock == Door.LockKind.LOCKDOWN && !consoleActive) continue;
+            if (lock == Door.LockKind.BOSS && !wardenDead) continue;
             reached[row][col] = true;
             open.add(new int[] {col + 1, row});
             open.add(new int[] {col - 1, row});
@@ -289,5 +299,25 @@ class GameMapTest {
         assertEquals(2, map.getPickupSpawns().size());
         assertEquals(Pickup.Kind.SCATTERGUN, map.getPickupSpawns().get(0).kind);
         assertEquals(Pickup.Kind.SHELLS, map.getPickupSpawns().get(1).kind);
+    }
+
+    @Test
+    void parsesShockGratesWardenBossAndBossBulkheads() {
+        GameMap map = GameMap.parse(
+            "#########",
+            "#>..~~B.#",
+            "####M####",
+            "#...X...#",
+            "#########");
+        assertEquals(2, map.getHazardCells().size());
+        assertTrue(map.isHazard(4, 1));
+        assertTrue(map.isHazard(5, 1));
+        assertFalse(map.isHazard(2, 1));
+        assertFalse(map.isSolid(4, 1));
+        assertEquals(1, map.getEnemySpawns().size());
+        assertEquals(Enemy.Kind.WARDEN, map.getEnemySpawns().get(0).kind);
+        assertEquals(1, map.getDoorSpawns().size());
+        assertEquals(Door.LockKind.BOSS, map.getDoorSpawns().get(0).lockKind);
+        assertEquals(Door.Orientation.SPAN_X, map.getDoorSpawns().get(0).orientation);
     }
 }

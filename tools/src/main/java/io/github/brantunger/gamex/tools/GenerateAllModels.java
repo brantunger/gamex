@@ -33,10 +33,12 @@ public final class GenerateAllModels {
         map.put("pickup-scattergun.obj", PropSculpt::buildScattergunPickup);
         map.put("pickup-shells.obj", PropSculpt::buildShellsPickup);
         map.put("door-bulkhead.obj", PropSculpt::buildDoorBulkhead);
+        map.put("hazard-grate.obj", PropSculpt::buildHazardGrate);
         map.put("security-console.obj", PropSculpt::buildSecurityConsole);
         map.put("enemy-turret.obj", EnemySculpt::buildEnemyTurret);
         map.put("enemy-drone.obj", EnemySculpt::buildEnemyDrone);
         map.put("enemy-guard.obj", EnemySculpt::buildEnemyGuard);
+        map.put("enemy-warden.obj", EnemySculpt::buildEnemyWarden);
         map.put("enemy-bolt.obj", PropSculpt::buildEnemyBolt);
         GENERATORS = Collections.unmodifiableMap(map);
     }

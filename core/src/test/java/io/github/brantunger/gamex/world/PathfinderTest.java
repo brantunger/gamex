@@ -76,4 +76,36 @@ class PathfinderTest {
         assertTrue(pathfinder.nextDirection(map, doors, 1.5f, 3.5f, dir));
         assertTrue(dir.x > 0.5f, "expected eastward move toward open bulkhead, got " + dir);
     }
+
+    @Test
+    void guardHazardAvoidanceDetoursAroundShockGratesAndFallsBackWhenForced() {
+        // Direct central path crosses a 2-cell shock grate strip (row 3), while north corridor (rows 1-2) is safe.
+        GameMap map = GameMap.parse(
+            "#########",
+            "#.......#",
+            "#.#####.#",
+            "#>..~~..#",
+            "#########");
+        Pathfinder avoid = new Pathfinder();
+        Pathfinder direct = new Pathfinder();
+        avoid.compute(map, Collections.<Door>emptyList(), true, 1.5f, 3.5f);
+        direct.compute(map, Collections.<Door>emptyList(), false, 1.5f, 3.5f);
+
+        Vector2 avoidDir = new Vector2();
+        Vector2 directDir = new Vector2();
+        // Starting at (6.5, 3.5): hazard-avoiding path detours East -> North around the wall; direct goes West.
+        assertTrue(avoid.nextDirection(map, Collections.<Door>emptyList(), true, 6.5f, 3.5f, avoidDir));
+        assertTrue(avoidDir.x > 0.5f, "expected eastward detour around hazard corridor, got " + avoidDir);
+        assertTrue(direct.nextDirection(map, Collections.<Door>emptyList(), false, 6.5f, 3.5f, directDir));
+        assertTrue(directDir.x < -0.5f, "expected direct westward route over grate, got " + directDir);
+
+        // When no safe detour exists, hazard-avoiding pathfinder still crosses the grate cleanly to reach the goal.
+        GameMap bridgeOnly = GameMap.parse(
+            "#######",
+            "#>~~..#",
+            "#######");
+        avoid.compute(bridgeOnly, Collections.<Door>emptyList(), true, 1.5f, 1.5f);
+        assertTrue(avoid.nextDirection(bridgeOnly, Collections.<Door>emptyList(), true, 4.5f, 1.5f, avoidDir));
+        assertTrue(avoidDir.x < -0.5f, "expected fallback westward across grate when no safe detour exists");
+    }
 }

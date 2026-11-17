@@ -165,4 +165,46 @@ class EnemyTest {
         assertTrue(hardBolts.size() > easyBolts.size(),
             "hard (" + hardBolts.size() + ") should fire more often than easy (" + easyBolts.size() + ")");
     }
+
+    @Test
+    void wardenTransitionsIntoOverdriveAtHalfHealthFiringFiveBoltFansAndChargeSlams() {
+        assertEquals(600f, Enemy.Kind.WARDEN.maxHealth, 1e-6f);
+        GameMap arena = GameMap.parse(
+            "###############",
+            "#>............#",
+            "#.............#",
+            "###############");
+        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 9.5f, 1.5f, 270f);
+        Player player = new Player(1.5f, 1.5f, 90f);
+        List<EnemyProjectile> bolts = new ArrayList<>();
+        Pathfinder pf = new Pathfinder();
+
+        // Phase 1 (> 50% HP): first volley spawns a 3-bolt fan.
+        assertFalse(warden.isOverdrive());
+        for (int i = 0; i < 60 && bolts.isEmpty(); i++) {
+            warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+        }
+        assertEquals(Enemy.WARDEN_FAN_PHASE1, bolts.size(), "Phase 1 volley must emit 3 bolts");
+        assertFalse(warden.consumeOverdriveTriggered());
+
+        // Dropping health to <= 50% (300 HP) triggers Overdrive once and upgrades next volley to a 5-bolt fan.
+        warden.damage(310f);
+        assertTrue(warden.isOverdrive());
+        assertTrue(warden.consumeOverdriveTriggered());
+        assertFalse(warden.consumeOverdriveTriggered());
+
+        bolts.clear();
+        for (int i = 0; i < 120 && bolts.isEmpty(); i++) {
+            warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+        }
+        assertEquals(Enemy.WARDEN_FAN_PHASE2, bolts.size(), "Phase 2 Overdrive volley must emit 5 bolts");
+
+        // At close range (<= WARDEN_SLAM_TRIGGER_RANGE), Warden winds up and deals a hydraulic charge slam.
+        Enemy slamWarden = new Enemy(Enemy.Kind.WARDEN, 4.0f, 1.5f, 270f);
+        Player closeTarget = new Player(2.5f, 1.5f, 90f);
+        for (int i = 0; i < 65; i++) {
+            slamWarden.update(DT, arena, pf, closeTarget, Difficulty.NORMAL, Collections.emptyList(), null);
+        }
+        assertTrue(closeTarget.getHealth() < Player.MAX_HEALTH, "Charge slam should hit close stationary target");
+    }
 }

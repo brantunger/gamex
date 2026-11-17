@@ -74,7 +74,7 @@ class MenuStateTest {
         assertFalse(menu.isCampaignCompleted(), "stage 01 of 3 does not complete campaign");
         assertTrue(menu.getOptions().get(0).startsWith("NEXT STAGE"));
 
-        // Clear remaining stages 02 -> 03 -> 04 -> 05 -> Campaign Complete.
+        // Clear remaining stages 02 -> 03 -> 04 -> 05 -> 06 -> Campaign Complete.
         assertEquals(MenuState.Command.NONE, menu.confirm()); // NEXT STAGE -> BRIEFING stage 02
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm()); // DEPLOY
@@ -94,6 +94,11 @@ class MenuStateTest {
         assertEquals("05_command_vault", menu.getActiveStage().id);
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm()); // DEPLOY
         menu.onStageCleared(survivor, 75f, 16, 16, 18f);
+        assertFalse(menu.isCampaignCompleted());
+        assertEquals(MenuState.Command.NONE, menu.confirm()); // NEXT STAGE -> BRIEFING stage 06
+        assertEquals("06_warden_core", menu.getActiveStage().id);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm()); // DEPLOY
+        menu.onStageCleared(survivor, 88f, 10, 10, 22f);
         assertTrue(menu.isCampaignCompleted());
         assertFalse(save.hasSavedRun(), "final clear clears active Continue snapshot");
         assertFalse(menu.getOptions().get(0).startsWith("NEXT STAGE"));

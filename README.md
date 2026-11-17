@@ -3,14 +3,14 @@
 An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.14.2 on the LWJGL3 desktop backend.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
-blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, and a horizontal energy dash. Battle three hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
-and **Guard Bots**), chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
-keycards, override Security Consoles, collect 3D health, armor, energy, weapon and shell pickups, and clear the 5-stage campaign
-(**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**) across
+blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, and a horizontal energy dash. Battle four hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
+**Guard Bots**, and the two-phase **Warden Mech** boss), dash over live **Shock Grates**, chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
+keycards, override Security Consoles, collect 3D health, armor, energy, weapon and shell pickups, and clear the 6-stage campaign
+(**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
 Range**. Surface and effect textures as well as every weapon, combat and menu sound are synthesised in code at
 start-up, while every 3D graphical object — the pistol, the combat scattergun, the gloved hand holding them, targets, enemies, projectiles,
-pickups, bulkheads, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
+pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
 
@@ -79,8 +79,9 @@ campaign stages with their best rank and lets you start a fresh run from any unl
 - **02: Coolant Core** adds mobile Guard Bots across multi-lane reactor conduits.
 - **03: Security Hub** combines coordinated squads of all three archetypes before extraction.
 - **04: Lockdown Wing** introduces sliding bulkhead doors (`=`), Amber keycard wing gating (`k` -> `A`), and a Security Console lockdown override (`S` -> `L`) protecting extraction and ambush bays.
-- **05: Command Vault** chains Amber and Cyan keycard clearances (`k` -> `A`, `c` -> `C`) to a vault Security Console override and flanking ambush before final extraction (`CAMPAIGN COMPLETE`).
-- The **Training Range** ends when every target is destroyed. It is always played on Normal.
+- **05: Command Vault** chains Amber and Cyan keycard clearances (`k` -> `A`, `c` -> `C`) to a vault Security Console override and flanking ambush.
+- **06: Warden Core** introduces live **Shock Grate** dash trenches (`~`) and culminates in the two-phase **Warden Mech** boss (`B`) sealing the `M` extraction bulkhead before `CAMPAIGN COMPLETE`.
+- The **Training Range** includes practice targets, a Shock Grate dash trench, and the Scattergun rack, ending when every target is destroyed (always played on Normal).
 - A cleared stage shows a tally: clear time against par, hostiles cleared on combat stages (or targets cleared in the
   Training Range), damage taken and a rank from `S` down to `C`. The best time and rank for each stage and difficulty
   are saved.
@@ -104,7 +105,7 @@ With less than 25 energy the dash is refused and the HUD shows `LOW ENERGY`.
 **Pistol & Combat Scattergun.** Both weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch cleanly at any time with `1`, `2`, `Q` or the mouse wheel:
 
 - **Pistol (`1`)**: Instant hitscan (`20` damage, `0.3s` interval, up to `60` world units away, infinite ammo). Right mouse button charges the violet **Energy Blast** orb.
-- **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach** and the **Training Range** (and equipped directly when deploying to Stages `02`–`05` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Caddy (`+6`) pickups scaled by difficulty:
+- **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach**, **06: Warden Core**, and the **Training Range** (and equipped directly when deploying to Stages `02`–`06` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Caddy (`+6`) pickups scaled by difficulty:
   - **Primary fire (LMB, `1` shell)**: `8` deterministic pellets across a `4.2°` half-angle cone (`12` base damage each, linear falloff from `7u` to `26u` max range, `0.75s` pump cycle).
   - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets across a `6.8°` cone (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
   - Pulling the trigger at `0` shells emits a dry-fire click and swaps back to the Pistol automatically.
@@ -129,23 +130,16 @@ walls shield targets, enemies and the player from explosions, while close-range 
 - Blasts and dashes are paid for from the same meter.
 
 **Targets, Enemies & Pickups.** Levels contain coolant canisters (50 health, three pistol shots) that detonate in
-chain-reacting area explosions when destroyed, ring boards (120 health, six pistol shots), and three robotic hostiles:
+chain-reacting area explosions when destroyed, ring boards (120 health, six pistol shots), and four robotic hostiles:
 
 - **Rusher Drone** (40 health): closes distance around cover via grid pathfinding and telegraphs a shock lunge that
   can be sidestepped with Energy Dash.
 - **Sentry Turret** (80 health): anchored base with a swiveling dual-barrel head that winds up and fires 3-bolt
   bursts.
-- **Guard Bot** (100 health): mobile skirmisher that strafes at medium range and fires single aimed plasma bolts.
+- **Guard Bot** (100 health): mobile skirmisher that avoids Shock Grates, strafes at medium range and fires single aimed plasma bolts.
+- **Warden Mech** (600 health): two-phase sanctum boss tracked by a top-center health bar. Fires twin-arm 3-bolt fan volleys and telegraphed hydraulic charge slams in Phase 1, shifting at `<= 50%` HP into **Overdrive** (electric violet-cyan reactor, `30%` faster stride/cadence, and 5-bolt fan barrages).
 
-Dodged enemy bolts detonate coolant canisters on impact while stopping harmlessly on squadmates. Medkits, armor vests
-(absorbing 50% of incoming damage) and energy cells hover on the floor and scale with the chosen difficulty. On Normal a
-medkit restores 25 health, a vest adds 25 armor and a cell adds 35 energy. Walk over a pickup to take it; one whose meter
-is already full stays where it is.
-
-**Bulkheads, Keycards & Consoles.** Sliding steel bulkhead doors (`=`) open permanently with `E` once breached,
-unlocking sightlines and enemy pathfinding routes. Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C`
-bulkheads in the stage and appear on the HUD while held; `S` Security Consoles act as indestructible cover until
-activated with `E`, simultaneously unsealing all `L` lockdown bulkheads and alerting nearby hostiles.
+**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **Energy Dash grants 100% immunity** (`0` damage) to cross conduits unscathed. Guard Bots detour around `~` grates while Drones and the Warden Mech traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden Mech** automatically unseals all `M` boss extraction bulkheads.
 
 ## Debug screenshot mode
 
@@ -156,7 +150,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages` or `scattergun`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun` or `warden`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
