@@ -259,6 +259,9 @@ test task tells them where that folder is and runs again when a model file chang
 Rendering, the drawing of the HUD (`HudRenderer`), the rest of input handling (`InputController`) and the debug
 screenshot mode have no tests, apart from the parsing of `GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`).
 
+A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux and Windows on
+every pull request and push to `main`.
+
 ## Gradle
 
 The project uses the [Gradle](https://gradle.org/) wrapper: run tasks with `./gradlew`, or `gradlew.bat` on
