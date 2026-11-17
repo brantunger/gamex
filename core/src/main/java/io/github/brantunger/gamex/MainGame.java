@@ -8,7 +8,10 @@ import io.github.brantunger.gamex.debug.DemoRun;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.input.InputController;
+import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerInput;
+import io.github.brantunger.gamex.player.PlayerLoadout;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.render.ProceduralTextures;
 import io.github.brantunger.gamex.render.ViewmodelRenderer;
 import io.github.brantunger.gamex.render.WorldRenderer;
@@ -67,6 +70,11 @@ public class MainGame extends ApplicationAdapter {
             if ("lockdown".equals(script) || showStages) {
                 Levels.Stage lockdown = Levels.lockdownWing();
                 simulation = new GameSimulation(lockdown.map, menuState.getActiveLoadout(), lockdown.completeOnAllTargets);
+            } else if ("scattergun".equals(script)) {
+                Levels.Stage range = Levels.trainingRange();
+                simulation = new GameSimulation(range.map,
+                    new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
+                    range.completeOnAllTargets);
             } else if ("breach".equals(script) || showTitle) {
                 Levels.Stage breach = Levels.outerBreach();
                 simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(), breach.completeOnAllTargets);
@@ -131,7 +139,7 @@ public class MainGame extends ApplicationAdapter {
             soundManager.update(simulation, menuState, settings);
             float[] orbit = demoRun.getViewmodelOrbit();
             if (orbit != null) {
-                viewmodelRenderer.renderAlone(orbit[0], orbit[1]);
+                viewmodelRenderer.renderAlone(simulation.getActiveWeapon(), orbit[0], orbit[1]);
             } else {
                 worldRenderer.render(simulation, settings);
                 viewmodelRenderer.render(simulation, settings);
@@ -162,7 +170,7 @@ public class MainGame extends ApplicationAdapter {
                 int total = simulation.enemies.isEmpty()
                     ? simulation.targets.size()
                     : simulation.enemies.size();
-                menuState.onStageCleared(simulation.player, simulation.getTime(), cleared, total,
+                menuState.onStageCleared(simulation.captureCarryOverLoadout(), simulation.getTime(), cleared, total,
                     simulation.getDamageTaken());
                 controller.syncCursorCapture();
             } else if (simulation.player.isDead()) {

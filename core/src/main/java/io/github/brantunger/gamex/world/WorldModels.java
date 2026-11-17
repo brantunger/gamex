@@ -22,6 +22,10 @@ public final class WorldModels {
     public static final String ARMOR_PATH = "models/pickup-armor.obj";
     /** The path of the energy cell pickup model file inside the assets folder. */
     public static final String ENERGY_CELL_PATH = "models/pickup-energy.obj";
+    /** The path of the Combat Scattergun pickup model file inside the assets folder. */
+    public static final String SCATTERGUN_PICKUP_PATH = "models/pickup-scattergun.obj";
+    /** The path of the shotgun shell box pickup model file inside the assets folder. */
+    public static final String SHELLS_PICKUP_PATH = "models/pickup-shells.obj";
     /** The path of the sentry turret enemy model file inside the assets folder. */
     public static final String TURRET_PATH = "models/enemy-turret.obj";
     /** The path of the rusher drone enemy model file inside the assets folder. */
@@ -114,7 +118,13 @@ public final class WorldModels {
         CONSOLE_BODY("console_body", 0.30f, 0.34f, 0.40f, 0.60f),
         CONSOLE_TRIM("console_trim", 0.48f, 0.52f, 0.58f, 0.75f),
         CONSOLE_KEYPAD("console_keypad", 0.20f, 0.24f, 0.28f, 0.40f),
-        CONSOLE_SCREEN("console_screen", 0.98f, 0.28f, 0.22f, 0.95f);
+        CONSOLE_SCREEN("console_screen", 0.98f, 0.28f, 0.22f, 0.95f),
+        SHOTGUN_METAL("shotgun_metal", 0.25f, 0.28f, 0.33f, 0.70f),
+        SHOTGUN_DARK("shotgun_dark", 0.11f, 0.13f, 0.16f, 0.45f),
+        SHOTGUN_POLYMER("shotgun_polymer", 0.26f, 0.28f, 0.32f, 0.18f),
+        SHELL_CRIMSON("shell_crimson", 0.88f, 0.17f, 0.20f, 0.45f),
+        SHELL_BRASS("shell_brass", 0.96f, 0.72f, 0.22f, 0.80f),
+        SHELL_CRATE("shell_crate", 0.20f, 0.26f, 0.22f, 0.30f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;

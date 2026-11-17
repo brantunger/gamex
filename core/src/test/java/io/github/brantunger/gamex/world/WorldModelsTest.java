@@ -43,9 +43,12 @@ class WorldModelsTest {
     private static final ObjModel DOOR_BULKHEAD = load(WorldModels.DOOR_BULKHEAD_PATH);
     private static final ObjModel KEYCARD = load(WorldModels.KEYCARD_PATH);
     private static final ObjModel SECURITY_CONSOLE = load(WorldModels.SECURITY_CONSOLE_PATH);
+    private static final ObjModel SCATTERGUN_PICKUP = load(WorldModels.SCATTERGUN_PICKUP_PATH);
+    private static final ObjModel SHELLS_PICKUP = load(WorldModels.SHELLS_PICKUP_PATH);
     private static final ObjModel[] ALL_MODELS = {
         CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL,
-        TURRET, DRONE, GUARD, ENEMY_BOLT, DOOR_BULKHEAD, KEYCARD, SECURITY_CONSOLE
+        TURRET, DRONE, GUARD, ENEMY_BOLT, DOOR_BULKHEAD, KEYCARD, SECURITY_CONSOLE,
+        SCATTERGUN_PICKUP, SHELLS_PICKUP
     };
 
     private static ObjModel load(String assetPath) {
@@ -188,7 +191,7 @@ class WorldModelsTest {
 
     @Test
     void pickupModelsStandOnTheFloorAndFitWithinPickupRadius() {
-        ObjModel[] pickups = {MEDKIT, ARMOR, ENERGY_CELL, KEYCARD};
+        ObjModel[] pickups = {MEDKIT, ARMOR, ENERGY_CELL, KEYCARD, SCATTERGUN_PICKUP, SHELLS_PICKUP};
         for (ObjModel pickup : pickups) {
             float minY = Float.POSITIVE_INFINITY;
             float maxY = Float.NEGATIVE_INFINITY;

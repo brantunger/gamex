@@ -11,6 +11,8 @@ import io.github.brantunger.gamex.render.ProceduralTextures;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
+import io.github.brantunger.gamex.weapon.Scattergun;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Pickup;
 
@@ -245,16 +247,32 @@ public final class HudRenderer implements Disposable {
         BlastCharger charger = simulation.charger;
         float centreX = width * 0.5f;
         float centreY = height * 0.5f;
-        float gap = 6f * unit;
-        float length = 8f * unit;
         float thick = 2f * unit;
-        if (charger.isReadyToFire()) batch.setColor(0.8f, 0.55f, 1f, 0.95f);
-        else batch.setColor(0.8f, 1f, 0.88f, 0.9f);
-        rect(centreX - gap - length, centreY - thick * 0.5f, length, thick);
-        rect(centreX + gap, centreY - thick * 0.5f, length, thick);
-        rect(centreX - thick * 0.5f, centreY - gap - length, thick, length);
-        rect(centreX - thick * 0.5f, centreY + gap, thick, length);
-        rect(centreX - thick * 0.5f, centreY - thick * 0.5f, thick, thick);
+        if (simulation.getActiveWeapon() == WeaponSlot.SCATTERGUN) {
+            float spread = (15f + simulation.scattergun.getPump() * 3.5f) * unit;
+            float bracketArm = 6f * unit;
+            batch.setColor(1f, 0.86f, 0.62f, 0.92f);
+            rect(centreX - thick * 0.5f, centreY - thick * 0.5f, thick, thick);
+            // Wide spread brackets indicating close-quarters pellet cone.
+            rect(centreX - spread, centreY + spread - thick, bracketArm, thick);
+            rect(centreX - spread, centreY + spread - bracketArm, thick, bracketArm);
+            rect(centreX + spread - bracketArm, centreY + spread - thick, bracketArm, thick);
+            rect(centreX + spread - thick, centreY + spread - bracketArm, thick, bracketArm);
+            rect(centreX - spread, centreY - spread, bracketArm, thick);
+            rect(centreX - spread, centreY - spread, thick, bracketArm);
+            rect(centreX + spread - bracketArm, centreY - spread, bracketArm, thick);
+            rect(centreX + spread - thick, centreY - spread, thick, bracketArm);
+        } else {
+            float gap = 6f * unit;
+            float length = 8f * unit;
+            if (charger.isReadyToFire()) batch.setColor(0.8f, 0.55f, 1f, 0.95f);
+            else batch.setColor(0.8f, 1f, 0.88f, 0.9f);
+            rect(centreX - gap - length, centreY - thick * 0.5f, length, thick);
+            rect(centreX + gap, centreY - thick * 0.5f, length, thick);
+            rect(centreX - thick * 0.5f, centreY - gap - length, thick, length);
+            rect(centreX - thick * 0.5f, centreY + gap, thick, length);
+            rect(centreX - thick * 0.5f, centreY - thick * 0.5f, thick, thick);
+        }
 
         float hit = simulation.getHitMarker();
         if (hit > 0f) {
@@ -366,12 +384,37 @@ public final class HudRenderer implements Disposable {
         PixelFont.draw(batch, textures.white, "ARMOR " + Math.round(player.getArmor()),
             left + barW + 10f * unit, armorY + unit, 2.6f * unit);
 
-        // Active weapon readout and held security keycards.
-        batch.setColor(0.8f, 1f, 0.88f, 0.88f);
-        PixelFont.draw(batch, textures.white, "1: PISTOL [INF]", left, 114f * unit, 2.5f * unit);
+        // Active weapon slots and held security keycards.
+        WeaponSlot selectedWeapon = simulation.getTargetWeapon();
+        boolean pistolSelected = selectedWeapon == WeaponSlot.PISTOL;
+        batch.setColor(pistolSelected ? 0.80f : 0.45f, pistolSelected ? 1f : 0.58f,
+            pistolSelected ? 0.88f : 0.52f, pistolSelected ? 0.95f : 0.65f);
+        PixelFont.draw(batch, textures.white, (pistolSelected ? "> " : "  ") + "1: PISTOL [INF]",
+            left, 114f * unit, 2.4f * unit);
+
+        boolean showScatterRow = simulation.hasScattergun() || simulation.getShells() > 0;
+        if (showScatterRow) {
+            boolean scatterSelected = selectedWeapon == WeaponSlot.SCATTERGUN;
+            if (!simulation.hasScattergun()) {
+                batch.setColor(0.75f, 0.58f, 0.44f, 0.72f);
+                PixelFont.draw(batch, textures.white, "  SHELLS [" + simulation.getShells() + "/"
+                    + Scattergun.MAX_SHELLS + "]", left, 136f * unit, 2.4f * unit);
+            } else {
+                if (simulation.getShells() <= 0) {
+                    batch.setColor(0.95f, 0.42f, 0.36f, scatterSelected ? 0.96f : 0.72f);
+                } else if (scatterSelected) {
+                    batch.setColor(1f, 0.82f, 0.45f, 0.98f);
+                } else {
+                    batch.setColor(0.55f, 0.52f, 0.48f, 0.68f);
+                }
+                PixelFont.draw(batch, textures.white, (scatterSelected ? "> " : "  ")
+                    + "2: SCATTERGUN [" + simulation.getShells() + "/" + Scattergun.MAX_SHELLS + "]",
+                    left, 136f * unit, 2.4f * unit);
+            }
+        }
 
         float keyX = left;
-        float keyY = 138f * unit;
+        float keyY = showScatterRow ? 160f * unit : 138f * unit;
         float keySize = 2.4f * unit;
         if (simulation.hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
             batch.setColor(1f, 0.76f, 0.22f, 0.96f);
@@ -448,7 +491,7 @@ public final class HudRenderer implements Disposable {
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
         PixelFont.drawCentred(batch, textures.white,
-            "WASD: MOVE   SHIFT: DASH   E: INTERACT   LMB: PISTOL   RMB: BLAST", cx, 32f * unit, 2.1f * unit);
+            "WASD: MOVE   SHIFT: DASH   E: USE   1/2/Q: WEAPON   LMB/RMB: FIRE/ALT", cx, 32f * unit, 2.1f * unit);
     }
 
     private void drawStageSelectScreen(MenuState menuState) {

@@ -8,9 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
+import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.weapon.Scattergun;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -125,6 +128,28 @@ class MenuStateTest {
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertEquals(100f, menu.getActiveLoadout().health, 1e-4f);
+        assertTrue(menu.getActiveLoadout().hasScattergun, "Stage 02+ direct select starts with Scattergun");
+        assertEquals(Scattergun.PICKUP_WEAPON_SHELLS, menu.getActiveLoadout().shells);
+        assertEquals(WeaponSlot.SCATTERGUN, menu.getActiveLoadout().activeWeapon);
+    }
+
+    @Test
+    void stageClearPreservesScattergunAndShellsIntoNextStageAndSaveData() {
+        GameSettings settings = new GameSettings();
+        SaveData save = new SaveData(new MapKeyValueStore());
+        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        menu.confirm(); // START CAMPAIGN -> DIFFICULTY_SELECT
+        menu.confirm(); // NORMAL -> BRIEFING 01
+        menu.confirm(); // DEPLOY -> PLAYING 01
+        assertFalse(menu.getActiveLoadout().hasScattergun);
+
+        PlayerLoadout carry = new PlayerLoadout(88f, 15f, Difficulty.NORMAL, true, 12, WeaponSlot.SCATTERGUN);
+        menu.onStageCleared(carry, 40f, 9, 9, 12f);
+        assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
+        assertEquals(MenuState.Command.NONE, menu.confirm()); // NEXT STAGE -> BRIEFING 02
+        assertTrue(menu.getActiveLoadout().hasScattergun);
+        assertEquals(12, menu.getActiveLoadout().shells);
+        assertEquals(WeaponSlot.SCATTERGUN, save.getSavedLoadout().activeWeapon);
     }
 
     @Test

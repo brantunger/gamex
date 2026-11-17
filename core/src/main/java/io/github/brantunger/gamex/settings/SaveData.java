@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.settings;
 
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 
 /**
  * Persists campaign progress (active "Continue" snapshot, unlocked stages) and per-stage best completion records.
@@ -15,6 +16,9 @@ public final class SaveData {
     private static final String KEY_RUN_HEALTH = "run.health";
     private static final String KEY_RUN_ARMOR = "run.armor";
     private static final String KEY_RUN_DIFFICULTY = "run.difficulty";
+    private static final String KEY_RUN_HAS_SCATTERGUN = "run.hasScattergun";
+    private static final String KEY_RUN_SHELLS = "run.shells";
+    private static final String KEY_RUN_WEAPON = "run.activeWeapon";
     private static final String KEY_UNLOCKED_STAGE = "campaign.unlockedStage";
 
     /** Summary produced when finishing a stage, comparing this run against stored records. */
@@ -81,7 +85,10 @@ public final class SaveData {
         } catch (IllegalArgumentException e) {
             diff = Difficulty.NORMAL;
         }
-        return new PlayerLoadout(health, armor, diff);
+        boolean hasScattergun = store.getBoolean(KEY_RUN_HAS_SCATTERGUN, false);
+        int shells = store.getInteger(KEY_RUN_SHELLS, 0);
+        WeaponSlot weapon = WeaponSlot.fromName(store.getString(KEY_RUN_WEAPON, WeaponSlot.PISTOL.name()));
+        return new PlayerLoadout(health, armor, diff, hasScattergun, shells, weapon);
     }
 
     /** Saves an active campaign entry point so the player can resume later via Continue. */
@@ -91,6 +98,9 @@ public final class SaveData {
         store.putFloat(KEY_RUN_HEALTH, loadout.health);
         store.putFloat(KEY_RUN_ARMOR, loadout.armor);
         store.putString(KEY_RUN_DIFFICULTY, loadout.difficulty.name());
+        store.putBoolean(KEY_RUN_HAS_SCATTERGUN, loadout.hasScattergun);
+        store.putInteger(KEY_RUN_SHELLS, loadout.shells);
+        store.putString(KEY_RUN_WEAPON, loadout.activeWeapon.name());
         if (stageIndex > getUnlockedStageIndex()) {
             store.putInteger(KEY_UNLOCKED_STAGE, stageIndex);
         }

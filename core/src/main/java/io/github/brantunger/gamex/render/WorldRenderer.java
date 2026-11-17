@@ -167,6 +167,8 @@ public final class WorldRenderer implements Disposable {
     private final Mesh medkitMesh;
     private final Mesh armorMesh;
     private final Mesh energyCellMesh;
+    private final Mesh scattergunPickupMesh;
+    private final Mesh shellsPickupMesh;
     private final Mesh turretBaseMesh;
     private final Mesh turretHeadMesh;
     private final Mesh turretBarrelsMesh;
@@ -236,6 +238,10 @@ public final class WorldRenderer implements Disposable {
         medkitMesh = ModelMesh.loadIndexedMesh(WorldModels.MEDKIT_PATH, "medkit", WorldModels::packIndexed);
         armorMesh = ModelMesh.loadIndexedMesh(WorldModels.ARMOR_PATH, "armor", WorldModels::packIndexed);
         energyCellMesh = ModelMesh.loadIndexedMesh(WorldModels.ENERGY_CELL_PATH, "energy cell",
+            WorldModels::packIndexed);
+        scattergunPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup",
+            WorldModels::packIndexed);
+        shellsPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.SHELLS_PICKUP_PATH, "shells pickup",
             WorldModels::packIndexed);
 
         ObjModel turretObj = ModelMesh.loadModel(WorldModels.TURRET_PATH, "turret");
@@ -346,8 +352,9 @@ public final class WorldRenderer implements Disposable {
         camera.up.set(Vector3.Y);
         camera.update();
 
-        beginWorldPass(simulation.pistol.isFlashVisible() ? 1.3f : 1f);
-        renderWorldModels(simulation, simulation.pistol.isFlashVisible() ? 1.3f : 1f);
+        float roomLight = simulation.isMuzzleFlashVisible() ? 1.3f : 1f;
+        beginWorldPass(roomLight);
+        renderWorldModels(simulation, roomLight);
 
         // Billboards are seen from both sides.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
@@ -621,6 +628,10 @@ public final class WorldRenderer implements Disposable {
             case AMBER_KEYCARD:
             case CYAN_KEYCARD:
                 return keycardMesh;
+            case SCATTERGUN:
+                return scattergunPickupMesh;
+            case SHELLS:
+                return shellsPickupMesh;
             case ENERGY_CELL:
             default:
                 return energyCellMesh;
@@ -661,6 +672,12 @@ public final class WorldRenderer implements Disposable {
                     break;
                 case CYAN_KEYCARD:
                     halo.setColor(0.2f, 0.92f, 1f, 0.52f);
+                    break;
+                case SCATTERGUN:
+                    halo.setColor(1f, 0.56f, 0.20f, 0.54f);
+                    break;
+                case SHELLS:
+                    halo.setColor(0.95f, 0.34f, 0.24f, 0.48f);
                     break;
                 case ENERGY_CELL:
                 default:
@@ -815,6 +832,8 @@ public final class WorldRenderer implements Disposable {
         medkitMesh.dispose();
         armorMesh.dispose();
         energyCellMesh.dispose();
+        scattergunPickupMesh.dispose();
+        shellsPickupMesh.dispose();
         turretBaseMesh.dispose();
         turretHeadMesh.dispose();
         turretBarrelsMesh.dispose();

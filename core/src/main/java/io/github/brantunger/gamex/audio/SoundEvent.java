@@ -9,6 +9,10 @@ public final class SoundEvent {
     /** Semantic sound cues supported by the game. */
     public enum Type {
         PISTOL_SHOT,
+        SCATTERGUN_FIRE,
+        SCATTERGUN_ALT_FIRE,
+        WEAPON_SWITCH,
+        WEAPON_DRY_FIRE,
         WALL_IMPACT,
         BLAST_RELEASE,
         EXPLOSION,
@@ -25,6 +29,8 @@ public final class SoundEvent {
         PICKUP_ARMOR,
         PICKUP_ENERGY,
         PICKUP_KEYCARD,
+        PICKUP_WEAPON,
+        PICKUP_SHELLS,
         LOW_ENERGY,
         DOOR_OPEN,
         DOOR_LOCKED,

@@ -22,7 +22,9 @@ import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
+import io.github.brantunger.gamex.weapon.ScattergunModel;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 
 /**
  * Draws the first-person pistol and hand as a 3D model, in a pass of its own between the world and the HUD. The pass
@@ -113,7 +115,9 @@ public final class ViewmodelRenderer implements Disposable {
     private final ShaderProgram shader;
     private final Mesh body;
     private final Mesh slide;
-    /** The sculpted hand and forearm, which move with the body of the pistol. */
+    private final Mesh scatterBody;
+    private final Mesh scatterPump;
+    /** The sculpted hand and forearm, which move with the body of the active weapon. */
     private final Mesh hand;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
@@ -125,6 +129,7 @@ public final class ViewmodelRenderer implements Disposable {
     private final Matrix4 viewToWorld = new Matrix4();
     private final Matrix3 normalMatrix = new Matrix3();
     private final ObjModel.SocketSpec muzzleSocket;
+    private final ObjModel.SocketSpec scatterMuzzleSocket;
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
     private final Vector3 up = new Vector3();
@@ -152,6 +157,11 @@ public final class ViewmodelRenderer implements Disposable {
         muzzleSocket = pistolObj.getSocket("muzzle");
         body = ModelMesh.buildIndexed(pistol.bodyMesh);
         slide = ModelMesh.buildIndexed(pistol.slideMesh);
+        ObjModel scatterObj = ModelMesh.loadModel(ScattergunModel.ASSET_PATH, "scattergun");
+        ScattergunModel scatter = ScattergunModel.from(scatterObj);
+        scatterMuzzleSocket = scatterObj.getSocket("muzzle");
+        scatterBody = ModelMesh.buildIndexed(scatter.bodyMesh);
+        scatterPump = ModelMesh.buildIndexed(scatter.pumpMesh);
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
         hand = ModelMesh.loadIndexedMesh(HandModel.ASSET_PATH, "hand", HandModel::packIndexed);
 
@@ -175,7 +185,7 @@ public final class ViewmodelRenderer implements Disposable {
     }
 
     /**
-     * Draws the pistol over the finished world.
+     * Draws the active weapon viewmodel and hand over the finished world.
      * @param simulation the game state to draw
      * @param settings the live gameplay settings (view bob)
      */
@@ -183,21 +193,29 @@ public final class ViewmodelRenderer implements Disposable {
         if (simulation.player.isDead()) return;
         ViewmodelAnimation animation = simulation.viewmodel;
         float recoil = animation.getRecoil();
+        float swapDip = simulation.getSwapProgress();
         boolean bobEnabled = settings.isViewBob();
         float bobX = bobEnabled ? animation.getBobX() : 0f;
         float bobY = bobEnabled ? animation.getBobY() : 0f;
 
-        // Place the gun: at rest lower right, moved by the bob and the kick, and turned about the grip.
+        // Place the active weapon: at rest lower right, shifted by bob, kick, swap dip and grip pivot sway.
         gunTransform.idt()
-            .translate(restX + bobX, REST_Y + bobY + recoil * KICK_UP,
-                REST_Z + recoil * KICK_BACK)
+            .translate(restX + bobX, REST_Y + bobY + recoil * KICK_UP - swapDip * 0.14f,
+                REST_Z + recoil * KICK_BACK + swapDip * 0.045f)
             .translate(0f, PistolModel.GRIP_PIVOT_Y, PistolModel.GRIP_PIVOT_Z)
             // A positive turn about y swings the muzzle left, so a lag to the left (negative sway) adds to it.
             .rotate(Vector3.Y, REST_YAW - animation.getSwayYaw())
-            .rotate(Vector3.X, REST_PITCH + recoil * KICK_PITCH + animation.getSwayPitch())
+            .rotate(Vector3.X, REST_PITCH + recoil * KICK_PITCH + animation.getSwayPitch() - swapDip * 20f)
             .rotate(Vector3.Z, REST_ROLL)
             .translate(0f, -PistolModel.GRIP_PIVOT_Y, -PistolModel.GRIP_PIVOT_Z);
-        slideTransform.set(gunTransform).translate(0f, 0f, animation.getSlide() * SLIDE_TRAVEL);
+
+        boolean usingScattergun = simulation.getActiveWeapon() == WeaponSlot.SCATTERGUN;
+        Mesh weaponBody = usingScattergun ? scatterBody : body;
+        Mesh weaponMoving = usingScattergun ? scatterPump : slide;
+        float movingZ = usingScattergun
+            ? simulation.scattergun.getPump() * ScattergunModel.PUMP_TRAVEL
+            : animation.getSlide() * SLIDE_TRAVEL;
+        slideTransform.set(gunTransform).translate(0f, 0f, movingZ);
 
         // The rotation from view space to world space, built from the player's view axes.
         simulation.player.direction(forward);
@@ -215,18 +233,24 @@ public final class ViewmodelRenderer implements Disposable {
         viewToWorld.val[Matrix4.M22] = -forward.z;
 
         BlastCharger charger = simulation.charger;
-        float charge = charger.isCharging() ? charger.getCharge() : 0f;
-        boolean flashing = simulation.pistol.isFlashVisible();
-        drawModel(flashing ? 1.5f : 1f, charge);
+        float charge = !usingScattergun && charger.isCharging() ? charger.getCharge() : 0f;
+        boolean flashing = simulation.isMuzzleFlashVisible();
+        drawModel(weaponBody, weaponMoving, flashing ? 1.5f : 1f, charge);
 
         // The flash and the charge glow sit just ahead of the muzzle, wherever the animation has put it.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        float mx = muzzleSocket != null ? muzzleSocket.x : PistolModel.MUZZLE_X;
-        float my = muzzleSocket != null ? muzzleSocket.y : PistolModel.MUZZLE_Y;
-        float mz = muzzleSocket != null ? muzzleSocket.z : PistolModel.MUZZLE_Z;
-        muzzle.set(mx, my, mz - 0.012f).mul(gunTransform);
+        ObjModel.SocketSpec activeSocket = usingScattergun ? scatterMuzzleSocket : muzzleSocket;
+        float defaultMx = usingScattergun ? ScattergunModel.MUZZLE_X : PistolModel.MUZZLE_X;
+        float defaultMy = usingScattergun ? ScattergunModel.MUZZLE_Y : PistolModel.MUZZLE_Y;
+        float defaultMz = usingScattergun ? ScattergunModel.MUZZLE_Z : PistolModel.MUZZLE_Z;
+        float mx = activeSocket != null ? activeSocket.x : defaultMx;
+        float my = activeSocket != null ? activeSocket.y : defaultMy;
+        float mz = activeSocket != null ? activeSocket.z : defaultMz;
+        muzzle.set(mx, my, mz - 0.014f).mul(gunTransform);
         if (flashing) {
-            float size = 0.085f;
+            float size = usingScattergun
+                ? (simulation.scattergun.isLastShotDoubleBlast() ? 0.175f : 0.135f)
+                : 0.085f;
             flash.setDimensions(size, size);
             flash.setPosition(muzzle);
             // The flash spins from frame to frame for the moment it shows.
@@ -250,28 +274,35 @@ public final class ViewmodelRenderer implements Disposable {
     }
 
     /**
-     * A debug view: clears the screen to a plain grey and draws the model alone, at rest, seen from outside. It is
-     * for judging the model's shape without the world, the HUD or the first-person pose in the way.
-     * @param yaw how far the model is turned about its vertical axis, in degrees; 0 shows it from behind, as the
-     *     shooter sees it, and 90 shows its left side
-     * @param pitch how far the model is tipped towards the eye, in degrees; 90 shows it from above
+     * A debug view: clears the screen to a plain grey and draws the pistol model alone, at rest, seen from outside.
      */
     public void renderAlone(float yaw, float pitch) {
+        renderAlone(WeaponSlot.PISTOL, yaw, pitch);
+    }
+
+    /**
+     * A debug view: clears the screen to a plain grey and draws {@code weapon} and the hand alone, seen from outside.
+     * @param weapon weapon viewmodel to preview
+     * @param yaw orbit yaw in degrees
+     * @param pitch orbit pitch in degrees
+     */
+    public void renderAlone(WeaponSlot weapon, float yaw, float pitch) {
         ScreenUtils.clear(0.42f, 0.44f, 0.47f, 1f, true);
+        boolean scatter = weapon == WeaponSlot.SCATTERGUN;
         gunTransform.idt()
-            .translate(0f, 0f, -ORBIT_DISTANCE)
+            .translate(0f, 0f, scatter ? -(ORBIT_DISTANCE + 0.16f) : -ORBIT_DISTANCE)
             .rotate(Vector3.X, pitch)
             .rotate(Vector3.Y, yaw)
-            .translate(-ORBIT_CENTRE_X, -ORBIT_CENTRE_Y, -ORBIT_CENTRE_Z);
+            .translate(-ORBIT_CENTRE_X, -ORBIT_CENTRE_Y, scatter ? 0.02f : -ORBIT_CENTRE_Z);
         slideTransform.set(gunTransform);
         viewToWorld.idt();
-        drawModel(1f, 0f);
+        drawModel(scatter ? scatterBody : body, scatter ? scatterPump : slide, 1f, 0f);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
-    /** Draws both meshes with the transforms set up by the caller, on a fresh depth buffer. */
-    private void drawModel(float light, float charge) {
+    /** Draws weapon body, hand, and moving slide/pump with the transforms set up by the caller. */
+    private void drawModel(Mesh weaponBody, Mesh movingPart, float light, float charge) {
         // A fresh depth buffer: the gun is drawn over the world whatever is close in front of the player.
         Gdx.gl.glDepthMask(true);
         Gdx.gl.glClear(GL20.GL_DEPTH_BUFFER_BIT);
@@ -290,18 +321,20 @@ public final class ViewmodelRenderer implements Disposable {
         shader.setUniformMatrix("u_model", gunTransform);
         normalMatrix.set(gunTransform).inv().transpose();
         shader.setUniformMatrix("u_normalMatrix", normalMatrix);
-        body.render(shader, GL20.GL_TRIANGLES);
+        weaponBody.render(shader, GL20.GL_TRIANGLES);
         hand.render(shader, GL20.GL_TRIANGLES);
         shader.setUniformMatrix("u_model", slideTransform);
         normalMatrix.set(slideTransform).inv().transpose();
         shader.setUniformMatrix("u_normalMatrix", normalMatrix);
-        slide.render(shader, GL20.GL_TRIANGLES);
+        movingPart.render(shader, GL20.GL_TRIANGLES);
     }
 
     @Override
     public void dispose() {
         body.dispose();
         slide.dispose();
+        scatterBody.dispose();
+        scatterPump.dispose();
         hand.dispose();
         shader.dispose();
         decalBatch.dispose();
