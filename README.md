@@ -20,6 +20,11 @@ pickups, bulkheads, keycards and security consoles — is loaded from a Wavefron
 
 On Windows, use `gradlew.bat desktop:run` (`.\gradlew.bat desktop:run` in PowerShell).
 
+On macOS (Apple silicon or Intel), the same command works. LWJGL3 must run on the process's first thread there, which
+needs the JVM option `-XstartOnFirstThread`: the `run` task passes it, the Construo `.app` bundle
+(`desktop:packageMacM1` or `desktop:packageMacX64`) sets it, and `java -jar` on a jar from `desktop:jar` or
+`desktop:jarMac` gets it from `StartupHelper`, which relaunches the JVM with it.
+
 The build compiles and runs with a Java 21 toolchain. If Gradle finds no Java 21 on the machine, the first build
 downloads one, so it can take a while.
 
@@ -268,23 +273,20 @@ to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex 
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
 - `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
-  closed, convex and faces outwards, plus indexed body/slide meshes and `# @socket muzzle`), the shipped hand mesh (every
-  part is closed and faces outwards, no quad folds, unit normals, bands of the fingers and palm lie on the grip's
-  surface, the fingers wrap the grip, no glove vertex is inside the pistol, and `PistolModel` shared outlines match the
-  pistol mesh), and the animation (recoil, slide, walking bob and turn lag).
-- `model`: the OBJ parser (including `# @part`/`# @socket`/`# @accent` directives, multi-word materials, and files it
-  must reject), forward-kinematics evaluation (`ModelRig`), indexed vertex deduplication (`ModelVertices`), and
-  model-file error reporting (`ModelVertices.read`).
-- `tools`: byte-for-byte deterministic `.obj` generation and 16-bit indexed vertex deduplication checks across every
-  model in `assets/models/` (`GeneratedModelsTest`).
-- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and the packaging icons.
+  closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
+  normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
+  the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
+- `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in
+  `assets/models/` (`GeneratedModelsTest`), and model-file error reporting (`ModelVertices.read`).
+- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), the packaging icons, and when and
+  how `StartupHelper` relaunches the JVM on macOS.
 
 Rendering, the drawing of the HUD (`HudRenderer`), OpenAL audio hardware playback (`SoundManager` runtime), the rest
 of input handling (`InputController`) and the debug screenshot mode have no tests, apart from the parsing of
 `GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`) and spatial attenuation/panning math (`ProceduralSoundsTest`).
 
-A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux and Windows on
-every pull request and push to `main`.
+A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux, Windows and
+macOS on every pull request and push to `main`.
 
 ## Gradle
 
