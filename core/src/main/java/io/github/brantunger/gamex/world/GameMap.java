@@ -10,7 +10,8 @@ import java.util.List;
  * so the layout reads like a top-down view with north (negative z) at the top.
  *
  * <p>Layout characters: {@code .} is open floor, {@code #}, {@code %} and {@code &} are the three wall types,
- * {@code o} and {@code O} are open floor with a canister or a ring board on it, {@code +}, {@code a} and {@code e}
+ * {@code o} and {@code O} are open floor with a canister or a ring board on it, {@code D}, {@code T} and {@code G}
+ * are rusher drone, sentry turret and guard bot spawns, {@code +}, {@code a} and {@code e}
  * are medkit, armor and energy cell pickups, {@code X} is an optional level exit pad, and one of {@code ^ > v <} is
  * the player spawn, facing north, east, south or west.
  */
@@ -57,6 +58,22 @@ public final class GameMap {
         }
     }
 
+    /** Where a hostile enemy starts. */
+    public static final class EnemySpawn {
+        /** The archetype of enemy to create. */
+        public final Enemy.Kind kind;
+        /** The world x coordinate, at the centre of the cell. */
+        public final float x;
+        /** The world z coordinate, at the centre of the cell. */
+        public final float z;
+
+        EnemySpawn(Enemy.Kind kind, float x, float z) {
+            this.kind = kind;
+            this.x = x;
+            this.z = z;
+        }
+    }
+
     private final char[][] cells;
     private final int width;
     private final int height;
@@ -68,9 +85,11 @@ public final class GameMap {
     private final float exitZ;
     private final List<TargetSpawn> targetSpawns;
     private final List<PickupSpawn> pickupSpawns;
+    private final List<EnemySpawn> enemySpawns;
 
     private GameMap(char[][] cells, float spawnX, float spawnZ, float spawnYaw, boolean hasExit, float exitX,
-                    float exitZ, List<TargetSpawn> targetSpawns, List<PickupSpawn> pickupSpawns) {
+                    float exitZ, List<TargetSpawn> targetSpawns, List<PickupSpawn> pickupSpawns,
+                    List<EnemySpawn> enemySpawns) {
         this.cells = cells;
         this.height = cells.length;
         this.width = cells[0].length;
@@ -82,6 +101,7 @@ public final class GameMap {
         this.exitZ = exitZ;
         this.targetSpawns = Collections.unmodifiableList(targetSpawns);
         this.pickupSpawns = Collections.unmodifiableList(pickupSpawns);
+        this.enemySpawns = Collections.unmodifiableList(enemySpawns);
     }
 
     /**
@@ -99,6 +119,7 @@ public final class GameMap {
         char[][] cells = new char[rows.length][width];
         List<TargetSpawn> targets = new ArrayList<>();
         List<PickupSpawn> pickups = new ArrayList<>();
+        List<EnemySpawn> enemies = new ArrayList<>();
         boolean hasSpawn = false;
         float spawnX = 0f;
         float spawnZ = 0f;
@@ -137,6 +158,12 @@ public final class GameMap {
                     pickups.add(new PickupSpawn(Pickup.Kind.ARMOR, centreX, centreZ));
                 } else if (c == 'e') {
                     pickups.add(new PickupSpawn(Pickup.Kind.ENERGY_CELL, centreX, centreZ));
+                } else if (c == 'D') {
+                    enemies.add(new EnemySpawn(Enemy.Kind.DRONE, centreX, centreZ));
+                } else if (c == 'T') {
+                    enemies.add(new EnemySpawn(Enemy.Kind.TURRET, centreX, centreZ));
+                } else if (c == 'G') {
+                    enemies.add(new EnemySpawn(Enemy.Kind.GUARD, centreX, centreZ));
                 } else if (c == 'X') {
                     if (hasExit) throw new IllegalArgumentException("The layout has more than one exit");
                     hasExit = true;
@@ -149,7 +176,7 @@ public final class GameMap {
             }
         }
         if (!hasSpawn) throw new IllegalArgumentException("The layout has no player spawn");
-        return new GameMap(cells, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ, targets, pickups);
+        return new GameMap(cells, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ, targets, pickups, enemies);
     }
 
     /** @return the number of columns. */
@@ -219,5 +246,10 @@ public final class GameMap {
     /** @return the pickup spawns, in layout order. */
     public List<PickupSpawn> getPickupSpawns() {
         return pickupSpawns;
+    }
+
+    /** @return the enemy spawns, in layout order. */
+    public List<EnemySpawn> getEnemySpawns() {
+        return enemySpawns;
     }
 }

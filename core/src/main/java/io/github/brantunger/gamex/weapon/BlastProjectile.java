@@ -23,6 +23,8 @@ public final class BlastProjectile {
     public static final float SELF_DAMAGE_SCALE = 0.5f;
     /** The longest distance the ball moves between two collision checks. */
     private static final float MAX_STEP = 0.08f;
+    /** Binary refinements used to land right against a contact surface on impact. */
+    private static final int CONTACT_REFINE_STEPS = 8;
 
     /** The centre of the ball; once it has exploded, the centre of the explosion. */
     public final Vector3 position = new Vector3();
@@ -100,6 +102,27 @@ public final class BlastProjectile {
             float y = position.y + direction.y * step;
             float z = position.z + direction.z * step;
             if (touches(x, y, z, map, targets)) {
+                float freeX = position.x;
+                float freeY = position.y;
+                float freeZ = position.z;
+                float blockedX = x;
+                float blockedY = y;
+                float blockedZ = z;
+                for (int r = 0; r < CONTACT_REFINE_STEPS; r++) {
+                    float midX = (freeX + blockedX) * 0.5f;
+                    float midY = (freeY + blockedY) * 0.5f;
+                    float midZ = (freeZ + blockedZ) * 0.5f;
+                    if (touches(midX, midY, midZ, map, targets)) {
+                        blockedX = midX;
+                        blockedY = midY;
+                        blockedZ = midZ;
+                    } else {
+                        freeX = midX;
+                        freeY = midY;
+                        freeZ = midZ;
+                    }
+                }
+                position.set(freeX, freeY, freeZ);
                 exploded = true;
                 Explosion.apply(map, position.x, position.z, blastRadius(charge), blastDamage(charge), targets,
                     player, playerDamageScale);

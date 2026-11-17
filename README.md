@@ -3,11 +3,12 @@
 An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.14.2 on the LWJGL3 desktop backend.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
-blast, and a horizontal energy dash. Fight through explosive coolant canisters, collect 3D health, armor and energy
-pickups, and reach the extraction pad in **01: Outer Breach** (across Easy, Normal or Hard difficulty), or practise in
-the **Training Range**. Surface and effect textures are painted in code at start-up, while every 3D graphical object —
-the pistol, the gloved hand holding it, both target types, pickups and the blast projectile — is loaded from a
-Wavefront `.obj` model in `assets/models/`.
+blast, and a horizontal energy dash. Battle three hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
+and **Guard Bots**), chain explosive coolant canisters, collect 3D health, armor and energy pickups, and clear the
+3-stage campaign (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**) across Easy, Normal or Hard
+difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training Range**. Surface and
+effect textures are painted in code at start-up, while every 3D graphical object — the pistol, the gloved hand holding
+it, targets, enemies, projectiles and pickups — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
 
@@ -60,24 +61,29 @@ nothing until it is released, so the click that chose `RESUME` or `DEPLOY` does 
 
 ## Gameplay basics
 
-**Menus and stages.** The Title screen offers `START CAMPAIGN`, `TRAINING RANGE`, `SETTINGS` and `QUIT`, and
-`CONTINUE CAMPAIGN` when a campaign run is saved. Starting a campaign asks for a difficulty and saves the run,
-replacing any saved one; a briefing follows, and `DEPLOY` starts the stage.
+**Menus and stages.** The Title screen offers `START CAMPAIGN`, `SELECT STAGE`, `TRAINING RANGE`, `SETTINGS` and
+`QUIT`, and `CONTINUE CAMPAIGN` when a campaign run is saved. Starting a campaign asks for a difficulty and saves the
+run, replacing any saved one; a briefing follows, and `DEPLOY` starts the stage. `SELECT STAGE` lists unlocked
+campaign stages with their best rank and lets you start a fresh run from any unlocked stage.
 
-- **01: Outer Breach**, the only campaign stage so far, ends when you reach the extraction pad.
+- **01: Outer Breach** introduces Rusher Drones and Sentry Turrets and ends at the extraction pad.
+- **02: Coolant Core** adds mobile Guard Bots across multi-lane reactor conduits.
+- **03: Security Hub** combines coordinated squads of all three archetypes before final extraction (`CAMPAIGN COMPLETE`).
 - The **Training Range** ends when every target is destroyed. It is always played on Normal.
-- A cleared stage shows a tally: clear time against par, targets destroyed, damage taken and a rank from `S` down
-  to `C`. The best time and rank for each stage and difficulty are saved.
+- A cleared stage shows a tally: clear time against par, hostiles cleared on combat stages (or targets cleared in the
+  Training Range), damage taken and a rank from `S` down to `C`. The best time and rank for each stage and difficulty
+  are saved.
 - The settings are mouse sensitivity, inverted look, field of view, view bob and fullscreen. They are saved between
   runs.
 
 **Health and armor.** You start a campaign with 100 health and no armor; both hold at most 100. While armor is
-left it absorbs half of each hit and the rest comes off health. The only things that hurt you are explosions: your
-own blast and detonating canisters. At zero health the view drops to the floor and the death screen follows;
+left it absorbs half of each hit and the rest comes off health. Enemy attacks, close-range blasts and detonating
+canisters all deal directional damage. At zero health the view drops to the floor and the death screen follows;
 retrying, like `R`, restarts the stage with the health and armor you entered it with.
 
-**Difficulty.** Easy scales the damage you take to 70% and what a pickup restores to 125%; Hard scales them to 140%
-and 80%.
+**Difficulty.** Easy scales the damage you take to 70%, pickups to 125%, and enemy attack speed/bolt speed to 85%;
+Hard scales damage taken to 140%, pickups to 80%, and enemy attack speed/bolt speed to 120% while keeping enemy hit
+points constant across difficulties.
 
 **Dash.** A short burst, 0.14 seconds at 11.5 units per second (about 1.6 units), in the direction of the movement
 keys, or straight ahead when none is held. It costs 25 energy and the next dash can start 0.35 seconds after the
@@ -91,9 +97,10 @@ On screen the pistol is a 3D model in a gloved hand at the lower right, drawn in
 the player stands against never cuts it off. It kicks back on each shot with a flash at the muzzle, bobs while the
 player walks, lags a little behind turns, and glows violet towards the muzzle while a blast is charging.
 
-**Blast.** A slow glowing ball that explodes on the first wall, floor, ceiling or target it touches and damages
-every unobstructed target in its radius. Solid walls shield targets and the player from explosions, while close-range
-blasts within line of sight deal 50%-scaled splash damage to the player.
+**Blast.** A glowing gyroscope orb fired from the pistol muzzle toward the crosshair target that explodes on the first
+wall, floor, ceiling or live target/enemy it touches and damages every unobstructed target and enemy in its radius. Solid
+walls shield targets, enemies and the player from explosions, while close-range blasts within line of sight deal
+50%-scaled splash damage to the player.
 
 - Holding the button builds a charge from 0 to 1 over 1.2 seconds.
 - Releasing below a charge of 0.25 (about 0.3 seconds of holding) fires nothing and costs nothing.
@@ -109,11 +116,19 @@ blasts within line of sight deal 50%-scaled splash damage to the player.
   while the button is held.
 - Blasts and dashes are paid for from the same meter.
 
-**Targets & Pickups.** Levels contain coolant canisters (50 health, three pistol shots) that detonate in chain-reacting
-area explosions when destroyed, and ring boards (120 health, six pistol shots). Medkits, armor vests (absorbing 50% of
-incoming damage) and energy cells hover on the floor and scale with the chosen difficulty. On Normal a medkit restores
-25 health, a vest adds 25 armor and a cell adds 35 energy. Walk over a pickup to take it; one whose meter is already
-full stays where it is.
+**Targets, Enemies & Pickups.** Levels contain coolant canisters (50 health, three pistol shots) that detonate in
+chain-reacting area explosions when destroyed, ring boards (120 health, six pistol shots), and three robotic hostiles:
+
+- **Rusher Drone** (40 health): closes distance around cover via grid pathfinding and telegraphs a shock lunge that
+  can be sidestepped with Energy Dash.
+- **Sentry Turret** (80 health): anchored base with a swiveling dual-barrel head that winds up and fires 3-bolt
+  bursts.
+- **Guard Bot** (100 health): mobile skirmisher that strafes at medium range and fires single aimed plasma bolts.
+
+Dodged enemy bolts detonate coolant canisters on impact while stopping harmlessly on squadmates. Medkits, armor vests
+(absorbing 50% of incoming damage) and energy cells hover on the floor and scale with the chosen difficulty. On Normal a
+medkit restores 25 health, a vest adds 25 armor and a cell adds 35 energy. Walk over a pickup to take it; one whose meter
+is already full stays where it is.
 
 ## Debug screenshot mode
 
@@ -130,8 +145,8 @@ on by environment variables:
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
 - `targets`: the player turns towards the nearest canister and fires the pistol at it from frame 30. The third
   shot, around frame 66, destroys it, so a later frame shows it gone.
-- `breach`: on the Outer Breach stage, the player turns 62 degrees to the right, dashes on frame 25 and fires the
-  pistol from frame 42.
+- `breach`: on the Outer Breach stage, the player rushes and dashes east through the breach doorway, strafes past
+  turret fire, turns toward the room's Drone and Turret and fires the pistol.
 - `title`: the saved frame shows the Title screen over its moving view of the Outer Breach stage. Nothing is
   played, and `GAMEX_VIEWMODEL_ORBIT` is ignored.
 
@@ -177,13 +192,14 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 - `core`: the game, shared by all platforms, under `io.github.brantunger.gamex`.
   - `MainGame`: the libGDX entry point; it reads input, advances the simulation and draws each frame.
   - `GameSimulation`: the whole game state and its rules. It uses no graphics types, so it runs without a window.
-  - `world`: the level grid, its layouts and the stage definitions (`Levels`), collision with walls and targets,
-    hitscan ray casting, map geometry, targets, pickups (`Pickup`), world object models (`WorldModels`) and effects.
+  - `world`: the level grid, its layouts and the stage definitions (`Levels`), collision with walls, targets and enemies,
+    hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
+    (`Pickup`), world object models (`WorldModels`) and effects.
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
     the difficulty levels (`Difficulty`) and the health and armor a stage is entered with (`PlayerLoadout`).
-  - `weapon`: the pistol, the energy meter, the blast's charge logic, its projectile and its explosion damage, the
-    pistol's 3D model and materials (`PistolModel`), the colours for the hand's mesh (`HandModel`) and the numbers
-    that animate both.
+  - `weapon`: the pistol, the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
+    `EnemyProjectile`), explosion damage, the pistol's 3D model and materials (`PistolModel`), the colours for the
+    hand's mesh (`HandModel`) and the numbers that animate both.
   - `model`: a parser for Wavefront OBJ model files (`ObjModel`) and vertex packing (`ModelVertices`). Neither uses
     graphics types.
   - `render`: the 3D view, the pass that draws the pistol and hand over it, and the textures painted in code.
@@ -199,10 +215,10 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 - `assets`: the files the game loads at start-up:
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`: the mesh of the first-person pistol (body and animated slide).
-  - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`: the 3D meshes for targets and blast
-    projectiles.
-  - `models/pickup-medkit.obj`, `models/pickup-armor.obj`, `models/pickup-energy.obj`: the 3D meshes for the
-    pickups.
+  - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/pickup-*.obj`: 3D meshes for
+    targets, pickups and blast projectiles.
+  - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-bolt.obj`: 3D meshes
+    for articulated enemies and enemy plasma bolts.
 - `tools`: standalone single-file Java generators that build the `.obj` models:
   - `tools/viewmodel/HandSculpt.java` and `tools/viewmodel/PistolSculpt.java` (see
     [tools/viewmodel/README.md](tools/viewmodel/README.md)).
@@ -218,25 +234,26 @@ The tests are JUnit Jupiter tests in `core/src/test`. They need no window or gra
 (`HandModelTest`, `PistolModelTest` and `WorldModelsTest`) read `.obj` models from the `assets` folder; the `core`
 test task tells them where that folder is and runs again when a model file changes. They cover:
 
-- `GameSimulation`: pistol hits, a charged blast from release to explosion, a pause dropping a charge, targets
-  blocking the player, the clamp on long frames, canister explosions chaining and hurting the player, a dash
-  dropping a charge and collecting pickups, and a stage ending when its last target breaks.
-- `world`: layout parsing, including pickups and the exit, the first level (the spawn is clear of walls and every
-  target can be reached), the Training Range and Outer Breach (every target and pickup, and the exit where
-  there is one, can be reached), collision, hitscan, map geometry, targets and the shipped world object `.obj`
-  models (closed outward manifolds matching collision dimensions; the pickups stand on the floor and fit their
-  pickup radius).
+- `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
+  a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
+  hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, and a stage ending
+  when its last target breaks.
+- `world`: layout parsing (including pickups, enemies and exit), the first level (the spawn is clear of walls and every
+  target can be reached), the Training Range and all three campaign stages (every target, enemy, pickup and exit can be
+  reached), collision, hitscan, grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
+  and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
+  the floor and fit their pickup radius).
 - `player`: view angles and movement, armor absorbing damage, death, and the dash (its cost, distance, cooldown
   and refusal on low energy).
-- `hud`: the campaign's path through the menu screens (`MenuStateTest`) and the pixel font's glyphs
+- `hud`: the campaign's path through the menu screens and stage select (`MenuStateTest`), and the pixel font's glyphs
   (`PixelFontTest`).
 - `settings`: the settings' ranges and their round trip through a store, and the saved run, best times and ranks
   (`GameSettingsAndSaveTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
-- `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the projectile and its explosion
-  damage, the shipped pistol model (every solid is closed, convex and faces outwards), the shipped hand mesh (every part
-  is closed and faces outwards, unit normals, the fingers wrap the grip, no glove vertex is inside the pistol),
-  and the animation (recoil, slide, walking bob and turn lag).
+- `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
+  contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
+  closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, unit normals, the
+  fingers wrap the grip, no glove vertex is inside the pistol), and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser, including the files it must reject.
 
 Rendering, the drawing of the HUD (`HudRenderer`), the rest of input handling (`InputController`) and the debug

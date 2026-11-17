@@ -9,6 +9,8 @@ import io.github.brantunger.gamex.player.Player;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 
 class GameMapTest {
 
@@ -139,11 +141,14 @@ class GameMapTest {
     }
 
     @Test
-    void trainingRangeAndOuterBreachHaveReachableTargetsPickupsAndExit() {
-        Levels.Stage[] stages = {Levels.trainingRange(), Levels.outerBreach()};
+    void trainingRangeAndAllCampaignStagesHaveReachableEntitiesAndExit() {
+        List<Levels.Stage> stages = new ArrayList<>();
+        stages.add(Levels.trainingRange());
+        stages.addAll(Levels.campaign());
+        assertEquals(4, stages.size());
         for (Levels.Stage stage : stages) {
             GameMap map = stage.map;
-            assertFalse(Collision.overlapsWall(map, map.getSpawnX(), map.getSpawnZ(), Player.RADIUS));
+            assertFalse(Collision.overlapsWall(map, map.getSpawnX(), map.getSpawnZ(), Player.RADIUS), stage.id);
             boolean[][] reached = new boolean[map.getHeight()][map.getWidth()];
             ArrayDeque<int[]> open = new ArrayDeque<>();
             open.add(new int[] {(int) map.getSpawnX(), (int) map.getSpawnZ()});
@@ -164,9 +169,24 @@ class GameMapTest {
             for (GameMap.PickupSpawn p : map.getPickupSpawns()) {
                 assertTrue(reached[(int) p.z][(int) p.x], stage.id + " unreachable pickup at " + p.x + "," + p.z);
             }
+            for (GameMap.EnemySpawn e : map.getEnemySpawns()) {
+                assertTrue(reached[(int) e.z][(int) e.x], stage.id + " unreachable enemy at " + e.x + "," + e.z);
+            }
             if (map.hasExit()) {
                 assertTrue(reached[(int) map.getExitZ()][(int) map.getExitX()], stage.id + " unreachable exit");
             }
         }
+    }
+
+    @Test
+    void parsesEnemySpawnsForAllThreeArchetypes() {
+        GameMap map = GameMap.parse(
+            "#######",
+            "#>DTG.#",
+            "#######");
+        assertEquals(3, map.getEnemySpawns().size());
+        assertEquals(Enemy.Kind.DRONE, map.getEnemySpawns().get(0).kind);
+        assertEquals(Enemy.Kind.TURRET, map.getEnemySpawns().get(1).kind);
+        assertEquals(Enemy.Kind.GUARD, map.getEnemySpawns().get(2).kind);
     }
 }

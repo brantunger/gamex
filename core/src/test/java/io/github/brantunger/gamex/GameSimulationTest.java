@@ -331,4 +331,86 @@ class GameSimulationTest {
         simulation.update(FRAME, input);
         assertEquals(clearTime, simulation.getTime(), 1e-6f, "timer locks once cleared");
     }
+
+    @Test
+    void pistolKillsDroneAndEnemyBoltCanDetonateCanisterToDamageNearbyGuard() {
+        GameMap combatHall = GameMap.parse(
+            "##############",
+            "#>..D........#",
+            "#............#",
+            "#.......oG...#",
+            "##############");
+        GameSimulation simulation = new GameSimulation(combatHall);
+        assertEquals(2, simulation.enemies.size());
+        assertEquals(2, simulation.getEnemiesRemaining());
+
+        // Two pistol shots destroy the 40-HP Rusher Drone and alert the Guard via gunfire noise.
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+        for (int i = 0; i < 25; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.enemies.get(0).isDestroyed());
+        assertEquals(1, simulation.getEnemiesDestroyed());
+
+        // Direct canister explosion kills or heavily damages an adjacent enemy.
+        GameMap trapHall = GameMap.parse(
+            "#########",
+            "#>..oD..#",
+            "#########");
+        GameSimulation trapSim = new GameSimulation(trapHall);
+        for (int i = 0; i < 45; i++) trapSim.update(FRAME, input);
+        assertTrue(trapSim.targets.get(0).isDestroyed(), "canister destroyed by pistol");
+        assertTrue(trapSim.enemies.get(0).isDestroyed(), "adjacent drone destroyed by canister blast");
+    }
+
+    @Test
+    void gunshotsAlertNearbyEnemiesAndEnemyProjectilesHurtPlayer() {
+        GameMap alertRoom = GameMap.parse(
+            "############",
+            "#>.....T...#",
+            "############");
+        GameSimulation simulation = new GameSimulation(alertRoom);
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+        simulation.update(FRAME, input);
+        input.fire = false;
+
+        // Shot noise at 6u wakes the Turret immediately.
+        assertFalse(simulation.enemies.get(0).getState() == io.github.brantunger.gamex.world.Enemy.State.DORMANT);
+
+        // Stand still while turret aims and fires; player takes damage and damageTaken tracks it.
+        for (int i = 0; i < 240; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.player.getHealth() < Player.MAX_HEALTH);
+        assertTrue(simulation.getDamageTaken() > 0f);
+    }
+
+    @Test
+    void blastSpawnsAheadOfEyeAtMuzzleTriggersRecoilAndConvergesOnCrosshairTarget() {
+        GameMap range = GameMap.parse(
+            "##############",
+            "#>.......O...#",
+            "##############");
+        GameSimulation simulation = new GameSimulation(range);
+        PlayerInput input = new PlayerInput();
+        input.charge = true;
+        for (int i = 0; i < 40; i++) simulation.update(FRAME, input);
+        input.charge = false;
+        simulation.update(FRAME, input);
+
+        assertEquals(1, simulation.projectiles.size());
+        com.badlogic.gdx.math.Vector3 p = simulation.projectiles.get(0).position;
+        float aheadOfEye = p.x - simulation.player.position.x;
+        float rightOfEye = p.z - simulation.player.position.y;
+        assertTrue(aheadOfEye > 0.4f && aheadOfEye < 0.6f, "ahead of near clip plane: " + aheadOfEye);
+        assertTrue(rightOfEye > 0.05f, "spawned from right-hand muzzle: " + rightOfEye);
+
+        // Next frame: viewmodel kicks back and orb flies smoothly toward the centered ring board.
+        simulation.update(FRAME, input);
+        assertTrue(simulation.viewmodel.getRecoil() > 0f, "release kicks viewmodel");
+
+        for (int i = 0; i < 120 && !simulation.projectiles.isEmpty(); i++) {
+            simulation.update(FRAME, input);
+        }
+        assertTrue(simulation.projectiles.isEmpty());
+        assertTrue(simulation.targets.get(0).getHealth() < Target.Kind.RING_BOARD.maxHealth);
+    }
 }

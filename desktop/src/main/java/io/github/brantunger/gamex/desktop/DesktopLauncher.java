@@ -12,11 +12,10 @@ public class DesktopLauncher {
         config.setTitle("gamex");
         int[] size = windowSize(System.getenv("GAMEX_WINDOW"));
         config.setWindowedMode(size[0], size[1]);
-        // Vsync caps the frame rate at the display's refresh rate; the FPS limit is a fallback for when vsync is off.
+        // Let hardware VSync pace frames when enabled; disabling LWJGL3's software Sync.sync loop avoids
+        // beat-frequency micro-stutter against glfwSwapBuffers and adapts across monitors.
         config.useVsync(true);
-        // Some displays report no usable refresh rate; without this guard the limit could come out as 1 FPS.
-        int refreshRate = Lwjgl3ApplicationConfiguration.getDisplayMode().refreshRate;
-        config.setForegroundFPS(refreshRate < 30 ? 60 : refreshRate + 1);
+        config.setForegroundFPS(0);
         // Losing the focus pauses the game and frees the cursor, as minimising the window does.
         config.setPauseWhenLostFocus(true);
         // The icons are classpath resources, from src/main/resources.

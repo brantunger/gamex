@@ -22,6 +22,14 @@ public final class WorldModels {
     public static final String ARMOR_PATH = "models/pickup-armor.obj";
     /** The path of the energy cell pickup model file inside the assets folder. */
     public static final String ENERGY_CELL_PATH = "models/pickup-energy.obj";
+    /** The path of the sentry turret enemy model file inside the assets folder. */
+    public static final String TURRET_PATH = "models/enemy-turret.obj";
+    /** The path of the rusher drone enemy model file inside the assets folder. */
+    public static final String DRONE_PATH = "models/enemy-drone.obj";
+    /** The path of the guard bot enemy model file inside the assets folder. */
+    public static final String GUARD_PATH = "models/enemy-guard.obj";
+    /** The path of the enemy plasma bolt projectile model file inside the assets folder. */
+    public static final String ENEMY_BOLT_PATH = "models/enemy-bolt.obj";
     /** The number of floats per vertex. */
     public static final int VERTEX_SIZE = ModelVertices.VERTEX_SIZE;
 
@@ -46,7 +54,14 @@ public final class WorldModels {
         ARMOR_TRIM("armor_trim", 0.42f, 0.48f, 0.56f, 0.75f),
         ARMOR_CORE("armor_core", 0.45f, 0.92f, 1.00f, 0.9f),
         CELL_CAP("cell_cap", 0.32f, 0.28f, 0.42f, 0.6f),
-        CELL_CORE("cell_core", 0.76f, 0.42f, 1.00f, 0.95f);
+        CELL_CORE("cell_core", 0.76f, 0.42f, 1.00f, 0.95f),
+        BOT_ARMOR("bot_armor", 0.34f, 0.37f, 0.43f, 0.65f),
+        BOT_DARK("bot_dark", 0.15f, 0.17f, 0.21f, 0.40f),
+        BOT_TRIM("bot_trim", 0.52f, 0.56f, 0.63f, 0.80f),
+        BOT_VISOR("bot_visor", 1.00f, 0.22f, 0.28f, 0.95f),
+        BOT_CORE("bot_core", 1.00f, 0.48f, 0.18f, 0.90f),
+        BOLT_CORE("bolt_core", 1.00f, 0.82f, 0.78f, 1.00f),
+        BOLT_SHELL("bolt_shell", 1.00f, 0.22f, 0.26f, 0.85f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;
@@ -82,5 +97,30 @@ public final class WorldModels {
      */
     public static float[] vertices(ObjModel model) {
         return ModelVertices.pack(model, name -> Material.named(name).colour);
+    }
+
+    /**
+     * Turns only the triangles whose OBJ group starts with {@code groupPrefix} into packed vertices.
+     * @param model the parsed model file
+     * @param groupPrefix prefix matched against {@link ObjModel#getGroup(int)}
+     * @return three vertices per matching triangle
+     * @throws IllegalArgumentException if no triangle matches {@code groupPrefix} or a material is unknown
+     */
+    public static float[] verticesForGroupPrefix(ObjModel model, String groupPrefix) {
+        int count = 0;
+        for (int t = 0; t < model.getTriangleCount(); t++) {
+            if (model.getGroup(t).startsWith(groupPrefix)) count++;
+        }
+        if (count == 0) {
+            throw new IllegalArgumentException("No triangles matched group prefix '" + groupPrefix + "'");
+        }
+        float[] out = new float[count * 3 * VERTEX_SIZE];
+        int at = 0;
+        for (int t = 0; t < model.getTriangleCount(); t++) {
+            if (!model.getGroup(t).startsWith(groupPrefix)) continue;
+            ModelVertices.writeTriangle(model, t, Material.named(model.getMaterial(t)).colour, out, at);
+            at += 3 * VERTEX_SIZE;
+        }
+        return out;
     }
 }

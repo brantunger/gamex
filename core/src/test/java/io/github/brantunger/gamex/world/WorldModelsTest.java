@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
+import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -32,7 +33,14 @@ class WorldModelsTest {
     private static final ObjModel MEDKIT = load(WorldModels.MEDKIT_PATH);
     private static final ObjModel ARMOR = load(WorldModels.ARMOR_PATH);
     private static final ObjModel ENERGY_CELL = load(WorldModels.ENERGY_CELL_PATH);
-    private static final ObjModel[] ALL_MODELS = {CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL};
+    private static final ObjModel TURRET = load(WorldModels.TURRET_PATH);
+    private static final ObjModel DRONE = load(WorldModels.DRONE_PATH);
+    private static final ObjModel GUARD = load(WorldModels.GUARD_PATH);
+    private static final ObjModel ENEMY_BOLT = load(WorldModels.ENEMY_BOLT_PATH);
+    private static final ObjModel[] ALL_MODELS = {
+        CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL,
+        TURRET, DRONE, GUARD, ENEMY_BOLT
+    };
 
     private static ObjModel load(String assetPath) {
         List<Path> candidates = new ArrayList<>();
@@ -211,5 +219,71 @@ class WorldModelsTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
             () -> WorldModels.vertices(stray));
         assertTrue(error.getMessage().contains("chrome"), error.getMessage());
+    }
+
+    @Test
+    void enemyModelsMatchCollisionCylindersAndArticulatedGroupPrefixes() {
+        assertBoundsFitCylinder(TURRET, 0f, Enemy.Kind.TURRET.height, Enemy.Kind.TURRET.radius, true);
+        assertBoundsFitCylinder(DRONE, 0.1f, Enemy.Kind.DRONE.height, Enemy.Kind.DRONE.radius, false);
+        assertBoundsFitCylinder(GUARD, 0f, Enemy.Kind.GUARD.height, Enemy.Kind.GUARD.radius, true);
+
+        float[] turretBase = WorldModels.verticesForGroupPrefix(TURRET, "base_");
+        float[] turretHead = WorldModels.verticesForGroupPrefix(TURRET, "head_");
+        assertEquals(WorldModels.vertices(TURRET).length, turretBase.length + turretHead.length);
+
+        float[] guardBase = WorldModels.verticesForGroupPrefix(GUARD, "base_");
+        float[] guardHead = WorldModels.verticesForGroupPrefix(GUARD, "head_");
+        assertEquals(WorldModels.vertices(GUARD).length, guardBase.length + guardHead.length);
+
+        assertThrows(IllegalArgumentException.class, () -> WorldModels.verticesForGroupPrefix(DRONE, "missing_"));
+    }
+
+    @Test
+    void enemyBoltIsCentredAtOriginAndMatchesProjectileRadius() {
+        float minX = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        float minZ = Float.POSITIVE_INFINITY;
+        float maxZ = Float.NEGATIVE_INFINITY;
+        for (int triangle = 0; triangle < ENEMY_BOLT.getTriangleCount(); triangle++) {
+            for (int corner = 0; corner < 3; corner++) {
+                Vector3 p = position(ENEMY_BOLT, triangle, corner);
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+                minZ = Math.min(minZ, p.z);
+                maxZ = Math.max(maxZ, p.z);
+            }
+        }
+        assertEquals(-EnemyProjectile.RADIUS, minX, 1e-5f);
+        assertEquals(EnemyProjectile.RADIUS, maxX, 1e-5f);
+        assertEquals(-EnemyProjectile.RADIUS, minY, 1e-5f);
+        assertEquals(EnemyProjectile.RADIUS, maxY, 1e-5f);
+        assertEquals(-EnemyProjectile.RADIUS, minZ, 1e-5f);
+        assertEquals(EnemyProjectile.RADIUS, maxZ, 1e-5f);
+    }
+
+    private static void assertBoundsFitCylinder(ObjModel model, float minExpectedY, float expectedHeight,
+                                                float maxAllowedRadius, boolean exactFloor) {
+        float minY = Float.POSITIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        float maxRadius = 0f;
+        for (int triangle = 0; triangle < model.getTriangleCount(); triangle++) {
+            for (int corner = 0; corner < 3; corner++) {
+                Vector3 p = position(model, triangle, corner);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+                maxRadius = Math.max(maxRadius, (float) Math.hypot(p.x, p.z));
+            }
+        }
+        if (exactFloor) {
+            assertEquals(minExpectedY, minY, 1e-5f);
+            assertEquals(expectedHeight, maxY, 1e-5f);
+        } else {
+            assertTrue(minY >= 0f && maxY <= expectedHeight + 1e-5f, "height range " + minY + ".." + maxY);
+        }
+        assertTrue(maxRadius <= maxAllowedRadius + 1e-4f, "radius " + maxRadius + " > " + maxAllowedRadius);
     }
 }

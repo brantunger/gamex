@@ -193,4 +193,21 @@ class BlastProjectileTest {
         assertTrue(closePlayer.getHealth() < 100f && closePlayer.getHealth() > 50f,
             "close player takes 50%-scaled splash damage: " + closePlayer.getHealth());
     }
+
+    @Test
+    void bisectsImpactToWithinThousandthsOfContactSurface() {
+        BlastProjectile wallBlast = eastwards(1f);
+        assertTrue(wallBlast.update(10f, CORRIDOR, NO_TARGETS));
+        float wallContact = 9f - BlastProjectile.RADIUS;
+        assertTrue(wallBlast.position.x <= wallContact, "outside wall");
+        assertTrue(wallContact - wallBlast.position.x < 0.002f, "gap was " + (wallContact - wallBlast.position.x));
+
+        Target canister = new Target(Target.Kind.CANISTER, 5.5f, 1.5f);
+        BlastProjectile targetBlast = eastwards(1f);
+        assertTrue(targetBlast.update(10f, CORRIDOR, Collections.singletonList(canister)));
+        float targetContact = 5.5f - canister.getRadius() - BlastProjectile.RADIUS;
+        assertTrue(targetBlast.position.x <= targetContact, "outside canister");
+        assertTrue(targetContact - targetBlast.position.x < 0.002f,
+            "gap was " + (targetContact - targetBlast.position.x));
+    }
 }
