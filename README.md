@@ -231,8 +231,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test` and `desktop/src/test`. They need no window or graphics context.
-Three test classes (`HandModelTest`, `PistolModelTest` and `WorldModelsTest`) read `.obj` models from the `assets`
-folder; the `core` test task tells them where that folder is and runs again when a model file changes. They cover:
+`GeneratedModelsTest`, `HandModelTest`, `PistolModelTest` and `WorldModelsTest` read `.obj` models from `assets` and
+run the standalone generators in `tools/`; the `core` test task tracks both folders and reruns when any model or
+generator changes. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
   a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
@@ -253,9 +254,10 @@ folder; the `core` test task tells them where that folder is and runs again when
 - `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
   closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
-  normals, the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside the pistol),
-  and the animation (recoil, slide, walking bob and turn lag).
-- `model`: the OBJ parser, including the files it must reject.
+  normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
+  the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
+- `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in
+  `assets/models/` (`GeneratedModelsTest`), and model-file error reporting (`ModelVertices.read`).
 - `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and the packaging icons.
 
 Rendering, the drawing of the HUD (`HudRenderer`), the rest of input handling (`InputController`) and the debug

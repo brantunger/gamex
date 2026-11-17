@@ -14,6 +14,26 @@ public final class ModelVertices {
     private ModelVertices() {}
 
     /**
+     * Parses OBJ text and converts it with {@code converter}, naming the file and model role if either step fails.
+     * @param assetPath the path of the model file, to name in an error message
+     * @param label what the model is (for example {@code "hand"} or {@code "pistol"})
+     * @param text the Wavefront OBJ contents
+     * @param converter turns the parsed {@link ObjModel} into the caller's representation
+     * @param <T> the converted representation
+     * @return the converted model
+     * @throws IllegalArgumentException if the OBJ text or one of its materials or groups is invalid; the message names
+     *     {@code label}, {@code assetPath}, and the parser or converter failure
+     */
+    public static <T> T read(String assetPath, String label, String text, Function<ObjModel, T> converter) {
+        try {
+            return converter.apply(ObjModel.parse(text));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("The " + label + " model " + assetPath + " could not be read: "
+                + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Converts every triangle of a model into packed vertices.
      * @param model the parsed model
      * @param materialColour maps each triangle's material name to four floats: red, green, blue and gloss
