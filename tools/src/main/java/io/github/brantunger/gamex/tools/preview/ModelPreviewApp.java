@@ -32,6 +32,7 @@ import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
+import io.github.brantunger.gamex.weapon.ScattergunModel;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
@@ -299,6 +300,21 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         vm.rawVertices = vm.totalTriangles * 3;
         entries.add(vm);
 
+        ObjModel scatterObj = readObj(dir.resolve("viewmodel-scattergun.obj"), "scattergun");
+        ScattergunModel scatter = ScattergunModel.from(scatterObj);
+        Entry vmScatter = new Entry("viewmodel-scattergun (scattergun+hand)", scatterObj, 0f, -0.05f, -0.02f, 0.72f,
+            0f, 0f);
+        vmScatter.partMeshes.put("body", ModelMesh.buildIndexed(scatter.bodyMesh));
+        vmScatter.partMeshes.put("pump", ModelMesh.buildIndexed(scatter.pumpMesh));
+        vmScatter.partMeshes.put("hand", ModelMesh.buildIndexed(handIndexed));
+        vmScatter.rig = new ModelRig(scatterObj);
+        vmScatter.totalTriangles = scatter.bodyMesh.triangleCount() + scatter.pumpMesh.triangleCount()
+            + handIndexed.triangleCount();
+        vmScatter.uniqueVertices = scatter.bodyMesh.vertexCount() + scatter.pumpMesh.vertexCount()
+            + handIndexed.vertexCount();
+        vmScatter.rawVertices = vmScatter.totalTriangles * 3;
+        entries.add(vmScatter);
+
         addWorldEntry(dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
             Enemy.Kind.GUARD.radius, Enemy.Kind.GUARD.height,
             "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
@@ -309,6 +325,8 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         addWorldEntry(dir, "door-bulkhead.obj", 0f, 0.50f, 0f, 1.70f, 0f, GameMap.WALL_HEIGHT);
         addWorldEntry(dir, "security-console.obj", 0f, 0.36f, 0f, 1.15f,
             SecurityConsole.RADIUS, SecurityConsole.HEIGHT);
+        addWorldEntry(dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
+        addWorldEntry(dir, "pickup-shells.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.27f);
         addWorldEntry(dir, "pickup-keycard.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
         addWorldEntry(dir, "pickup-medkit.obj", 0f, 0.14f, 0f, 0.72f, Pickup.RADIUS, 0.28f);
         addWorldEntry(dir, "pickup-armor.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
@@ -412,6 +430,9 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         } else if (entry.label.equals("enemy-turret.obj") && animate) {
             animRotations.put("head", new Matrix4().setToRotation(Vector3.Y, MathUtils.sin(time * 1.4f) * 35f));
             animRotations.put("barrels", new Matrix4().setToRotation(Vector3.X, MathUtils.sin(time * 2.3f) * 14f));
+        } else if (entry.label.startsWith("viewmodel-scattergun") && animate) {
+            float pumpKick = Math.max(0f, MathUtils.sin(time * 3.2f)) * ScattergunModel.PUMP_TRAVEL;
+            animRotations.put("pump", new Matrix4().setToTranslation(0f, 0f, pumpKick));
         } else if (entry.label.startsWith("viewmodel") && animate) {
             float slideKick = Math.max(0f, MathUtils.sin(time * 4f)) * 0.032f;
             animRotations.put("slide", new Matrix4().setToTranslation(0f, 0f, slideKick));

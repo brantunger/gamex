@@ -321,7 +321,7 @@ public final class MenuState {
                 campaignCompleted = false;
                 stageIndex = Math.min(pendingStageIndex, campaign.size() - 1);
                 activeStage = campaign.get(stageIndex);
-                activeLoadout = PlayerLoadout.fresh(diff);
+                activeLoadout = PlayerLoadout.forStage(stageIndex, diff);
                 saveData.saveCampaignRun(stageIndex, activeLoadout);
                 setScreen(Screen.BRIEFING);
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
@@ -395,7 +395,7 @@ public final class MenuState {
                     if (!inTrainingRange) {
                         activeLoadout = saveData.hasSavedRun() && saveData.getSavedStageIndex() == stageIndex
                             ? saveData.getSavedLoadout()
-                            : PlayerLoadout.fresh(activeLoadout.difficulty);
+                            : PlayerLoadout.forStage(stageIndex, activeLoadout.difficulty);
                     } else {
                         activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
                     }
@@ -468,15 +468,25 @@ public final class MenuState {
      */
     public void onStageCleared(Player survivingPlayer, float clearTime, int destroyed, int totalTargets,
                                float damageTaken) {
+        onStageCleared(PlayerLoadout.fromPlayer(survivingPlayer, activeLoadout.difficulty),
+            clearTime, destroyed, totalTargets, damageTaken);
+    }
+
+    /**
+     * Records stage completion with a full carried-over weapon/vital snapshot and opens {@link Screen#INTERMISSION}.
+     */
+    public void onStageCleared(PlayerLoadout carryOver, float clearTime, int destroyed, int totalTargets,
+                               float damageTaken) {
         if (screen != Screen.PLAYING) return;
         lastSummary = saveData.recordCompletion(activeStage.id, activeLoadout.difficulty, clearTime,
             activeStage.parSeconds, destroyed, totalTargets, damageTaken);
         campaignCompleted = !inTrainingRange && (stageIndex + 1 >= campaign.size());
         if (!inTrainingRange) {
-            PlayerLoadout carryOver = PlayerLoadout.fromPlayer(survivingPlayer, activeLoadout.difficulty);
+            PlayerLoadout nextLoadout = carryOver == null ? PlayerLoadout.forStage(stageIndex + 1, activeLoadout.difficulty)
+                : carryOver;
             if (stageIndex + 1 < campaign.size()) {
                 saveData.unlockStage(stageIndex + 1);
-                activeLoadout = carryOver;
+                activeLoadout = nextLoadout;
             } else {
                 saveData.clearSavedRun();
             }

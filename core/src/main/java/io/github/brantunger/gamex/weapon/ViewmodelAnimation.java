@@ -18,6 +18,9 @@ public final class ViewmodelAnimation {
     /** The furthest the gun lags behind a turn, in degrees. */
     public static final float MAX_SWAY = 2.5f;
 
+    /** How long, in seconds, switching between weapons takes (half down, half up). */
+    public static final float SWAP_TIME = 0.18f;
+
     /** The share of a recoil or slide cycle spent snapping back; the rest is the return. */
     private static final float ATTACK = 0.15f;
     /** The bob's speed at a full walk, in radians per second. */
@@ -30,6 +33,7 @@ public final class ViewmodelAnimation {
     private static final float SWAY_FOLLOW = 9f;
 
     private float sinceShot = Float.POSITIVE_INFINITY;
+    private float recoilScale = 1f;
     private float bobAmount;
     private float bobPhase;
     private float swayYaw;
@@ -38,14 +42,30 @@ public final class ViewmodelAnimation {
     /**
      * Advances the animation by one step.
      * @param dt the time step in seconds
-     * @param fired whether the pistol fired during this step
+     * @param fired whether the weapon fired during this step
      * @param walkSpeed how fast the player is walking, from 0 (still) to 1 (full speed)
      * @param yawDelta the turn of the view during this step in degrees, positive to the right
      * @param pitchDelta the tilt of the view during this step in degrees, positive upwards
      */
     public void update(float dt, boolean fired, float walkSpeed, float yawDelta, float pitchDelta) {
-        if (fired) sinceShot = 0f;
-        else sinceShot += dt;
+        update(dt, fired ? 1f : 0f, walkSpeed, yawDelta, pitchDelta);
+    }
+
+    /**
+     * Advances the animation by one step with an explicit recoil kick intensity.
+     * @param dt the time step in seconds
+     * @param shotKickScale recoil intensity multiplier ({@code <= 0} if no shot fired this step; {@code 1} for pistol)
+     * @param walkSpeed how fast the player is walking, from 0 (still) to 1 (full speed)
+     * @param yawDelta the turn of the view during this step in degrees, positive to the right
+     * @param pitchDelta the tilt of the view during this step in degrees, positive upwards
+     */
+    public void update(float dt, float shotKickScale, float walkSpeed, float yawDelta, float pitchDelta) {
+        if (shotKickScale > 0f) {
+            sinceShot = 0f;
+            recoilScale = shotKickScale;
+        } else {
+            sinceShot += dt;
+        }
         if (dt <= 0f) return;
 
         float speed = Math.max(0f, Math.min(1f, walkSpeed));
@@ -70,9 +90,9 @@ public final class ViewmodelAnimation {
         return back * back;
     }
 
-    /** @return the kick of the gun, from 0 at rest to 1 at the peak just after a shot. */
+    /** @return the kick of the gun, from 0 at rest up to the active weapon's kick peak just after a shot. */
     public float getRecoil() {
-        return pulse(sinceShot, RECOIL_TIME);
+        return pulse(sinceShot, RECOIL_TIME) * recoilScale;
     }
 
     /** @return how far back the slide is, from 0 (closed) to 1 (fully back). */

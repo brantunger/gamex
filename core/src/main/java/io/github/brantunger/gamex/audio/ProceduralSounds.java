@@ -27,6 +27,22 @@ public final class ProceduralSounds {
                 samples = renderPistolShot();
                 peakScale = 26_000.0;
                 break;
+            case SCATTERGUN_FIRE:
+                samples = renderScattergunFire();
+                peakScale = 28_500.0;
+                break;
+            case SCATTERGUN_ALT_FIRE:
+                samples = renderScattergunAltFire();
+                peakScale = 30_500.0;
+                break;
+            case WEAPON_SWITCH:
+                samples = renderWeaponSwitch();
+                peakScale = 16_000.0;
+                break;
+            case WEAPON_DRY_FIRE:
+                samples = renderWeaponDryFire();
+                peakScale = 15_000.0;
+                break;
             case WALL_IMPACT:
                 samples = renderWallImpact();
                 peakScale = 18_000.0;
@@ -93,6 +109,14 @@ public final class ProceduralSounds {
             case PICKUP_KEYCARD:
                 samples = renderToneSteps(0.24, new double[] {0.0, 0.06, 0.12}, new double[] {0.075, 0.135, 0.24},
                     new double[] {587.33, 880.0, 1174.66}, 0.22);
+                peakScale = 19_000.0;
+                break;
+            case PICKUP_WEAPON:
+                samples = renderPickupWeapon();
+                peakScale = 22_000.0;
+                break;
+            case PICKUP_SHELLS:
+                samples = renderPickupShells();
                 peakScale = 19_000.0;
                 break;
             case LOW_ENERGY:
@@ -198,6 +222,119 @@ public final class ProceduralSounds {
             double punch = Math.sin(snapPhase) * Math.exp(-t / 0.014) * 0.65
                 + Math.sin(bodyPhase) * Math.exp(-t / 0.055) * 0.75;
             buf[i] = Math.tanh((crack + punch) * 1.4);
+        }
+        return buf;
+    }
+
+    private static double[] renderScattergunFire() {
+        return renderShotgunBlast(0.36, 1.0, 0.20, 0.27);
+    }
+
+    private static double[] renderScattergunAltFire() {
+        return renderShotgunBlast(0.46, 1.35, 0.27, 0.36);
+    }
+
+    private static double[] renderShotgunBlast(double totalSec, double weight, double rackOutAt, double rackInAt) {
+        double[] buf = alloc(totalSec);
+        int rng = 0x61524337;
+        double subPhase = 0.0;
+        double bodyPhase = 0.0;
+        double lp = 0.0;
+        double rackLp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double subFreq = 32.0 + 78.0 * Math.exp(-t / (0.075 * weight));
+            double bodyFreq = 85.0 + 215.0 * Math.exp(-t / (0.030 * weight));
+            subPhase += TWO_PI * subFreq / SAMPLE_RATE;
+            bodyPhase += TWO_PI * bodyFreq / SAMPLE_RATE;
+            rng = nextRng(rng);
+            double white = rngFloat(rng);
+            lp += 0.22 * (white - lp);
+            rackLp += 0.42 * (white - rackLp);
+
+            double boom = Math.sin(subPhase) * Math.exp(-t / (0.105 * weight)) * 0.85
+                + Math.sin(bodyPhase) * Math.exp(-t / (0.042 * weight)) * 0.65;
+            double blastNoise = (white * 0.45 + lp * 0.85) * Math.exp(-t / (0.068 * weight));
+            double rack = 0.0;
+            if (t >= rackOutAt && t < rackOutAt + 0.045) {
+                double rt = t - rackOutAt;
+                rack += (Math.sin(TWO_PI * 520.0 * rt) * 0.38 + rackLp * 0.65) * Math.exp(-rt / 0.014);
+            }
+            if (t >= rackInAt && t < rackInAt + 0.055) {
+                double rt = t - rackInAt;
+                rack += (Math.sin(TWO_PI * 690.0 * rt) * 0.42 + rackLp * 0.70) * Math.exp(-rt / 0.016);
+            }
+            buf[i] = Math.tanh((boom + blastNoise + rack * 0.55) * 1.45);
+        }
+        return buf;
+    }
+
+    private static double[] renderWeaponSwitch() {
+        double[] buf = alloc(0.11);
+        int rng = 0x3A2B1C0D;
+        double lp = 0.0;
+        double latchPhase = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.30 * (rngFloat(rng) - lp);
+            double slide = lp * pulseWindow(t, 0.0, 0.065, 0.012) * 0.55;
+            double latch = 0.0;
+            if (t >= 0.045) {
+                double dt = t - 0.045;
+                latchPhase += TWO_PI * (340.0 + 360.0 * Math.exp(-dt / 0.016)) / SAMPLE_RATE;
+                latch = Math.sin(latchPhase) * Math.exp(-dt / 0.020) * 0.72;
+            }
+            buf[i] = Math.tanh((slide + latch) * 1.25);
+        }
+        return buf;
+    }
+
+    private static double[] renderWeaponDryFire() {
+        double[] buf = alloc(0.06);
+        int rng = 0x19283746;
+        double phase = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            phase += TWO_PI * (640.0 + 960.0 * Math.exp(-t / 0.008)) / SAMPLE_RATE;
+            rng = nextRng(rng);
+            double pin = Math.sin(phase) * Math.exp(-t / 0.012) * 0.85;
+            double snap = rngFloat(rng) * Math.exp(-t / 0.004) * 0.45;
+            buf[i] = Math.tanh((pin + snap) * 1.25);
+        }
+        return buf;
+    }
+
+    private static double[] renderPickupWeapon() {
+        double[] buf = alloc(0.26);
+        int rng = 0x77112233;
+        double lp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.35 * (rngFloat(rng) - lp);
+            double rack = (Math.sin(TWO_PI * 260.0 * t) * 0.45 + lp * 0.55) * pulseWindow(t, 0.0, 0.085, 0.008);
+            double c1 = (Math.sin(TWO_PI * 440.0 * t) + 0.3 * Math.sin(TWO_PI * 880.0 * t))
+                * pulseWindow(t, 0.075, 0.165, 0.006);
+            double c2 = (Math.sin(TWO_PI * 659.25 * t) + 0.3 * Math.sin(TWO_PI * 1318.5 * t))
+                * pulseWindow(t, 0.145, 0.255, 0.006);
+            buf[i] = Math.tanh((rack + (c1 + c2) * 0.65) * 1.25);
+        }
+        return buf;
+    }
+
+    private static double[] renderPickupShells() {
+        double[] buf = alloc(0.16);
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double w1 = pulseWindow(t, 0.0, 0.065, 0.003);
+            double w2 = pulseWindow(t, 0.068, 0.155, 0.003);
+            double ping1 = (0.65 * Math.sin(TWO_PI * 960.0 * t) + 0.40 * Math.sin(TWO_PI * 1540.0 * t))
+                * w1 * Math.exp(-t / 0.028);
+            double dt2 = Math.max(0.0, t - 0.068);
+            double ping2 = (0.65 * Math.sin(TWO_PI * 1120.0 * t) + 0.40 * Math.sin(TWO_PI * 1790.0 * t))
+                * w2 * Math.exp(-dt2 / 0.032);
+            buf[i] = Math.tanh((ping1 + ping2) * 1.2);
         }
         return buf;
     }

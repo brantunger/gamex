@@ -12,7 +12,9 @@ import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.weapon.Explosion;
 import io.github.brantunger.gamex.weapon.Pistol;
+import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
 import io.github.brantunger.gamex.world.Door;
@@ -39,8 +41,11 @@ import java.util.Set;
  */
 public final class GameSimulation {
 
-    /** The longest time step simulated at once, in seconds; a longer frame is cut down to this. */
+    /** Longest time step simulated at once, in seconds; a longer frame is cut down to this. */
     public static final float MAX_DT = 0.05f;
+    /** Total duration of a weapon switch dip-and-raise transition, in seconds. */
+    public static final float SWAP_DURATION = ViewmodelAnimation.SWAP_TIME;
+    private static final float SWAP_MIDPOINT = SWAP_DURATION * 0.5f;
     /** Blast radius of a detonating coolant canister, in world units. */
     public static final float CANISTER_BLAST_RADIUS = 2.2f;
     /** Centre blast damage of a detonating coolant canister. */
@@ -80,6 +85,8 @@ public final class GameSimulation {
     public final List<SecurityConsole> consoles = new ArrayList<>();
     /** The pistol. */
     public final Pistol pistol = new Pistol();
+    /** The combat scattergun. */
+    public final Scattergun scattergun = new Scattergun();
     /** The energy that pays for blasts and dashes. */
     public final EnergyMeter energy = new EnergyMeter();
     /** The blast's charge state. */
@@ -119,6 +126,39 @@ public final class GameSimulation {
     private boolean prevDashInput;
     private boolean prevChargeRefused;
     private boolean prevInteractInput;
+    private boolean hasScattergun;
+    private int shells;
+    private WeaponSlot activeWeapon;
+    private WeaponSlot pendingWeapon;
+    private boolean swapping;
+    private float swapElapsed;
+
+    private final Pickup.Arsenal pickupArsenal = new Pickup.Arsenal() {
+        @Override
+        public boolean hasScattergun() {
+            return hasScattergun;
+        }
+
+        @Override
+        public int getShells() {
+            return shells;
+        }
+
+        @Override
+        public void grantScattergun(int addedShells) {
+            boolean firstUnlock = !hasScattergun;
+            hasScattergun = true;
+            shells = Math.min(Scattergun.MAX_SHELLS, shells + Math.max(0, addedShells));
+            if (firstUnlock) {
+                requestWeaponSwitch(WeaponSlot.SCATTERGUN, false);
+            }
+        }
+
+        @Override
+        public void addShells(int addedShells) {
+            shells = Math.min(Scattergun.MAX_SHELLS, shells + Math.max(0, addedShells));
+        }
+    };
 
     /** @param map the level to play on Normal difficulty */
     public GameSimulation(GameMap map) {
@@ -134,6 +174,10 @@ public final class GameSimulation {
         this.map = map;
         this.entryLoadout = entryLoadout == null ? PlayerLoadout.fresh() : entryLoadout;
         this.completeOnAllTargets = completeOnAllTargets;
+        this.hasScattergun = this.entryLoadout.hasScattergun;
+        this.shells = this.entryLoadout.shells;
+        this.activeWeapon = this.entryLoadout.activeWeapon;
+        this.pendingWeapon = this.activeWeapon;
         this.player = new Player(map.getSpawnX(), map.getSpawnZ(), map.getSpawnYaw(),
             this.entryLoadout.health, this.entryLoadout.armor);
         for (GameMap.TargetSpawn spawn : map.getTargetSpawns()) {
@@ -176,6 +220,8 @@ public final class GameSimulation {
 
         if (levelCleared || player.isDead()) {
             charger.cancel();
+            pistol.update(dt, false);
+            scattergun.updateIdle(dt);
             prevDashInput = false;
             prevChargeRefused = false;
             prevInteractInput = false;
@@ -189,6 +235,9 @@ public final class GameSimulation {
         float beforeYaw = player.getYaw();
         float beforePitch = player.getPitch();
         player.look(input.yawDelta, input.pitchDelta);
+
+        handleWeaponSwitchInput(input.weaponSlot);
+        advanceWeaponSwap(dt);
 
         boolean dashPressedEdge = input.dash && !prevDashInput;
         if (input.dash) {
@@ -218,22 +267,53 @@ public final class GameSimulation {
 
         float vitalsBefore = player.getHealth() + player.getArmor();
         snapshotDamageableHealth();
-        boolean fired = !levelCleared && pistol.update(dt, input.fire);
-        if (fired) firePistol();
-
-        float firedCharge = charger.update(dt, !levelCleared && !player.isDashing() && input.charge);
-        boolean refusedNow = charger.isRefused();
-        if (refusedNow && !prevChargeRefused) {
-            emitPlayerSound(SoundEvent.Type.LOW_ENERGY, 1f);
+        float kickScale = 0f;
+        float firedCharge = 0f;
+        if (levelCleared || swapping) {
+            pistol.update(dt, false);
+            scattergun.updateIdle(dt);
+            charger.cancel();
+            prevChargeRefused = false;
+        } else if (activeWeapon == WeaponSlot.PISTOL) {
+            scattergun.updateIdle(dt);
+            boolean fired = pistol.update(dt, input.fire);
+            if (fired) {
+                firePistol();
+                kickScale = 1f;
+            }
+            firedCharge = charger.update(dt, !player.isDashing() && input.charge);
+            boolean refusedNow = charger.isRefused();
+            if (refusedNow && !prevChargeRefused) {
+                emitPlayerSound(SoundEvent.Type.LOW_ENERGY, 1f);
+            }
+            prevChargeRefused = refusedNow;
+            if (firedCharge > 0f) kickScale = 1f;
+        } else {
+            pistol.update(dt, false);
+            charger.cancel();
+            prevChargeRefused = false;
+            boolean wantPrimary = input.fire;
+            boolean wantAlt = input.charge;
+            if (shells <= 0 && scattergun.isReady() && (wantPrimary || wantAlt)) {
+                scattergun.updateIdle(dt);
+                emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
+                showToast("OUT OF SHELLS");
+                requestWeaponSwitch(WeaponSlot.PISTOL, false);
+            } else {
+                Scattergun.Shot shot = scattergun.update(dt, wantPrimary, wantAlt, shells);
+                if (shot != Scattergun.Shot.NONE) {
+                    fireScattergun(shot);
+                    kickScale = shot == Scattergun.Shot.DOUBLE_BLAST ? 2.4f : 1.6f;
+                }
+            }
         }
-        prevChargeRefused = refusedNow;
 
         // The gun bobs with the distance actually covered, so it settles when the player is held up by a wall.
         float walked = player.position.dst(beforeX, beforeZ);
         float walkSpeed = dt > 0f ? walked / (Player.MOVE_SPEED * dt) : 0f;
         // It sways with the turn actually made, so it settles when the view is held at the pitch limit.
         float turned = (player.getYaw() - beforeYaw + 540f) % 360f - 180f;
-        viewmodel.update(dt, fired || firedCharge > 0f, walkSpeed, turned, player.getPitch() - beforePitch);
+        viewmodel.update(dt, kickScale, walkSpeed, turned, player.getPitch() - beforePitch);
 
         float selfScale = BlastProjectile.SELF_DAMAGE_SCALE * entryLoadout.difficulty.damageTakenScale;
         for (int i = projectiles.size() - 1; i >= 0; i--) {
@@ -363,6 +443,43 @@ public final class GameSimulation {
         return charger.isCharging() ? charger.getCharge() : 0f;
     }
 
+    /** @return whether the player has unlocked the Combat Scattergun. */
+    public boolean hasScattergun() {
+        return hasScattergun;
+    }
+
+    /** @return shells remaining in the finite shotgun shell pool. */
+    public int getShells() {
+        return shells;
+    }
+
+    /** @return weapon currently visible and firing (changes at the midpoint of a swap dip). */
+    public WeaponSlot getActiveWeapon() {
+        return activeWeapon;
+    }
+
+    /** @return weapon being swapped towards, or {@link #getActiveWeapon()} at rest. */
+    public WeaponSlot getTargetWeapon() {
+        return swapping ? pendingWeapon : activeWeapon;
+    }
+
+    /** @return normalized viewmodel swap dip progress in [0, 1] peaking at the midpoint of the switch. */
+    public float getSwapProgress() {
+        if (!swapping || SWAP_DURATION <= 0f) return 0f;
+        float u = Math.min(1f, Math.max(0f, swapElapsed / SWAP_DURATION));
+        return (float) Math.sin(Math.PI * u);
+    }
+
+    /** @return whether either weapon currently has a visible muzzle flash for dynamic world lighting. */
+    public boolean isMuzzleFlashVisible() {
+        return activeWeapon == WeaponSlot.SCATTERGUN ? scattergun.isFlashVisible() : pistol.isFlashVisible();
+    }
+
+    /** @return carry-over loadout snapshot at stage exit (preserving unlocked Scattergun and remaining shells). */
+    public PlayerLoadout captureCarryOverLoadout() {
+        return PlayerLoadout.fromPlayer(player, entryLoadout.difficulty, hasScattergun, shells, getTargetWeapon());
+    }
+
     /**
      * Call when the game is paused. A blast that is charging is dropped at no cost, so that letting go of the button
      * during the pause does not fire it on return.
@@ -453,11 +570,62 @@ public final class GameSimulation {
     private void collectPickups() {
         for (int i = 0; i < pickups.size(); i++) {
             Pickup pickup = pickups.get(i);
-            String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale, heldKeycards);
+            String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale,
+                heldKeycards, pickupArsenal);
             if (message != null) {
                 showToast(message);
                 emitPlayerSound(pickupSoundFor(pickup.getKind()), 1f);
             }
+        }
+    }
+
+    private void handleWeaponSwitchInput(int requestedSlot) {
+        if (requestedSlot == 0) return;
+        WeaponSlot current = getTargetWeapon();
+        WeaponSlot target;
+        if (requestedSlot < 0) {
+            if (!hasScattergun) return;
+            target = current.other();
+        } else if (requestedSlot == WeaponSlot.SCATTERGUN.slotNumber) {
+            if (!hasScattergun) return;
+            target = WeaponSlot.SCATTERGUN;
+        } else if (requestedSlot == WeaponSlot.PISTOL.slotNumber) {
+            target = WeaponSlot.PISTOL;
+        } else {
+            return;
+        }
+        requestWeaponSwitch(target, true);
+    }
+
+    private void requestWeaponSwitch(WeaponSlot target, boolean playSound) {
+        if (target == null || (target == WeaponSlot.SCATTERGUN && !hasScattergun)) return;
+        WeaponSlot currentTarget = getTargetWeapon();
+        if (target == currentTarget) return;
+        charger.cancel();
+        prevChargeRefused = false;
+        pendingWeapon = target;
+        if (!swapping) {
+            swapping = true;
+            swapElapsed = 0f;
+        } else {
+            swapElapsed = Math.max(0f, SWAP_DURATION - swapElapsed);
+        }
+        if (playSound) {
+            emitPlayerSound(SoundEvent.Type.WEAPON_SWITCH, 1f);
+        }
+    }
+
+    private void advanceWeaponSwap(float dt) {
+        if (!swapping) return;
+        float before = swapElapsed;
+        swapElapsed += dt;
+        if (before < SWAP_MIDPOINT && swapElapsed >= SWAP_MIDPOINT) {
+            activeWeapon = pendingWeapon;
+        }
+        if (swapElapsed >= SWAP_DURATION) {
+            activeWeapon = pendingWeapon;
+            swapping = false;
+            swapElapsed = 0f;
         }
     }
 
@@ -601,6 +769,10 @@ public final class GameSimulation {
             case AMBER_KEYCARD:
             case CYAN_KEYCARD:
                 return SoundEvent.Type.PICKUP_KEYCARD;
+            case SCATTERGUN:
+                return SoundEvent.Type.PICKUP_WEAPON;
+            case SHELLS:
+                return SoundEvent.Type.PICKUP_SHELLS;
             case ENERGY_CELL:
             default:
                 return SoundEvent.Type.PICKUP_ENERGY;
@@ -656,29 +828,63 @@ public final class GameSimulation {
         alertNoise(player.position.x, player.position.y, 9.0f, 4.5f);
         RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
         if (!hit.isHit()) return;
-        // Lift the effect off the surface towards the open side.
         hit.point.mulAdd(hit.normal, MARK_OFFSET);
-        if (hit.kind == RayHit.Kind.DOOR) {
-            effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.16f));
-            emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
-            return;
-        }
-        if (hit.kind != RayHit.Kind.TARGET) {
-            effects.add(new Effect(Effect.Type.IMPACT, hit.point, hit.normal, 0.11f));
-            emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
-            return;
-        }
-        if (hit.target instanceof SecurityConsole) {
-            effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.16f));
-            emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
-            return;
-        }
+        if (applyNonDamageableImpact(hit, true, true)) return;
         hit.target.damage(Pistol.DAMAGE);
         if (hit.target instanceof Enemy) {
             alertNoise(hit.target.getX(), hit.target.getZ(), 5.0f, 3.0f);
         }
         effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
         triggerHitMarker(hit.target.isDestroyed());
+    }
+
+    private void fireScattergun(Scattergun.Shot shot) {
+        boolean doubleBlast = shot == Scattergun.Shot.DOUBLE_BLAST;
+        shells = Math.max(0, shells - shot.shellsSpent);
+        emitPlayerSound(doubleBlast ? SoundEvent.Type.SCATTERGUN_ALT_FIRE : SoundEvent.Type.SCATTERGUN_FIRE, 1f);
+        alertNoise(player.position.x, player.position.y, doubleBlast ? 13.0f : 11.0f, doubleBlast ? 6.5f : 5.5f);
+
+        List<Vector3> rays = Scattergun.pelletDirections(direction, doubleBlast);
+        boolean anyHit = false;
+        boolean anyKilled = false;
+        boolean wallSoundPlayed = false;
+        int wallEffects = 0;
+        for (int i = 0; i < rays.size(); i++) {
+            RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, rays.get(i), Scattergun.RANGE);
+            if (!hit.isHit()) continue;
+            hit.point.mulAdd(hit.normal, MARK_OFFSET);
+            boolean nonDamageable = hit.kind != RayHit.Kind.TARGET || hit.target instanceof SecurityConsole;
+            if (nonDamageable) {
+                boolean emitWallAudio = !wallSoundPlayed;
+                boolean spawnDecal = wallEffects < 8;
+                applyNonDamageableImpact(hit, spawnDecal, emitWallAudio);
+                if (spawnDecal) wallEffects++;
+                wallSoundPlayed = true;
+                continue;
+            }
+            hit.target.damage(Scattergun.damageAtDistance(hit.distance));
+            anyHit = true;
+            if (hit.target.isDestroyed()) anyKilled = true;
+            if (hit.target instanceof Enemy) {
+                alertNoise(hit.target.getX(), hit.target.getZ(), 5.0f, 3.0f);
+            }
+            effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
+        }
+        if (anyHit) triggerHitMarker(anyKilled);
+    }
+
+    private boolean applyNonDamageableImpact(RayHit hit, boolean spawnEffect, boolean emitSound) {
+        if (hit.kind == RayHit.Kind.DOOR || hit.target instanceof SecurityConsole) {
+            if (spawnEffect) effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.16f));
+            if (emitSound) emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
+            return true;
+        }
+        if (hit.kind != RayHit.Kind.TARGET) {
+            if (spawnEffect) effects.add(new Effect(Effect.Type.IMPACT, hit.point, hit.normal, 0.11f));
+            if (emitSound) emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
+            return true;
+        }
+        return false;
     }
 
     private void resolveDestroyedObjects() {

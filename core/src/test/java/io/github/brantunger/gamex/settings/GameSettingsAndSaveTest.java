@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.junit.jupiter.api.Test;
 
 class GameSettingsAndSaveTest {
@@ -48,11 +49,24 @@ class GameSettingsAndSaveTest {
         SaveData save = new SaveData(store);
 
         assertFalse(save.hasSavedRun());
-        save.saveCampaignRun(0, new PlayerLoadout(82f, 40f, Difficulty.HARD));
+        save.saveCampaignRun(1, new PlayerLoadout(82f, 40f, Difficulty.HARD, true, 14, WeaponSlot.SCATTERGUN));
         assertTrue(save.hasSavedRun());
         assertEquals(82f, save.getSavedLoadout().health, 1e-4f);
         assertEquals(40f, save.getSavedLoadout().armor, 1e-4f);
         assertEquals(Difficulty.HARD, save.getSavedLoadout().difficulty);
+        assertTrue(save.getSavedLoadout().hasScattergun);
+        assertEquals(14, save.getSavedLoadout().shells);
+        assertEquals(WeaponSlot.SCATTERGUN, save.getSavedLoadout().activeWeapon);
+
+        PlayerLoadout s1 = PlayerLoadout.forStage(0, Difficulty.NORMAL);
+        assertFalse(s1.hasScattergun);
+        assertEquals(0, s1.shells);
+        assertEquals(WeaponSlot.PISTOL, s1.activeWeapon);
+
+        PlayerLoadout s2 = PlayerLoadout.forStage(1, Difficulty.NORMAL);
+        assertTrue(s2.hasScattergun);
+        assertEquals(8, s2.shells);
+        assertEquals(WeaponSlot.SCATTERGUN, s2.activeWeapon);
 
         SaveData.CompletionSummary first = save.recordCompletion("01_outer_breach", Difficulty.HARD,
             52f, 40f, 8, 10, 25f);

@@ -22,6 +22,7 @@ public final class InputController extends InputAdapter {
     private boolean swallowFire;
     /** The same for the blast button, so that it does not start a charge. */
     private boolean swallowCharge;
+    private int pendingScrollSwap;
 
     /**
      * @param menuState screen & menu state machine
@@ -56,6 +57,15 @@ public final class InputController extends InputAdapter {
     public boolean touchDragged(int screenX, int screenY, int pointer) {
         if (captured) look.moved(screenX, screenY);
         return true;
+    }
+
+    @Override
+    public boolean scrolled(float amountX, float amountY) {
+        if (captured && Math.abs(amountY) > 0f) {
+            pendingScrollSwap = -1;
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -96,6 +106,12 @@ public final class InputController extends InputAdapter {
             || Gdx.input.isKeyJustPressed(Input.Keys.SHIFT_RIGHT)
             || Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
         out.interact = Gdx.input.isKeyJustPressed(Input.Keys.E);
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) out.weaponSlot = 1;
+        else if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) out.weaponSlot = 2;
+        else if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) out.weaponSlot = -1;
+        else if (pendingScrollSwap != 0) out.weaponSlot = pendingScrollSwap;
+        pendingScrollSwap = 0;
 
         boolean leftButton = Gdx.input.isButtonPressed(Input.Buttons.LEFT);
         boolean rightButton = Gdx.input.isButtonPressed(Input.Buttons.RIGHT);
@@ -158,8 +174,10 @@ public final class InputController extends InputAdapter {
             look.capture();
             swallowFire = true;
             swallowCharge = true;
+            pendingScrollSwap = 0;
         } else {
             look.release();
+            pendingScrollSwap = 0;
         }
     }
 }

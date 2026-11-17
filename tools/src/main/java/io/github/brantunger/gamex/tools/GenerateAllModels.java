@@ -21,6 +21,7 @@ public final class GenerateAllModels {
     static {
         Map<String, Supplier<MeshBuilder>> map = new LinkedHashMap<>();
         map.put("viewmodel-pistol.obj", PistolSculpt::build);
+        map.put("viewmodel-scattergun.obj", ScattergunSculpt::build);
         map.put("viewmodel-hand.obj", HandSculpt::build);
         map.put("canister.obj", PropSculpt::buildCanister);
         map.put("ring-board.obj", PropSculpt::buildRingBoard);
@@ -29,6 +30,8 @@ public final class GenerateAllModels {
         map.put("pickup-armor.obj", PropSculpt::buildArmor);
         map.put("pickup-energy.obj", PropSculpt::buildEnergyCell);
         map.put("pickup-keycard.obj", PropSculpt::buildKeycard);
+        map.put("pickup-scattergun.obj", PropSculpt::buildScattergunPickup);
+        map.put("pickup-shells.obj", PropSculpt::buildShellsPickup);
         map.put("door-bulkhead.obj", PropSculpt::buildDoorBulkhead);
         map.put("security-console.obj", PropSculpt::buildSecurityConsole);
         map.put("enemy-turret.obj", EnemySculpt::buildEnemyTurret);

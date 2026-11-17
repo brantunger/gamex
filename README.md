@@ -3,13 +3,13 @@
 An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.14.2 on the LWJGL3 desktop backend.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
-blast, and a horizontal energy dash. Battle three hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
+blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, and a horizontal energy dash. Battle three hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
 and **Guard Bots**), chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
-keycards, override Security Consoles, collect 3D health, armor and energy pickups, and clear the 5-stage campaign
+keycards, override Security Consoles, collect 3D health, armor, energy, weapon and shell pickups, and clear the 5-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
 Range**. Surface and effect textures as well as every weapon, combat and menu sound are synthesised in code at
-start-up, while every 3D graphical object — the pistol, the gloved hand holding it, targets, enemies, projectiles,
+start-up, while every 3D graphical object — the pistol, the combat scattergun, the gloved hand holding them, targets, enemies, projectiles,
 pickups, bulkheads, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
@@ -41,8 +41,9 @@ While playing:
 | `W` `A` `S` `D` | Move forward, left, back, right |
 | `Shift` / `Space` | Horizontal energy dash (`25` energy) |
 | Mouse | Look around |
-| Left mouse button | Fire the pistol; hold to keep firing |
-| Right mouse button | Hold to charge the blast, release to fire it |
+| Left mouse button | Fire the active weapon (Pistol shot or 1-shell Scattergun spread) |
+| Right mouse button | Pistol: hold to charge Energy Blast, release to fire / Scattergun: 2-shell Double-Blast |
+| `1` / `2` / `Q` / Scroll | Select Pistol (`1`), Combat Scattergun (`2`), or quick-swap (`Q` / Mouse Wheel) |
 | `E` | Open unlocked bulkheads, unlock matching keycard doors, or override Security Consoles |
 | `R` | Quick-restart the current stage from your entry state |
 | `Esc` | Open the pause menu and free the cursor; `Esc` again resumes |
@@ -100,12 +101,13 @@ keys, or straight ahead when none is held. It costs 25 energy and the next dash 
 last one started. Pressing dash cancels a blast charge that is building, and a charge cannot build during a dash.
 With less than 25 energy the dash is refused and the HUD shows `LOW ENERGY`.
 
-**Pistol.** A hitscan weapon: a shot hits instantly, up to 60 world units away (one map cell is one unit). It has
-no ammo limit. With the button held it fires once every 0.3 seconds, at any frame rate, and a shot does 20 damage.
+**Pistol & Combat Scattergun.** Both weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch cleanly at any time with `1`, `2`, `Q` or the mouse wheel:
 
-On screen the pistol is a 3D model in a gloved hand at the lower right, drawn in a pass of its own so that a wall
-the player stands against never cuts it off. It kicks back on each shot with a flash at the muzzle, bobs while the
-player walks, lags a little behind turns, and glows violet towards the muzzle while a blast is charging.
+- **Pistol (`1`)**: Instant hitscan (`20` damage, `0.3s` interval, up to `60` world units away, infinite ammo). Right mouse button charges the violet **Energy Blast** orb.
+- **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach** and the **Training Range** (and equipped directly when deploying to Stages `02`–`05` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Caddy (`+6`) pickups scaled by difficulty:
+  - **Primary fire (LMB, `1` shell)**: `8` deterministic pellets across a `4.2°` half-angle cone (`12` base damage each, linear falloff from `7u` to `26u` max range, `0.75s` pump cycle).
+  - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets across a `6.8°` cone (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
+  - Pulling the trigger at `0` shells emits a dry-fire click and swaps back to the Pistol automatically.
 
 **Blast.** A glowing gyroscope orb fired from the pistol muzzle toward the crosshair target that explodes on the first
 wall, floor, ceiling or live target/enemy it touches and damages every unobstructed target and enemy in its radius. Solid
@@ -154,7 +156,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown` or `stages`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages` or `scattergun`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
@@ -215,9 +217,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
     (`Pickup`), world object models (`WorldModels`) and effects.
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
     the difficulty levels (`Difficulty`) and the health and armor a stage is entered with (`PlayerLoadout`).
-  - `weapon`: the pistol, the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
-    `EnemyProjectile`), explosion damage, the pistol's 3D model and materials (`PistolModel`), the colours for the
-    hand's mesh (`HandModel`) and the numbers that animate both.
+  - `weapon`: the pistol, the combat scattergun (`Scattergun`), weapon slot switching (`WeaponSlot`), the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
+    `EnemyProjectile`), explosion damage, the pistol & scattergun 3D models (`PistolModel`, `ScattergunModel`), the colours for the
+    hand's mesh (`HandModel`) and the numbers that animate them.
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
     a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
     indexed deduplication). None use graphics types.
@@ -232,13 +234,13 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `debug`: the debug screenshot mode.
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings and the window icons.
 - `tools`: the Gradle model authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
-  DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `HandSculpt`, `GenerateAllModels`, and the interactive LWJGL3
+  DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `HandSculpt`, `GenerateAllModels`, and the interactive LWJGL3
   previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads at start-up:
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
-  - `models/viewmodel-pistol.obj`: the mesh of the first-person pistol (body and animated slide).
+  - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`: the meshes of the first-person pistol (body and slide) and combat scattergun (body and pump forend).
   - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/pickup-*.obj`: 3D meshes for
-    targets, pickups, keycards and blast projectiles.
+    targets, pickups (medkit, armor, energy cell, keycards, scattergun, shells) and blast projectiles.
   - `models/door-bulkhead.obj`, `models/security-console.obj`: 3D meshes for sliding bulkhead doors and security consoles.
   - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-bolt.obj`: 3D meshes
     for articulated enemies and enemy plasma bolts.
@@ -250,7 +252,7 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
-graphics context. `HandModelTest`, `PistolModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
+graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
 track model changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest`) invokes `GenerateAllModels` directly
 to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex deduplication. They cover:
 
@@ -271,9 +273,8 @@ to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex 
 - `audio`: procedural WAV header/sample verification, loop-seam continuity and 3D spatial attenuation/panning math
   (`ProceduralSoundsTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
-- `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
-  contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
-  closed, convex and faces outwards), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
+- `weapon`: the pistol and combat scattergun (`ScattergunTest`: deterministic 8/16 pellet cones, range falloff, 1-shell fallback, pump curve), the energy meter, the blast's charge rules, the blast projectile (including impact
+  contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol & scattergun models (`PistolModelTest`, `ScattergunModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full pump travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
   normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in

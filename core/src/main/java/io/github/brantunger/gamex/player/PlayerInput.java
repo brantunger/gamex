@@ -19,6 +19,8 @@ public final class PlayerInput {
     public boolean dash;
     /** Whether the interact action was requested this frame. */
     public boolean interact;
+    /** Requested weapon slot ({@code 1}=Pistol, {@code 2}=Scattergun, {@code -1}=quick-swap/cycle, {@code 0}=none). */
+    public int weaponSlot;
 
     /** Resets every field to "nothing asked for". */
     public void clear() {
@@ -30,5 +32,6 @@ public final class PlayerInput {
         charge = false;
         dash = false;
         interact = false;
+        weaponSlot = 0;
     }
 }

@@ -18,9 +18,10 @@ import java.util.zip.Deflater;
  *  <li>{@code GAMEX_DEMO}: set to {@code action} to play a short script instead of standing still: the player turns
  *  towards a pillar, holds the blast button, releases it, and fires the pistol. Set to {@code targets} to turn
  *  towards the nearest canister and keep firing the pistol at it. Set to {@code breach} to turn, dash and then fire
- *  the pistol. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer Breach,
- *  {@code title} shows the Title screen over Outer Breach, {@code lockdown} opens a bulkhead door in Stage 04, and
- *  {@code stages} shows the unlocked 5-stage Select Stage screen.</li>
+ *  the pistol. Set to {@code scattergun} to deploy in the Training Range holding the Combat Scattergun and fire at
+ *  range targets. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer
+ *  Breach, {@code title} shows the Title screen over Outer Breach, {@code lockdown} opens a bulkhead door in Stage 04,
+ *  and {@code stages} shows the unlocked 5-stage Select Stage screen.</li>
  *  <li>{@code GAMEX_VIEWMODEL_ORBIT}: set to {@code yaw} or {@code yaw,pitch} in degrees to draw only the pistol and
  *  hand, on a plain background, seen from outside: 0 is from behind, 90 the left side, 180 the front, and a pitch
  *  of 90 is from above.</li>
@@ -128,6 +129,9 @@ public final class DemoRun {
             if (frame <= 18) out.moveForward = 1f;
             if (frame == 25) out.interact = true;
             if (frame >= 45 && frame <= 85) out.moveForward = 1f;
+        } else if ("scattergun".equals(script)) {
+            if (frame <= 18) out.moveForward = 1f;
+            if (frame == 24) out.fire = true;
         }
     }
 

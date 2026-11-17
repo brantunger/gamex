@@ -4,6 +4,7 @@ import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
+import io.github.brantunger.gamex.weapon.ScattergunModel;
 import io.github.brantunger.gamex.world.WorldModels;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -62,6 +63,12 @@ class GeneratedModelsTest {
         if ("viewmodel-pistol.obj".equals(name)) {
             PistolModel pistol = PistolModel.from(model);
             assertTrue(pistol.bodyMesh.vertexCount() > 0 && pistol.slideMesh.vertexCount() > 0);
+            float[] fallbackColour = {0.5f, 0.5f, 0.5f, 0.5f};
+            return ModelVertices.packIndexed(model, mat -> fallbackColour);
+        }
+        if ("viewmodel-scattergun.obj".equals(name)) {
+            ScattergunModel scatter = ScattergunModel.from(model);
+            assertTrue(scatter.bodyMesh.vertexCount() > 0 && scatter.pumpMesh.vertexCount() > 0);
             float[] fallbackColour = {0.5f, 0.5f, 0.5f, 0.5f};
             return ModelVertices.packIndexed(model, mat -> fallbackColour);
         }

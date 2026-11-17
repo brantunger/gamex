@@ -209,6 +209,12 @@ class GameMapTest {
             if (map.hasExit()) {
                 assertTrue(reached[(int) map.getExitZ()][(int) map.getExitX()], stage.id + " unreachable exit");
             }
+            boolean hasWeapon = map.getPickupSpawns().stream().anyMatch(p -> p.kind == Pickup.Kind.SCATTERGUN);
+            boolean hasShells = map.getPickupSpawns().stream().anyMatch(p -> p.kind == Pickup.Kind.SHELLS);
+            if ("range".equals(stage.id) || "01_outer_breach".equals(stage.id)) {
+                assertTrue(hasWeapon, stage.id + " should contain a Scattergun pickup");
+            }
+            assertTrue(hasShells, stage.id + " should contain at least one Shell Box pickup");
         }
     }
 
@@ -272,5 +278,16 @@ class GameMapTest {
         assertEquals(1, map.getConsoleSpawns().size());
         assertEquals(8.5f, map.getConsoleSpawns().get(0).x, EPSILON);
         assertEquals(1.5f, map.getConsoleSpawns().get(0).z, EPSILON);
+    }
+
+    @Test
+    void parsesScattergunAndShellBoxPickups() {
+        GameMap map = GameMap.parse(
+            "#######",
+            "#>Ws..#",
+            "#######");
+        assertEquals(2, map.getPickupSpawns().size());
+        assertEquals(Pickup.Kind.SCATTERGUN, map.getPickupSpawns().get(0).kind);
+        assertEquals(Pickup.Kind.SHELLS, map.getPickupSpawns().get(1).kind);
     }
 }

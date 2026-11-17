@@ -12,6 +12,8 @@ import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.Pistol;
+import io.github.brantunger.gamex.weapon.Scattergun;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
@@ -711,5 +713,138 @@ class GameSimulationTest {
         List<SoundEvent> events = sim.drainSoundEvents();
         assertEquals(1, countSound(events, SoundEvent.Type.CONSOLE_ACTIVATE));
         assertEquals(2, countSound(events, SoundEvent.Type.DOOR_OPEN));
+    }
+
+    @Test
+    void scattergunPickupAutoEquipsAndShellBoxesRespectMaxPoolCapacity() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "###########",
+            "#>Wsssss..#",
+            "###########"));
+        PlayerInput input = new PlayerInput();
+        assertFalse(sim.hasScattergun());
+        assertEquals(0, sim.getShells());
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+
+        // Attempting to swap to slot 2 before unlocking does nothing.
+        input.weaponSlot = 2;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertEquals(WeaponSlot.PISTOL, sim.getTargetWeapon());
+
+        // Step east onto W (Scattergun pickup -> +8 shells & auto-equip after swap transition).
+        input.moveForward = 1f;
+        for (int i = 0; i < 20; i++) sim.update(FRAME, input);
+        input.moveForward = 0f;
+        assertTrue(sim.hasScattergun());
+        assertEquals(Scattergun.PICKUP_WEAPON_SHELLS, sim.getShells());
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
+        assertTrue(sim.pickups.get(0).isCollected());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.PICKUP_WEAPON));
+
+        // Walk across five shell boxes (+6 each = 8 + 30 capped at 24). Last pickup stays uncollected once full.
+        input.moveForward = 1f;
+        for (int i = 0; i < 90; i++) sim.update(FRAME, input);
+        assertEquals(Scattergun.MAX_SHELLS, sim.getShells());
+        assertFalse(sim.pickups.get(5).isCollected(), "shell box stays on floor at full 24/24 shells");
+        assertTrue(countSound(sim.drainSoundEvents(), SoundEvent.Type.PICKUP_SHELLS) >= 2);
+    }
+
+    @Test
+    void weaponSwapCancelsBlastChargeAtZeroCostAndReversesSmoothlyMidSwap() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse("#####", "#>.o#", "#####"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 6, WeaponSlot.PISTOL),
+            false);
+        PlayerInput input = new PlayerInput();
+        input.charge = true;
+        for (int i = 0; i < 20; i++) sim.update(FRAME, input);
+        assertTrue(sim.charger.isCharging());
+        float energyBeforeSwap = sim.energy.getEnergy();
+
+        // Request swap to Scattergun via Q (-1): cancels BlastCharger at zero energy cost.
+        input.charge = false;
+        input.weaponSlot = -1;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertFalse(sim.charger.isCharging());
+        assertTrue(sim.energy.getEnergy() >= energyBeforeSwap - 1e-4f);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon(), "still dipping before midpoint");
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getTargetWeapon());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.WEAPON_SWITCH));
+
+        // Advance past midpoint (0.09s) -> active weapon switches while dipped, then reverse via 1!
+        for (int i = 0; i < 7; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
+        input.weaponSlot = 1;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertEquals(WeaponSlot.PISTOL, sim.getTargetWeapon());
+        assertTrue(sim.getSwapProgress() > 0f);
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+        assertEquals(0f, sim.getSwapProgress(), 1e-5f);
+    }
+
+    @Test
+    void scattergunPrimaryAndDoubleBlastKillEnemiesAndEmptyTriggerAutoSwapsToPistol() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse(
+                "###########",
+                "#.>..D....#",
+                "###########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 3, WeaponSlot.SCATTERGUN),
+            false);
+        PlayerInput input = new PlayerInput();
+        Enemy drone = sim.enemies.get(0);
+
+        // Primary shot at close-range drone (40 HP): 8 pellets * 12 = 96 -> destroys it using 1 shell (3 -> 2).
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+        assertTrue(drone.isDestroyed());
+        assertEquals(2, sim.getShells());
+        assertTrue(sim.scattergun.isFlashVisible());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.SCATTERGUN_FIRE));
+
+        // Wait pump cooldown then trigger Double-Blast with 2 shells -> drops to 0.
+        for (int i = 0; i < 50; i++) sim.update(FRAME, input);
+        assertTrue(sim.scattergun.isReady());
+        assertEquals(0f, sim.scattergun.getPump(), 1e-5f);
+        input.charge = true;
+        sim.update(FRAME, input);
+        input.charge = false;
+        assertEquals(0, sim.getShells());
+        assertTrue(sim.scattergun.isLastShotDoubleBlast());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.SCATTERGUN_ALT_FIRE));
+
+        // Wait alt recovery then pull trigger at 0 shells -> dry-fire click, toast, and auto-swap to Pistol.
+        for (int i = 0; i < 75; i++) sim.update(FRAME, input);
+        assertTrue(sim.scattergun.isReady());
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+        assertEquals("OUT OF SHELLS", sim.getToastMessage());
+        assertEquals(WeaponSlot.PISTOL, sim.getTargetWeapon());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
+        for (int i = 0; i < 15; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+        assertFalse(sim.captureCarryOverLoadout().shells > 0);
+        assertTrue(sim.captureCarryOverLoadout().hasScattergun);
+    }
+
+    @Test
+    void scattergunRightClickWithOneShellFallsBackCleanlyToSingleShellBlast() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse("#########", "#>.o....#", "#########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 1, WeaponSlot.SCATTERGUN),
+            false);
+        PlayerInput input = new PlayerInput();
+        input.charge = true;
+        sim.update(FRAME, input);
+        input.charge = false;
+        assertEquals(0, sim.getShells());
+        assertFalse(sim.scattergun.isLastShotDoubleBlast());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.SCATTERGUN_FIRE));
     }
 }
