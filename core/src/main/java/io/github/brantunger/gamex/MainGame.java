@@ -54,10 +54,20 @@ public class MainGame extends ApplicationAdapter {
             settingsStore = new MapKeyValueStore();
             settings = new GameSettings();
             saveData = new SaveData(new MapKeyValueStore());
-            boolean showTitle = "title".equals(demoRun.getScript());
-            menuState = new MenuState(settings, saveData,
-                showTitle ? MenuState.Screen.TITLE : MenuState.Screen.PLAYING);
-            if ("breach".equals(demoRun.getScript()) || showTitle) {
+            String script = demoRun.getScript();
+            boolean showTitle = "title".equals(script);
+            boolean showStages = "stages".equals(script);
+            if (showStages) {
+                saveData.unlockStage(Levels.campaign().size() - 1);
+            }
+            MenuState.Screen startScreen = showTitle
+                ? MenuState.Screen.TITLE
+                : (showStages ? MenuState.Screen.STAGE_SELECT : MenuState.Screen.PLAYING);
+            menuState = new MenuState(settings, saveData, startScreen);
+            if ("lockdown".equals(script) || showStages) {
+                Levels.Stage lockdown = Levels.lockdownWing();
+                simulation = new GameSimulation(lockdown.map, menuState.getActiveLoadout(), lockdown.completeOnAllTargets);
+            } else if ("breach".equals(script) || showTitle) {
                 Levels.Stage breach = Levels.outerBreach();
                 simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(), breach.completeOnAllTargets);
             } else {
@@ -110,7 +120,7 @@ public class MainGame extends ApplicationAdapter {
         if (demoRun != null) {
             demoRun.nextFrame(input);
             backdropTime += DemoRun.FRAME_TIME;
-            if (menuState.getScreen() == MenuState.Screen.TITLE) {
+            if (!menuState.isPlaying()) {
                 worldRenderer.renderBackdrop(simulation, settings, backdropTime);
                 hudRenderer.render(simulation, menuState);
                 soundManager.update(simulation, menuState, settings);

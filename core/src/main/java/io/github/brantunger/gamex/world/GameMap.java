@@ -10,6 +10,8 @@ import java.util.List;
  * so the layout reads like a top-down view with north (negative z) at the top.
  *
  * <p>Layout characters: {@code .} is open floor, {@code #}, {@code %} and {@code &} are the three wall types,
+ * {@code =}, {@code A}, {@code C} and {@code L} are unlocked, amber-key, cyan-key and lockdown bulkhead doors,
+ * {@code k} and {@code c} are amber and cyan keycard pickups, {@code S} is a security console pedestal,
  * {@code o} and {@code O} are open floor with a canister or a ring board on it, {@code D}, {@code T} and {@code G}
  * are rusher drone, sentry turret and guard bot spawns, {@code +}, {@code a} and {@code e}
  * are medkit, armor and energy cell pickups, {@code X} is an optional level exit pad, and one of {@code ^ > v <} is
@@ -74,6 +76,38 @@ public final class GameMap {
         }
     }
 
+    /** Where a sliding bulkhead door starts. */
+    public static final class DoorSpawn {
+        /** Locking mechanism of the door. */
+        public final Door.LockKind lockKind;
+        /** Panel orientation derived from flanking walls. */
+        public final Door.Orientation orientation;
+        /** Grid column of the doorway cell. */
+        public final int col;
+        /** Grid row of the doorway cell. */
+        public final int row;
+
+        DoorSpawn(Door.LockKind lockKind, Door.Orientation orientation, int col, int row) {
+            this.lockKind = lockKind;
+            this.orientation = orientation;
+            this.col = col;
+            this.row = row;
+        }
+    }
+
+    /** Where a security console pedestal starts. */
+    public static final class ConsoleSpawn {
+        /** The world x coordinate, at the centre of the cell. */
+        public final float x;
+        /** The world z coordinate, at the centre of the cell. */
+        public final float z;
+
+        ConsoleSpawn(float x, float z) {
+            this.x = x;
+            this.z = z;
+        }
+    }
+
     private final char[][] cells;
     private final int width;
     private final int height;
@@ -86,10 +120,12 @@ public final class GameMap {
     private final List<TargetSpawn> targetSpawns;
     private final List<PickupSpawn> pickupSpawns;
     private final List<EnemySpawn> enemySpawns;
+    private final List<DoorSpawn> doorSpawns;
+    private final List<ConsoleSpawn> consoleSpawns;
 
     private GameMap(char[][] cells, float spawnX, float spawnZ, float spawnYaw, boolean hasExit, float exitX,
                     float exitZ, List<TargetSpawn> targetSpawns, List<PickupSpawn> pickupSpawns,
-                    List<EnemySpawn> enemySpawns) {
+                    List<EnemySpawn> enemySpawns, List<DoorSpawn> doorSpawns, List<ConsoleSpawn> consoleSpawns) {
         this.cells = cells;
         this.height = cells.length;
         this.width = cells[0].length;
@@ -102,6 +138,8 @@ public final class GameMap {
         this.targetSpawns = Collections.unmodifiableList(targetSpawns);
         this.pickupSpawns = Collections.unmodifiableList(pickupSpawns);
         this.enemySpawns = Collections.unmodifiableList(enemySpawns);
+        this.doorSpawns = Collections.unmodifiableList(doorSpawns);
+        this.consoleSpawns = Collections.unmodifiableList(consoleSpawns);
     }
 
     /**
@@ -120,6 +158,8 @@ public final class GameMap {
         List<TargetSpawn> targets = new ArrayList<>();
         List<PickupSpawn> pickups = new ArrayList<>();
         List<EnemySpawn> enemies = new ArrayList<>();
+        List<DoorSpawn> doors = new ArrayList<>();
+        List<ConsoleSpawn> consoles = new ArrayList<>();
         boolean hasSpawn = false;
         float spawnX = 0f;
         float spawnZ = 0f;
@@ -158,6 +198,12 @@ public final class GameMap {
                     pickups.add(new PickupSpawn(Pickup.Kind.ARMOR, centreX, centreZ));
                 } else if (c == 'e') {
                     pickups.add(new PickupSpawn(Pickup.Kind.ENERGY_CELL, centreX, centreZ));
+                } else if (c == 'k') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.AMBER_KEYCARD, centreX, centreZ));
+                } else if (c == 'c') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.CYAN_KEYCARD, centreX, centreZ));
+                } else if (c == 'S') {
+                    consoles.add(new ConsoleSpawn(centreX, centreZ));
                 } else if (c == 'D') {
                     enemies.add(new EnemySpawn(Enemy.Kind.DRONE, centreX, centreZ));
                 } else if (c == 'T') {
@@ -169,14 +215,43 @@ public final class GameMap {
                     hasExit = true;
                     exitX = centreX;
                     exitZ = centreZ;
-                } else if (c != FLOOR) {
+                } else if (c != FLOOR && doorLockKind(c) == null) {
                     throw new IllegalArgumentException("Unknown layout character '" + c + "' at column " + col
                         + ", row " + row);
                 }
             }
         }
+        for (int row = 0; row < rows.length; row++) {
+            for (int col = 0; col < width; col++) {
+                Door.LockKind lock = doorLockKind(rows[row].charAt(col));
+                if (lock != null) {
+                    doors.add(new DoorSpawn(lock, doorOrientation(cells, col, row), col, row));
+                }
+            }
+        }
         if (!hasSpawn) throw new IllegalArgumentException("The layout has no player spawn");
-        return new GameMap(cells, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ, targets, pickups, enemies);
+        return new GameMap(cells, spawnX, spawnZ, spawnYaw, hasExit, exitX, exitZ,
+            targets, pickups, enemies, doors, consoles);
+    }
+
+    private static Door.LockKind doorLockKind(char c) {
+        switch (c) {
+            case '=': return Door.LockKind.NONE;
+            case 'A': return Door.LockKind.AMBER_KEY;
+            case 'C': return Door.LockKind.CYAN_KEY;
+            case 'L': return Door.LockKind.LOCKDOWN;
+            default: return null;
+        }
+    }
+
+    private static Door.Orientation doorOrientation(char[][] cells, int col, int row) {
+        int lr = (isSolidCell(cells, col - 1, row) ? 1 : 0) + (isSolidCell(cells, col + 1, row) ? 1 : 0);
+        int ud = (isSolidCell(cells, col, row - 1) ? 1 : 0) + (isSolidCell(cells, col, row + 1) ? 1 : 0);
+        return lr >= ud ? Door.Orientation.SPAN_X : Door.Orientation.SPAN_Z;
+    }
+
+    private static boolean isSolidCell(char[][] cells, int col, int row) {
+        return col < 0 || row < 0 || row >= cells.length || col >= cells[0].length || cells[row][col] != FLOOR;
     }
 
     /** @return the number of columns. */
@@ -251,5 +326,15 @@ public final class GameMap {
     /** @return the enemy spawns, in layout order. */
     public List<EnemySpawn> getEnemySpawns() {
         return enemySpawns;
+    }
+
+    /** @return the bulkhead door spawns, in layout order. */
+    public List<DoorSpawn> getDoorSpawns() {
+        return doorSpawns;
+    }
+
+    /** @return the security console spawns, in layout order. */
+    public List<ConsoleSpawn> getConsoleSpawns() {
+        return consoleSpawns;
     }
 }

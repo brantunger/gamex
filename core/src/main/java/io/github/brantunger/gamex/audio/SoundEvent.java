@@ -24,7 +24,11 @@ public final class SoundEvent {
         PICKUP_HEALTH,
         PICKUP_ARMOR,
         PICKUP_ENERGY,
+        PICKUP_KEYCARD,
         LOW_ENERGY,
+        DOOR_OPEN,
+        DOOR_LOCKED,
+        CONSOLE_ACTIVATE,
         MENU_MOVE,
         MENU_CONFIRM,
         MENU_BACK

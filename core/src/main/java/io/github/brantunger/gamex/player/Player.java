@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.GameMap;
 
 import java.util.Collections;
@@ -314,13 +315,28 @@ public final class Player {
      * @param dt the time step in seconds
      */
     public void move(GameMap map, List<? extends Damageable> solids, float forward, float strafe, float dt) {
+        move(map, solids, Collections.<Door>emptyList(), forward, strafe, dt);
+    }
+
+    /**
+     * Walks (or advances an active dash) relative to the yaw, sliding along walls, closed bulkhead doors, and solid
+     * objects.
+     * @param map the map to collide with
+     * @param solids the objects that block the way while they are not destroyed
+     * @param doors bulkhead doors in the level; closed ones block movement
+     * @param forward forward movement from -1 to 1
+     * @param strafe sideways movement from -1 to 1, positive to the right
+     * @param dt the time step in seconds
+     */
+    public void move(GameMap map, List<? extends Damageable> solids, List<Door> doors, float forward, float strafe,
+                     float dt) {
         if (isDead() || dt <= 0f) return;
         float remainingDt = dt;
         if (dashRemaining > 0f) {
             float dashDt = Math.min(remainingDt, dashRemaining);
             dashRemaining -= dashDt;
             remainingDt -= dashDt;
-            Collision.move(map, solids, position, dashDirX * DASH_SPEED * dashDt, dashDirZ * DASH_SPEED * dashDt,
+            Collision.move(map, solids, doors, position, dashDirX * DASH_SPEED * dashDt, dashDirZ * DASH_SPEED * dashDt,
                 RADIUS);
         }
         if (remainingDt <= 0f) return;
@@ -335,7 +351,7 @@ public final class Player {
         float dz = (-cos * forward + sin * strafe) * scale;
         float beforeX = position.x;
         float beforeZ = position.y;
-        Collision.move(map, solids, position, dx, dz, RADIUS);
+        Collision.move(map, solids, doors, position, dx, dz, RADIUS);
         bobPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * BOB_RATE;
     }
 }

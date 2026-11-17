@@ -2,9 +2,11 @@ package io.github.brantunger.gamex.weapon;
 
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Damageable;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Hitscan;
 
+import java.util.Collections;
 import java.util.List;
 
 /** Area damage around a point, strongest at the centre and falling off in a straight line to the edge. */
@@ -52,6 +54,25 @@ public final class Explosion {
      */
     public static int apply(GameMap map, float x, float z, float radius, float maxDamage,
                             List<? extends Damageable> targets, Player player, float playerDamageScale) {
+        return apply(map, Collections.<Door>emptyList(), x, z, radius, maxDamage, targets, player, playerDamageScale);
+    }
+
+    /**
+     * Damages every unobstructed object (and optional player) within the radius. Solid walls and closed bulkhead
+     * doors shield anything behind them from the blast.
+     * @param map the map for wall line-of-sight checks, or null to skip wall occlusion
+     * @param doors bulkhead doors in the level; closed ones shield targets behind them
+     * @param x the world x of the centre
+     * @param z the world z of the centre
+     * @param radius the radius of the explosion
+     * @param maxDamage the damage at the centre
+     * @param targets the objects to damage; destroyed ones are skipped
+     * @param player optional player to receive splash damage, or null
+     * @param playerDamageScale multiplier applied to raw splash damage on {@code player}
+     * @return the number of {@link Damageable} objects that took damage
+     */
+    public static int apply(GameMap map, List<Door> doors, float x, float z, float radius, float maxDamage,
+                            List<? extends Damageable> targets, Player player, float playerDamageScale) {
         int damaged = 0;
         for (int i = 0; i < targets.size(); i++) {
             Damageable target = targets.get(i);
@@ -62,7 +83,7 @@ public final class Explosion {
             float distance = centreDist - target.getRadius();
             float damage = damageAt(distance, radius, maxDamage);
             if (damage <= 0f) continue;
-            if (map != null && !canReachCylinder(map, x, z, target.getX(), target.getZ(), target.getRadius(),
+            if (map != null && !canReachCylinder(map, doors, x, z, target.getX(), target.getZ(), target.getRadius(),
                 centreDist)) {
                 continue;
             }
@@ -75,21 +96,21 @@ public final class Explosion {
             float centreDist = (float) Math.sqrt(dx * dx + dz * dz);
             float distance = centreDist - Player.RADIUS;
             float rawDamage = damageAt(distance, radius, maxDamage) * playerDamageScale;
-            if (rawDamage > 0f && (map == null || canReachCylinder(map, x, z, player.position.x, player.position.y,
-                Player.RADIUS, centreDist))) {
+            if (rawDamage > 0f && (map == null || canReachCylinder(map, doors, x, z, player.position.x,
+                player.position.y, Player.RADIUS, centreDist))) {
                 player.damage(rawDamage, x, z);
             }
         }
         return damaged;
     }
 
-    private static boolean canReachCylinder(GameMap map, float blastX, float blastZ, float cx, float cz, float radius,
-                                            float centreDist) {
-        if (Hitscan.hasLineOfSight(map, blastX, blastZ, cx, cz)) return true;
+    private static boolean canReachCylinder(GameMap map, List<Door> doors, float blastX, float blastZ, float cx,
+                                            float cz, float radius, float centreDist) {
+        if (Hitscan.hasLineOfSight(map, doors, blastX, blastZ, cx, cz)) return true;
         if (centreDist <= radius + 1e-4f) return true;
         float inv = 1f / centreDist;
         float rimX = cx - (cx - blastX) * inv * radius;
         float rimZ = cz - (cz - blastZ) * inv * radius;
-        return Hitscan.hasLineOfSight(map, blastX, blastZ, rimX, rimZ);
+        return Hitscan.hasLineOfSight(map, doors, blastX, blastZ, rimX, rimZ);
     }
 }

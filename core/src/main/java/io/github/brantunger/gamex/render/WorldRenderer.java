@@ -25,11 +25,13 @@ import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.MapGeometry;
 import io.github.brantunger.gamex.world.Pickup;
+import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
 
@@ -162,6 +164,15 @@ public final class WorldRenderer implements Disposable {
     private final Mesh guardBaseMesh;
     private final Mesh guardHeadMesh;
     private final Mesh enemyBoltMesh;
+    private final Mesh doorUnlockedMesh;
+    private final Mesh doorAmberMesh;
+    private final Mesh doorCyanMesh;
+    private final Mesh doorLockdownMesh;
+    private final Mesh doorOpenMesh;
+    private final Mesh keycardAmberMesh;
+    private final Mesh keycardCyanMesh;
+    private final Mesh consoleLockedMesh;
+    private final Mesh consoleActiveMesh;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
@@ -214,6 +225,24 @@ public final class WorldRenderer implements Disposable {
         guardHeadMesh = ModelMesh.loadMesh(WorldModels.GUARD_PATH, "guard head",
             m -> WorldModels.verticesForGroupPrefix(m, "head_"));
         enemyBoltMesh = ModelMesh.loadMesh(WorldModels.ENEMY_BOLT_PATH, "enemy bolt", WorldModels::vertices);
+        doorUnlockedMesh = ModelMesh.loadMesh(WorldModels.DOOR_BULKHEAD_PATH, "door unlocked",
+            m -> WorldModels.verticesReplacingMaterial(m, "door_status", WorldModels.Material.DOOR_UNLOCKED));
+        doorAmberMesh = ModelMesh.loadMesh(WorldModels.DOOR_BULKHEAD_PATH, "door amber",
+            m -> WorldModels.verticesReplacingMaterial(m, "door_status", WorldModels.Material.DOOR_AMBER));
+        doorCyanMesh = ModelMesh.loadMesh(WorldModels.DOOR_BULKHEAD_PATH, "door cyan",
+            m -> WorldModels.verticesReplacingMaterial(m, "door_status", WorldModels.Material.DOOR_CYAN));
+        doorLockdownMesh = ModelMesh.loadMesh(WorldModels.DOOR_BULKHEAD_PATH, "door lockdown",
+            m -> WorldModels.verticesReplacingMaterial(m, "door_status", WorldModels.Material.DOOR_LOCKDOWN));
+        doorOpenMesh = ModelMesh.loadMesh(WorldModels.DOOR_BULKHEAD_PATH, "door open",
+            m -> WorldModels.verticesReplacingMaterial(m, "door_status", WorldModels.Material.DOOR_OPEN));
+        keycardAmberMesh = ModelMesh.loadMesh(WorldModels.KEYCARD_PATH, "keycard amber",
+            m -> WorldModels.verticesReplacingMaterial(m, "keycard_body", WorldModels.Material.KEYCARD_AMBER));
+        keycardCyanMesh = ModelMesh.loadMesh(WorldModels.KEYCARD_PATH, "keycard cyan",
+            m -> WorldModels.verticesReplacingMaterial(m, "keycard_body", WorldModels.Material.KEYCARD_CYAN));
+        consoleLockedMesh = ModelMesh.loadMesh(WorldModels.SECURITY_CONSOLE_PATH, "console locked",
+            m -> WorldModels.verticesReplacingMaterial(m, "console_screen", WorldModels.Material.CONSOLE_LOCKED));
+        consoleActiveMesh = ModelMesh.loadMesh(WorldModels.SECURITY_CONSOLE_PATH, "console active",
+            m -> WorldModels.verticesReplacingMaterial(m, "console_screen", WorldModels.Material.CONSOLE_ACTIVE));
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);
@@ -299,6 +328,7 @@ public final class WorldRenderer implements Disposable {
         decalsUsed = 0;
         addExitPad(simulation.map, simulation.getTime());
         addPickupGlows(simulation);
+        addConsoleGlows(simulation);
         addProjectiles(simulation);
         addEnemyTelegraphsAndBolts(simulation);
         addEffects(simulation);
@@ -330,6 +360,7 @@ public final class WorldRenderer implements Disposable {
         decalsUsed = 0;
         addExitPad(simulation.map, previewTime);
         addPickupGlows(simulation);
+        addConsoleGlows(simulation);
         addEnemyTelegraphsAndBolts(simulation);
         decalBatch.flush();
         endWorldPass();
@@ -474,6 +505,41 @@ public final class WorldRenderer implements Disposable {
             modelShader.setUniformMatrix("u_model", modelTransform);
             enemyBoltMesh.render(modelShader, GL20.GL_TRIANGLES);
         }
+
+        // Sliding 3D bulkhead doors and security console pedestals.
+        modelShader.setUniformf("u_hitFlash", 0f);
+        for (Door door : simulation.doors) {
+            float yaw = door.getOrientation() == Door.Orientation.SPAN_Z ? 90f : 0f;
+            modelTransform.idt()
+                .translate(door.getX(), door.getBottomY(), door.getZ())
+                .rotate(Vector3.Y, yaw);
+            modelShader.setUniformMatrix("u_model", modelTransform);
+            modelShader.setUniformf("u_light", door.isOpening() ? Math.max(roomLight, 1.08f) : roomLight);
+            doorMesh(door).render(modelShader, GL20.GL_TRIANGLES);
+        }
+
+        modelShader.setUniformf("u_light", Math.max(roomLight, 1.05f));
+        for (SecurityConsole console : simulation.consoles) {
+            modelTransform.idt().translate(console.getX(), 0f, console.getZ());
+            modelShader.setUniformMatrix("u_model", modelTransform);
+            Mesh mesh = console.isActivated() ? consoleActiveMesh : consoleLockedMesh;
+            mesh.render(modelShader, GL20.GL_TRIANGLES);
+        }
+    }
+
+    private Mesh doorMesh(Door door) {
+        if (door.isOpening()) return doorOpenMesh;
+        switch (door.getLockKind()) {
+            case AMBER_KEY:
+                return doorAmberMesh;
+            case CYAN_KEY:
+                return doorCyanMesh;
+            case LOCKDOWN:
+                return doorLockdownMesh;
+            case NONE:
+            default:
+                return doorUnlockedMesh;
+        }
     }
 
     private Mesh pickupMesh(Pickup.Kind kind) {
@@ -482,6 +548,10 @@ public final class WorldRenderer implements Disposable {
                 return medkitMesh;
             case ARMOR:
                 return armorMesh;
+            case AMBER_KEYCARD:
+                return keycardAmberMesh;
+            case CYAN_KEYCARD:
+                return keycardCyanMesh;
             case ENERGY_CELL:
             default:
                 return energyCellMesh;
@@ -517,11 +587,28 @@ public final class WorldRenderer implements Disposable {
                 case ARMOR:
                     halo.setColor(0.3f, 0.78f, 1f, 0.45f);
                     break;
+                case AMBER_KEYCARD:
+                    halo.setColor(1f, 0.74f, 0.18f, 0.52f);
+                    break;
+                case CYAN_KEYCARD:
+                    halo.setColor(0.2f, 0.92f, 1f, 0.52f);
+                    break;
                 case ENERGY_CELL:
                 default:
                     halo.setColor(0.75f, 0.42f, 1f, 0.48f);
                     break;
             }
+            decalBatch.add(halo);
+        }
+    }
+
+    private void addConsoleGlows(GameSimulation simulation) {
+        for (SecurityConsole console : simulation.consoles) {
+            Decal halo = nextDecal(orb, 0.46f, 0.46f, true);
+            halo.setPosition(console.getX(), FLOOR_GLOW_HEIGHT, console.getZ());
+            halo.setRotation(Vector3.Y, Vector3.Z);
+            if (console.isActivated()) halo.setColor(0.25f, 0.96f, 0.52f, 0.42f);
+            else halo.setColor(1f, 0.28f, 0.22f, 0.38f);
             decalBatch.add(halo);
         }
     }
@@ -665,6 +752,15 @@ public final class WorldRenderer implements Disposable {
         guardBaseMesh.dispose();
         guardHeadMesh.dispose();
         enemyBoltMesh.dispose();
+        doorUnlockedMesh.dispose();
+        doorAmberMesh.dispose();
+        doorCyanMesh.dispose();
+        doorLockdownMesh.dispose();
+        doorOpenMesh.dispose();
+        keycardAmberMesh.dispose();
+        keycardCyanMesh.dispose();
+        consoleLockedMesh.dispose();
+        consoleActiveMesh.dispose();
         shader.dispose();
         modelShader.dispose();
         decalBatch.dispose();

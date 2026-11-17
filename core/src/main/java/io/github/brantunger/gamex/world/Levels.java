@@ -205,8 +205,79 @@ public final class Levels {
             "CLEAR THE COMMAND DECK AND EXTRACT TO COMPLETE THE CAMPAIGN.");
     }
 
+    /** @return Campaign Stage 04 ("04: LOCKDOWN WING"), introducing bulkhead doors, Amber keycard, and console lockdown. */
+    public static Stage lockdownWing() {
+        GameMap map = GameMap.parse(
+            "#####&&&&&&&&&&&&&#&&&&&&&&&&&",
+            "#...#......o......#.....o...a&",
+            "#.>.=....o....G...#..D....T..&",
+            "#.a.#.............#..........&",
+            "#...#..&...&..D...=....&.....&",
+            "#####.............#....&..k..&",
+            "&&&&&....o....+...#..G....e..&",
+            "&...e..&..........#..........&",
+            "&&&&&&&&&&&A&&&&&&############",
+            "%%%%%%%%#...........##########",
+            "%.D..G..#...o...T...#...o....#",
+            "%.e.....#...........#....T...#",
+            "%%%%L%%%#..#.....#..#........#",
+            "%.......#...........#..#..#..#",
+            "%...o...=.....G.....#........#",
+            "%.......#...........L...G....#",
+            "%...S...#..o.....D..#........#",
+            "%.+...a.#...........#..+..o..#",
+            "%.......#...e...G...#.....X..#",
+            "%%%%%%%%######################");
+        return new Stage(
+            "04_lockdown_wing",
+            "04: LOCKDOWN WING",
+            85f,
+            false,
+            map,
+            "BULKHEAD LOCKDOWNS SEAL THE LOWER RESEARCH SECTOR.",
+            "LOCATE THE AMBER KEYCARD AND OVERRIDE THE SECURITY CONSOLE.",
+            "WATCH FOR AMBUSH BAYS UNSEALED BY CONSOLE OVERRIDE.");
+    }
+
+    /** @return Campaign Stage 05 ("05: COMMAND VAULT"), chaining Amber/Cyan keycards and console lockdown override. */
+    public static Stage commandVault() {
+        GameMap map = GameMap.parse(
+            "######&&&&&&&&&&&&&&#&&&&&&&&&&&",
+            "#....#......o.......#.....o....&",
+            "#.a..#..D.......G...#..G....k..&",
+            "#.>..=..............#..........&",
+            "#.+..#....&...&.....=....&..T..&",
+            "#....#........o..T..#....&.....&",
+            "######..e.......D...#......+...&",
+            "&&&&&&&&&&A&&&&&&&&&############",
+            "#.....#.....o....#....o.......+#",
+            "#.c...#..G....D..#..G.....T....#",
+            "#...o.#....##....#.....##......#",
+            "#.....=..........C.........S...#",
+            "#.a.e.#..T....o..#...o.....a...#",
+            "#.....#......+...#......e......#",
+            "%%%%%%%%%%%L%%%%%%%%%%%####L####",
+            "%....o.........o....%..D....G..#",
+            "%..G.....%...%....T.%....e..D..#",
+            "%........%...%......%..+.......#",
+            "%.a..T.......o....G.############",
+            "%..X....o.....+..e..############",
+            "%......D.......T....############",
+            "%%%%%%%%%%%%%%%%%%%%############");
+        return new Stage(
+            "05_command_vault",
+            "05: COMMAND VAULT",
+            95f,
+            false,
+            map,
+            "FINAL OBJECTIVE: BREACH THE DEEP COMMAND VAULT.",
+            "CHAIN AMBER AND CYAN CLEARANCES TO REACH OVERWATCH CONTROL.",
+            "OVERRIDE VAULT LOCKDOWN AND REACH THE FINAL EXTRACTION PAD.");
+    }
+
     /** @return the ordered list of campaign stages available so far. */
     public static List<Stage> campaign() {
-        return Collections.unmodifiableList(Arrays.asList(outerBreach(), coolantCore(), securityHub()));
+        return Collections.unmodifiableList(Arrays.asList(
+            outerBreach(), coolantCore(), securityHub(), lockdownWing(), commandVault()));
     }
 }
