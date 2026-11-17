@@ -15,6 +15,9 @@ public class DesktopLauncher {
     static final int MAX_WINDOW_HEIGHT = 4320;
 
     public static void main(String[] args) {
+        // On macOS, GLFW needs -XstartOnFirstThread; without it (java -jar, a double-clicked JAR) this relaunches.
+        int childExitCode = StartupHelper.startNewJvmIfRequired(args);
+        if (childExitCode != StartupHelper.NOT_RESTARTED) System.exit(childExitCode);
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setTitle("gamex");
         int[] size = windowSize(System.getenv("GAMEX_WINDOW"));

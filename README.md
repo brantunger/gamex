@@ -19,6 +19,11 @@ Wavefront `.obj` model in `assets/models/`.
 
 On Windows, use `gradlew.bat desktop:run` (`.\gradlew.bat desktop:run` in PowerShell).
 
+On macOS (Apple silicon or Intel), the same command works. LWJGL3 must run on the process's first thread there, which
+needs the JVM option `-XstartOnFirstThread`: the `run` task passes it, the Construo `.app` bundle
+(`desktop:packageMacM1` or `desktop:packageMacX64`) sets it, and `java -jar` on a jar from `desktop:jar` or
+`desktop:jarMac` gets it from `StartupHelper`, which relaunches the JVM with it.
+
 The build compiles and runs with a Java 21 toolchain. If Gradle finds no Java 21 on the machine, the first build
 downloads one, so it can take a while.
 
@@ -265,14 +270,15 @@ generator changes. They cover:
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in
   `assets/models/` (`GeneratedModelsTest`), and model-file error reporting (`ModelVertices.read`).
-- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and the packaging icons.
+- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), the packaging icons, and when and
+  how `StartupHelper` relaunches the JVM on macOS.
 
 Rendering, the drawing of the HUD (`HudRenderer`), OpenAL audio hardware playback (`SoundManager` runtime), the rest
 of input handling (`InputController`) and the debug screenshot mode have no tests, apart from the parsing of
 `GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`) and spatial attenuation/panning math (`ProceduralSoundsTest`).
 
-A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux and Windows on
-every pull request and push to `main`.
+A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux, Windows and
+macOS on every pull request and push to `main`.
 
 ## Gradle
 
