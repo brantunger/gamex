@@ -89,13 +89,17 @@ public final class HandSculpt {
         obj.append("# Gun space: barrel along -z, y up, x to the shooter's right. Materials: glove, pads, cuff,\n");
         obj.append("# strap, sleeve.\n");
         palm();
-        finger("index_finger", indexPath(), 0.0090, 0.0086, new double[] {0.36, 0.70});
+        finger("index_finger", indexPath(), 0.0086, 0.0080, new double[] {0.36, 0.70},
+            new double[] {0.0, -0.0010, 0.0018}, 0.0058);
         double[] heights = {-0.058, -0.0765, -0.095};
-        double[] sizes = {1.0, 0.98, 0.9};
+        double[] sizes = {1.0, 0.96, 0.86};
+        double[] tipsBehind = {0.0332, 0.0302, 0.0276};
         String[] names = {"middle_finger", "ring_finger", "little_finger"};
         for (int i = 0; i < 3; i++) {
-            double thick = 0.0078 * sizes[i];
-            finger(names[i], wrappingPath(heights[i], thick), 0.0093 * sizes[i], thick, new double[] {0.36, 0.68});
+            double size = sizes[i];
+            double thick = 0.0076 * size;
+            finger(names[i], wrappingPath(heights[i], thick, tipsBehind[i]), 0.0090 * size, thick,
+                new double[] {0.36, 0.68}, new double[] {0.0018 * size, 0.0, 0.0}, 0.0068 * size);
         }
         thumb();
         knucklePads(heights);
@@ -109,16 +113,16 @@ public final class HandSculpt {
     private void palm() {
         // Each station: centre x, y, z, radius along the hand's width, radius through its thickness.
         double[][] stations = {
-            station(along(0.050), 0.0300, 0.0215),
-            station(along(0.022), 0.0283, 0.0203),
-            station(WRIST, 0.0300, 0.0215),
-            {0.0100, -0.0600, 0.1340, 0.0362, 0.0250},
-            {0.0080, -0.0610, 0.1200, 0.0405, 0.0275},
-            {0.0110, -0.0610, 0.1080, 0.0415, 0.0268},
-            {0.0275, -0.0610, 0.0940, 0.0420, 0.0128},
-            {0.0276, -0.0600, 0.0780, 0.0412, 0.0128},
-            {0.0270, -0.0590, 0.0650, 0.0400, 0.0122},
-            {0.0250, -0.0588, 0.0585, 0.0372, 0.0100},
+            station(along(0.050), 0.0295, 0.0210),
+            station(along(0.022), 0.0278, 0.0198),
+            station(WRIST, 0.0292, 0.0208),
+            {0.0105, -0.0600, 0.1340, 0.0352, 0.0222},
+            {0.0105, -0.0605, 0.1200, 0.0378, 0.0235},
+            {0.0140, -0.0605, 0.1070, 0.0392, 0.0215},
+            {0.0258, -0.0605, 0.0935, 0.0396, 0.0145},
+            {0.0268, -0.0600, 0.0780, 0.0394, 0.0126},
+            {0.0268, -0.0592, 0.0650, 0.0388, 0.0118},
+            {0.0252, -0.0588, 0.0585, 0.0365, 0.0098},
         };
         List<double[]> rings = smooth(stations, 4);
         Part part = new Part("palm", "glove");
@@ -134,49 +138,63 @@ public final class HandSculpt {
         return new double[] {centre[0], centre[1], centre[2], wide, thick};
     }
 
+    private static double fingerWidthTaper(double u) {
+        return 1.0 - 0.24 * u * u;
+    }
+
+    private static double fingerThicknessTaper(double u) {
+        return 1.0 - 0.38 * u * u;
+    }
+
     /**
      * The path of a finger that wraps the grip at a height: right side, across the front strap, left side. The path
-     * keeps the finger's own thickness away from the grip, so that its inner surface lies on the grip all the way
-     * round, whatever the size of the finger.
-     * @param thick the finger's radius through its thickness
+     * keeps the finger's tapered thickness away from the grip, so that its inner surface presses smoothly onto the
+     * grip round to a staggered distal pad.
+     * @param thick the finger's base radius through its thickness
+     * @param tipBehind distance behind the front strap reached by the last cylinder station on the left panel
      */
-    private static double[][] wrappingPath(double height, double thick) {
+    private static double[][] wrappingPath(double height, double thick, double tipBehind) {
+        double leftTaper6 = fingerThicknessTaper(6.0 / 8.0);
+        double leftTaper7 = fingerThicknessTaper(7.0 / 8.0);
+        double leftTaper8 = fingerThicknessTaper(1.0);
         return new double[][] {
-            onGrip(0.0310, height, 0.0320),
-            onGrip(0.0158 + thick, height, 0.0130),
-            onGrip(0.0144 + thick, height, -0.0030),
-            onGrip(0.0097 + thick, height, -thick),
-            onGrip(0.0040, height, -thick - 0.0002),
-            onGrip(-0.0120, height, -thick),
-            onGrip(-0.0130 - thick, height, -0.0035),
-            onGrip(-0.0140 - thick, height, 0.0120),
-            onGrip(-0.0136 - thick, height, 0.0290),
+            onGrip(0.0305, height, 0.0315),
+            onGrip(0.0156 + thick * fingerThicknessTaper(1.0 / 8.0), height, 0.0130),
+            onGrip(0.0142 + thick * fingerThicknessTaper(2.0 / 8.0), height, -0.0030),
+            onGrip(0.0095 + thick * fingerThicknessTaper(3.0 / 8.0), height, -thick * fingerThicknessTaper(3.0 / 8.0)),
+            onGrip(0.0040, height, -thick * fingerThicknessTaper(4.0 / 8.0) - 0.0002),
+            onGrip(-0.0118, height, -thick * fingerThicknessTaper(5.0 / 8.0)),
+            onGrip(-0.0132 - thick * leftTaper6, height, -0.0035),
+            onGrip(-0.0140 - thick * leftTaper7, height, 0.0125),
+            onGrip(-0.0136 - thick * leftTaper8, height, tipBehind),
         };
     }
 
-    /** The path of the index finger: along the right of the frame, then across onto the trigger. */
+    /** The path of the index finger: along the right of the frame, bending onto the trigger face. */
     private static double[][] indexPath() {
         return new double[][] {
-            onGrip(0.0310, -0.041, 0.0320),
-            {0.0250, -0.0300, 0.0400},
-            {0.0232, -0.0283, 0.0160},
-            {0.0220, -0.0272, -0.0060},
-            {0.0165, -0.0270, -0.0180},
-            {0.0060, -0.0270, -0.0218},
-            {-0.0040, -0.0270, -0.0218},
+            onGrip(0.0305, -0.041, 0.0315),
+            {0.0248, -0.0305, 0.0390},
+            {0.0230, -0.0285, 0.0160},
+            {0.0218, -0.0274, -0.0060},
+            {0.0162, -0.0272, -0.0182},
+            {0.0060, -0.0274, -0.0220},
+            {-0.0035, -0.0278, -0.0222},
         };
     }
 
     /**
-     * A finger: one tube along a path, pinched at its two creases, with a rounded tip.
+     * A finger: one tube along a path, pinched at its two creases, with an asymmetric tapered pad tip.
      * @param creases where the two creases are, as fractions of the path's length
+     * @param pressBias inward shift of the fingertip dome so the palmar pad stays flush while the outer nail tapers
+     * @param tipReach reach of the tapered fingertip cap beyond the final ring
      */
-    private void finger(String name, double[][] path, double wide, double thick, double[] creases) {
+    private void finger(String name, double[][] path, double wide, double thick, double[] creases,
+                        double[] pressBias, double tipReach) {
         double[][] stations = new double[path.length][];
         for (int i = 0; i < path.length; i++) {
-            // Fingers taper a little towards the tip.
-            double taper = 1.0 - 0.14 * i / (path.length - 1.0);
-            stations[i] = station(path[i], wide * taper, thick * taper);
+            double u = i / (path.length - 1.0);
+            stations[i] = station(path[i], wide * fingerWidthTaper(u), thick * fingerThicknessTaper(u));
         }
         List<double[]> rings = smooth(stations, 4);
         double length = 0.0;
@@ -200,20 +218,20 @@ public final class HandSculpt {
             part.ring(ringPoints(rings, rings.get(i), GRIP_AXIS, 12, ring));
         }
         part.closeStart();
-        part.roundEnd(rings.get(rings.size() - 1), rings.get(rings.size() - 2), 0.0055, 4);
+        part.roundEnd(rings.get(rings.size() - 1), rings.get(rings.size() - 2), tipReach, 4, pressBias);
         emit(part, true);
     }
 
-    /** The thumb: from the ball of the thumb inside the heel, forward along the left of the frame. */
+    /** The thumb: tucked smoothly below the beavertail web and tapering along the left of the frame. */
     private void thumb() {
         double[][] stations = {
-            {0.0010, -0.0470, 0.1180, 0.0200, 0.0180},
-            {-0.0110, -0.0360, 0.1010, 0.0180, 0.0160},
-            {-0.0200, -0.0240, 0.0790, 0.0140, 0.0132},
-            {-0.0234, -0.0158, 0.0570, 0.0122, 0.0116},
-            {-0.0240, -0.0136, 0.0370, 0.0114, 0.0108},
-            {-0.0234, -0.0128, 0.0190, 0.0104, 0.0098},
-            {-0.0228, -0.0126, 0.0080, 0.0096, 0.0090},
+            {-0.0020, -0.0500, 0.1160, 0.0175, 0.0155},
+            {-0.0130, -0.0405, 0.0980, 0.0158, 0.0138},
+            {-0.0205, -0.0275, 0.0780, 0.0132, 0.0118},
+            {-0.0234, -0.0185, 0.0570, 0.0118, 0.0102},
+            {-0.0240, -0.0158, 0.0370, 0.0112, 0.0092},
+            {-0.0234, -0.0148, 0.0190, 0.0104, 0.0080},
+            {-0.0226, -0.0146, 0.0078, 0.0096, 0.0072},
         };
         List<double[]> rings = smooth(stations, 4);
         Part part = new Part("thumb", "glove");
@@ -225,41 +243,43 @@ public final class HandSculpt {
         }
         for (int i = 0; i < rings.size(); i++) {
             double[] ring = rings.get(i).clone();
-            double away = (travelled[i] / length - 0.64) / 0.035;
+            double away = (travelled[i] / length - 0.62) / 0.035;
             double scale = 1.0 - 0.11 * StrictMath.exp(-away * away) + 0.05 * StrictMath.exp(-(away * away) / 9.0);
             ring[3] *= scale;
             ring[4] *= scale;
             part.ring(ringPoints(rings, rings.get(i), UP, 14, ring));
         }
         part.closeStart();
-        part.roundEnd(rings.get(rings.size() - 1), rings.get(rings.size() - 2), 0.0085, 4);
+        part.roundEnd(rings.get(rings.size() - 1), rings.get(rings.size() - 2), 0.0092, 4,
+            new double[] {0.0018, -0.0006, 0.0});
         emit(part, true);
     }
 
     /** A low padded dome over each knuckle of the back of the hand: together, the knuckle ridge. */
     private void knucklePads(double[] wrappingHeights) {
         double[] heights = {-0.041, wrappingHeights[0], wrappingHeights[1], wrappingHeights[2]};
+        double[] archX = {0.0338, 0.0365, 0.0370, 0.0348};
         for (int i = 0; i < heights.length; i++) {
-            double[] knuckle = onGrip(0.0350, heights[i], 0.0300);
+            double[] knuckle = onGrip(archX[i], heights[i], 0.0300);
             Part part = new Part("knuckle_pad_" + i, "pads");
             int bands = 5;
             int segments = 10;
-            // An ellipsoid with its poles along x: thin through the hand, longer along the finger.
+            // An ellipsoid with its poles along x: thin contoured dorsal armor along the knuckle ridge.
             for (int band = 1; band < bands; band++) {
                 double latitude = -StrictMath.PI / 2.0 + band * StrictMath.PI / bands;
                 double[][] ring = new double[segments][];
                 for (int s = 0; s < segments; s++) {
                     double longitude = (s + 0.5) * 2.0 * StrictMath.PI / segments;
                     ring[s] = new double[] {
-                        knuckle[0] + 0.0062 * StrictMath.sin(latitude),
-                        knuckle[1] + 0.0086 * StrictMath.cos(latitude) * StrictMath.cos(longitude),
-                        knuckle[2] + 0.0105 * StrictMath.cos(latitude) * StrictMath.sin(longitude),
+                        knuckle[0] + 0.0048 * StrictMath.sin(latitude),
+                        knuckle[1] + 0.0082 * StrictMath.cos(latitude) * StrictMath.cos(longitude),
+                        knuckle[2] + 0.0110 * StrictMath.cos(latitude) * StrictMath.sin(longitude),
                     };
                 }
                 part.ring(ring);
             }
-            part.closeStartAt(new double[] {knuckle[0] - 0.0062, knuckle[1], knuckle[2]});
-            part.closeEndAt(new double[] {knuckle[0] + 0.0062, knuckle[1], knuckle[2]});
+            part.closeStartAt(new double[] {knuckle[0] - 0.0048, knuckle[1], knuckle[2]});
+            part.closeEndAt(new double[] {knuckle[0] + 0.0048, knuckle[1], knuckle[2]});
             emit(part, false);
         }
     }
@@ -267,16 +287,16 @@ public final class HandSculpt {
     /** The cuff of the glove, a stiffer band standing proud of the wrist, with a strap round it. */
     private void cuff() {
         double[][] stations = {
-            station(along(0.0360), 0.0318, 0.0234),
-            station(along(0.0378), 0.0340, 0.0254),
-            station(along(0.0560), 0.0342, 0.0256),
-            station(along(0.0742), 0.0344, 0.0258),
+            station(along(0.0360), 0.0310, 0.0226),
+            station(along(0.0385), 0.0334, 0.0248),
+            station(along(0.0560), 0.0340, 0.0254),
+            station(along(0.0735), 0.0346, 0.0260),
             station(along(0.0760), 0.0322, 0.0238),
         };
         tube("cuff", "cuff", stations, 20);
         double[][] strap = {
             station(along(0.0500), 0.0340, 0.0254),
-            station(along(0.0512), 0.0358, 0.0272),
+            station(along(0.0512), 0.0356, 0.0270),
             station(along(0.0628), 0.0358, 0.0272),
             station(along(0.0640), 0.0340, 0.0254),
         };
@@ -294,7 +314,7 @@ public final class HandSculpt {
         emit(part, false);
     }
 
-    /** The sleeve: looser than the arm inside it, gathered behind the cuff, creased, and wider towards the elbow. */
+    /** The sleeve: looser than the arm inside it, gathered behind the cuff, draped in slow folds along the forearm. */
     private void sleeve() {
         int rings = 26;
         int segments = 24;
@@ -308,8 +328,8 @@ public final class HandSculpt {
             // The fabric hangs a little below the arm's axis.
             centre[1] -= 0.004 * StrictMath.sin(StrictMath.PI * StrictMath.min(1.0, u * 2.5));
             double grow = 1.0 + 0.36 * u;
-            double gather = 1.0 + 0.10 * StrictMath.exp(-StrictMath.pow((u - 0.035) / 0.03, 2.0))
-                - 0.07 * StrictMath.exp(-u / 0.006);
+            double gather = 1.0 + 0.09 * StrictMath.exp(-StrictMath.pow((u - 0.04) / 0.035, 2.0))
+                - 0.06 * StrictMath.exp(-u / 0.007);
             stations.add(new double[] {centre[0], centre[1], centre[2], 0.0372 * grow * gather,
                 0.0290 * grow * gather, u});
         }
@@ -320,10 +340,10 @@ public final class HandSculpt {
             double[] centre = {station[0], station[1], station[2]};
             for (int s = 0; s < segments; s++) {
                 double angle = (s + 0.5) * 2.0 * StrictMath.PI / segments;
-                // Creases: long folds that wind slowly round the arm, and shorter ripples across them.
-                double fold = 0.060 * StrictMath.sin(3.0 * angle + 7.0 * u + 0.6)
-                    + 0.040 * StrictMath.sin(5.0 * angle - 17.0 * u)
-                    + 0.035 * StrictMath.sin(2.0 * angle + 41.0 * u) * StrictMath.exp(-u / 0.25);
+                // Clean, low-frequency longitudinal fabric drape folds without high-frequency rippling.
+                double fold = 0.055 * StrictMath.sin(2.0 * angle + 4.5 * u + 0.5)
+                    + 0.042 * StrictMath.sin(3.0 * angle - 7.5 * u + 1.1)
+                    + 0.025 * StrictMath.sin(4.0 * angle + 9.0 * u) * StrictMath.exp(-u / 0.30);
                 for (int axis = 0; axis < 3; axis++) {
                     ring[s][axis] = centre[axis] + (ring[s][axis] - centre[axis]) * (1.0 + fold);
                 }
@@ -477,6 +497,14 @@ public final class HandSculpt {
          * @param previous the centre of the ring before it, which gives the direction to carry on in
          */
         void roundEnd(double[] last, double[] previous, double reach, int steps) {
+            roundEnd(last, previous, reach, steps, new double[] {0.0, 0.0, 0.0});
+        }
+
+        /**
+         * Rounds off the far end with an optional inward bias so palmar pads stay pressed flat against the weapon
+         * while the dorsal nail bed tapers towards the pad.
+         */
+        void roundEnd(double[] last, double[] previous, double reach, int steps, double[] pressBias) {
             double[] ahead = normalise(new double[] {last[0] - previous[0], last[1] - previous[1],
                 last[2] - previous[2]});
             int[] base = ringIndices.get(ringIndices.size() - 1);
@@ -485,17 +513,23 @@ public final class HandSculpt {
             for (int i = 0; i < base.length; i++) rim[i] = vertices.get(base[i]);
             for (int step = 1; step < steps; step++) {
                 double angle = step * StrictMath.PI / 2.0 / steps;
+                double cos = StrictMath.cos(angle);
+                double sin = StrictMath.sin(angle);
+                double biasScale = sin * sin;
                 double[][] points = new double[base.length][3];
                 for (int i = 0; i < base.length; i++) {
                     for (int axis = 0; axis < 3; axis++) {
-                        points[i][axis] = centre[axis] + (rim[i][axis] - centre[axis]) * StrictMath.cos(angle)
-                            + ahead[axis] * reach * StrictMath.sin(angle);
+                        points[i][axis] = centre[axis] + (rim[i][axis] - centre[axis]) * cos
+                            + ahead[axis] * reach * sin + pressBias[axis] * biasScale;
                     }
                 }
                 ring(points);
             }
-            closeEndAt(new double[] {centre[0] + ahead[0] * reach, centre[1] + ahead[1] * reach,
-                centre[2] + ahead[2] * reach});
+            closeEndAt(new double[] {
+                centre[0] + ahead[0] * reach + pressBias[0],
+                centre[1] + ahead[1] * reach + pressBias[1],
+                centre[2] + ahead[2] * reach + pressBias[2],
+            });
         }
 
         private double[] centreOf(int[] ring) {
