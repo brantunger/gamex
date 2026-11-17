@@ -18,6 +18,8 @@ public final class SaveData {
     private static final String KEY_RUN_DIFFICULTY = "run.difficulty";
     private static final String KEY_RUN_HAS_SCATTERGUN = "run.hasScattergun";
     private static final String KEY_RUN_SHELLS = "run.shells";
+    private static final String KEY_RUN_HAS_RAIL_LANCE = "run.hasRailLance";
+    private static final String KEY_RUN_SLUGS = "run.slugs";
     private static final String KEY_RUN_WEAPON = "run.activeWeapon";
     private static final String KEY_UNLOCKED_STAGE = "campaign.unlockedStage";
 
@@ -87,8 +89,10 @@ public final class SaveData {
         }
         boolean hasScattergun = store.getBoolean(KEY_RUN_HAS_SCATTERGUN, false);
         int shells = store.getInteger(KEY_RUN_SHELLS, 0);
+        boolean hasRailLance = store.getBoolean(KEY_RUN_HAS_RAIL_LANCE, false);
+        int slugs = store.getInteger(KEY_RUN_SLUGS, 0);
         WeaponSlot weapon = WeaponSlot.fromName(store.getString(KEY_RUN_WEAPON, WeaponSlot.PISTOL.name()));
-        return new PlayerLoadout(health, armor, diff, hasScattergun, shells, weapon);
+        return new PlayerLoadout(health, armor, diff, hasScattergun, shells, hasRailLance, slugs, weapon);
     }
 
     /** Saves an active campaign entry point so the player can resume later via Continue. */
@@ -100,6 +104,8 @@ public final class SaveData {
         store.putString(KEY_RUN_DIFFICULTY, loadout.difficulty.name());
         store.putBoolean(KEY_RUN_HAS_SCATTERGUN, loadout.hasScattergun);
         store.putInteger(KEY_RUN_SHELLS, loadout.shells);
+        store.putBoolean(KEY_RUN_HAS_RAIL_LANCE, loadout.hasRailLance);
+        store.putInteger(KEY_RUN_SLUGS, loadout.slugs);
         store.putString(KEY_RUN_WEAPON, loadout.activeWeapon.name());
         if (stageIndex > getUnlockedStageIndex()) {
             store.putInteger(KEY_UNLOCKED_STAGE, stageIndex);

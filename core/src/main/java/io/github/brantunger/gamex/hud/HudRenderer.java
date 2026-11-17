@@ -11,6 +11,7 @@ import io.github.brantunger.gamex.render.ProceduralTextures;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
+import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Enemy;
@@ -264,6 +265,50 @@ public final class HudRenderer implements Disposable {
             rect(centreX - spread, centreY - spread, thick, bracketArm);
             rect(centreX + spread - bracketArm, centreY - spread, bracketArm, thick);
             rect(centreX + spread - thick, centreY - spread, thick, bracketArm);
+        } else if (simulation.getActiveWeapon() == WeaponSlot.RAIL_LANCE) {
+            float zoom = simulation.getZoom();
+            float charge = simulation.railLance.getChargeProgress();
+            boolean ready = charge >= 0.999f;
+            float gap = MathUtils.lerp(5f, 3f, zoom) * unit;
+            float arm = MathUtils.lerp(11f, 20f, zoom) * unit;
+            batch.setColor(0.26f, 0.96f, 1.00f, 0.96f);
+            rect(centreX - thick * 0.5f, centreY - thick * 0.5f, thick, thick);
+            rect(centreX - gap - arm, centreY - thick * 0.5f, arm, thick);
+            rect(centreX + gap, centreY - thick * 0.5f, arm, thick);
+            rect(centreX - thick * 0.5f, centreY - gap - arm * 0.7f, thick, arm * 0.7f);
+            rect(centreX - thick * 0.5f, centreY + gap, thick, arm * 0.7f);
+
+            // Tactical zoom optic rangefinder brackets and horizontal tick ladder.
+            if (zoom > 0.05f) {
+                float span = MathUtils.lerp(42f, 34f, zoom) * unit;
+                float corner = 12f * unit;
+                batch.setColor(0.24f, 0.92f, 1.00f, 0.80f * zoom);
+                rect(centreX - span, centreY + span - thick, corner, thick);
+                rect(centreX - span, centreY + span - corner, thick, corner);
+                rect(centreX + span - corner, centreY + span - thick, corner, thick);
+                rect(centreX + span - thick, centreY + span - corner, thick, corner);
+                rect(centreX - span, centreY - span, corner, thick);
+                rect(centreX - span, centreY - span, thick, corner);
+                rect(centreX + span - corner, centreY - span, corner, thick);
+                rect(centreX + span - thick, centreY - span, thick, corner);
+                // Rangefinder elevation sub-ticks.
+                for (int r = 1; r <= 2; r++) {
+                    float ty = centreY - (7f * r) * unit;
+                    float tw = (9f - r * 2.5f) * unit;
+                    rect(centreX - tw, ty, tw * 2f, 1.5f * unit);
+                }
+            }
+            // Flanking vertical capacitor charge gauge on right/left of optic without overlapping [E] prompt.
+            if (!ready || zoom > 0.05f) {
+                float gaugeX = centreX + MathUtils.lerp(22f, 44f, zoom) * unit;
+                float gaugeH = 22f * unit;
+                float gaugeY = centreY - gaugeH * 0.5f;
+                batch.setColor(0.08f, 0.12f, 0.18f, 0.75f);
+                rect(gaugeX - unit, gaugeY - unit, 5f * unit, gaugeH + 2f * unit);
+                if (ready) batch.setColor(0.26f, 0.96f, 1.00f, 0.95f);
+                else batch.setColor(1.00f, 0.48f, 0.18f, 0.92f);
+                rect(gaugeX, gaugeY, 3f * unit, gaugeH * charge);
+            }
         } else {
             float gap = 6f * unit;
             float length = 8f * unit;
@@ -415,8 +460,31 @@ public final class HudRenderer implements Disposable {
             }
         }
 
+        boolean showRailRow = simulation.hasRailLance() || simulation.getSlugs() > 0;
+        if (showRailRow) {
+            boolean railSelected = selectedWeapon == WeaponSlot.RAIL_LANCE;
+            float railY = showScatterRow ? 158f * unit : 136f * unit;
+            if (!simulation.hasRailLance()) {
+                batch.setColor(0.42f, 0.72f, 0.80f, 0.72f);
+                PixelFont.draw(batch, textures.white, "  SLUGS [" + simulation.getSlugs() + "/"
+                    + RailLance.MAX_SLUGS + "]", left, railY, 2.4f * unit);
+            } else {
+                if (simulation.getSlugs() <= 0) {
+                    batch.setColor(0.95f, 0.42f, 0.36f, railSelected ? 0.96f : 0.72f);
+                } else if (railSelected) {
+                    batch.setColor(0.32f, 0.96f, 1.00f, 0.98f);
+                } else {
+                    batch.setColor(0.44f, 0.62f, 0.68f, 0.70f);
+                }
+                PixelFont.draw(batch, textures.white, (railSelected ? "> " : "  ")
+                    + "3: RAIL LANCE [" + simulation.getSlugs() + "/" + RailLance.MAX_SLUGS + "]",
+                    left, railY, 2.4f * unit);
+            }
+        }
+
+        int weaponRows = 1 + (showScatterRow ? 1 : 0) + (showRailRow ? 1 : 0);
         float keyX = left;
-        float keyY = showScatterRow ? 160f * unit : 138f * unit;
+        float keyY = (114f + weaponRows * 22f + 2f) * unit;
         float keySize = 2.4f * unit;
         if (simulation.hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
             batch.setColor(1f, 0.76f, 0.22f, 0.96f);
@@ -525,7 +593,7 @@ public final class HudRenderer implements Disposable {
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
         PixelFont.drawCentred(batch, textures.white,
-            "WASD: MOVE   SHIFT: DASH   E: USE   1/2/Q: WEAPON   LMB/RMB: FIRE/ALT", cx, 32f * unit, 2.1f * unit);
+            "WASD: MOVE   SHIFT: DASH   E: USE   1-3/Q/SCROLL: WEAPON   LMB/RMB: FIRE/ALT", cx, 32f * unit, 2.1f * unit);
     }
 
     private void drawStageSelectScreen(MenuState menuState) {

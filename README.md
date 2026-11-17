@@ -3,13 +3,14 @@
 An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.14.2 on the LWJGL3 desktop backend.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
-blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, and a horizontal energy dash. Battle four hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
+blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, a piercing **Rail Lance** with 1.8x
+tactical zoom optic, and a horizontal energy dash. Battle four hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
 **Guard Bots**, and the two-phase **Warden Mech** boss), dash over live **Shock Grates**, chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
-keycards, override Security Consoles, collect 3D health, armor, energy, weapon and shell pickups, and clear the 6-stage campaign
+keycards, override Security Consoles, collect 3D health, armor, energy, weapon, shell and slug pickups, and clear the 6-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
 Range**. Surface and effect textures as well as every weapon, combat and menu sound are synthesised in code at
-start-up, while every 3D graphical object — the pistol, the combat scattergun, the gloved hand holding them, targets, enemies, projectiles,
+start-up, while every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
 pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
@@ -41,9 +42,9 @@ While playing:
 | `W` `A` `S` `D` | Move forward, left, back, right |
 | `Shift` / `Space` | Horizontal energy dash (`25` energy) |
 | Mouse | Look around |
-| Left mouse button | Fire the active weapon (Pistol shot or 1-shell Scattergun spread) |
-| Right mouse button | Pistol: hold to charge Energy Blast, release to fire / Scattergun: 2-shell Double-Blast |
-| `1` / `2` / `Q` / Scroll | Select Pistol (`1`), Combat Scattergun (`2`), or quick-swap (`Q` / Mouse Wheel) |
+| Left mouse button | Fire the active weapon (Pistol shot, 1-shell Scattergun spread, or piercing Rail Lance beam) |
+| Right mouse button | Pistol: charge Energy Blast / Scattergun: 2-shell Double-Blast / Rail Lance: 1.8x Tactical Zoom Optic |
+| `1` / `2` / `3` / `Q` / Scroll | Select Pistol (`1`), Combat Scattergun (`2`), Rail Lance (`3`), quick-swap last weapon (`Q`), or cycle owned weapons (`Mouse Wheel`) |
 | `E` | Open unlocked bulkheads, unlock matching keycard doors, or override Security Consoles |
 | `R` | Quick-restart the current stage from your entry state |
 | `Esc` | Open the pause menu and free the cursor; `Esc` again resumes |
@@ -77,11 +78,11 @@ campaign stages with their best rank and lets you start a fresh run from any unl
 
 - **01: Outer Breach** introduces Rusher Drones and Sentry Turrets and ends at the extraction pad.
 - **02: Coolant Core** adds mobile Guard Bots across multi-lane reactor conduits.
-- **03: Security Hub** combines coordinated squads of all three archetypes before extraction.
+- **03: Security Hub** combines coordinated squads of all three archetypes and unlocks the **Rail Lance** (`R` / `r`) ahead of its long combat corridors.
 - **04: Lockdown Wing** introduces sliding bulkhead doors (`=`), Amber keycard wing gating (`k` -> `A`), and a Security Console lockdown override (`S` -> `L`) protecting extraction and ambush bays.
 - **05: Command Vault** chains Amber and Cyan keycard clearances (`k` -> `A`, `c` -> `C`) to a vault Security Console override and flanking ambush.
 - **06: Warden Core** introduces live **Shock Grate** dash trenches (`~`) and culminates in the two-phase **Warden Mech** boss (`B`) sealing the `M` extraction bulkhead before `CAMPAIGN COMPLETE`.
-- The **Training Range** includes practice targets, a Shock Grate dash trench, and the Scattergun rack, ending when every target is destroyed (always played on Normal).
+- The **Training Range** includes practice targets, a Shock Grate dash trench, and both the Scattergun and Rail Lance racks, ending when every target is destroyed (always played on Normal).
 - A cleared stage shows a tally: clear time against par, hostiles cleared on combat stages (or targets cleared in the
   Training Range), damage taken and a rank from `S` down to `C`. The best time and rank for each stage and difficulty
   are saved.
@@ -102,13 +103,17 @@ keys, or straight ahead when none is held. It costs 25 energy and the next dash 
 last one started. Pressing dash cancels a blast charge that is building, and a charge cannot build during a dash.
 With less than 25 energy the dash is refused and the HUD shows `LOW ENERGY`.
 
-**Pistol & Combat Scattergun.** Both weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch cleanly at any time with `1`, `2`, `Q` or the mouse wheel:
+**Pistol, Combat Scattergun & Rail Lance.** All three weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch cleanly at any time with `1`, `2`, `3`, `Q` (quick-swap last weapon) or the mouse wheel (cycle owned weapons):
 
 - **Pistol (`1`)**: Instant hitscan (`20` damage, `0.3s` interval, up to `60` world units away, infinite ammo). Right mouse button charges the violet **Energy Blast** orb.
 - **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach**, **06: Warden Core**, and the **Training Range** (and equipped directly when deploying to Stages `02`–`06` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Caddy (`+6`) pickups scaled by difficulty:
   - **Primary fire (LMB, `1` shell)**: `8` deterministic pellets across a `4.2°` half-angle cone (`12` base damage each, linear falloff from `7u` to `26u` max range, `0.75s` pump cycle).
   - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets across a `6.8°` cone (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
-  - Pulling the trigger at `0` shells emits a dry-fire click and swaps back to the Pistol automatically.
+  - Pulling the trigger at `0` shells emits a dry-fire click and smart-swaps to a loaded weapon or the Pistol automatically.
+- **Rail Lance (`3`)**: Unlocked in **03: Security Hub**, **06: Warden Core**, and the **Training Range** (and unlocked directly in Slot 3 when deploying to Stages `04`–`06` from Select Stage). Draws from a carried `15`-slug pool fed by Rail Lance (`+5`) and Slug Pack (`+3`) pickups scaled by difficulty:
+  - **Primary fire (LMB, `1` slug)**: Instant `60u` piercing hitscan beam (`1.10s` capacitor recharge, `0` distance falloff) that penetrates every live target and enemy in line (`120` damage; `90` vs Warden Mech boss plating), stopping only at solid walls, closed bulkheads, or Security Consoles and leaving a fading 3D beam wake.
+  - **Tactical Zoom Optic (hold RMB, `0` cost)**: Smooth `1.8x` FOV magnification with proportional look-sensitivity scaling, centered low-ADS framing, rangefinder HUD brackets, full arena move speed, and instant zoom cancel on Dash or weapon swap.
+  - Pulling the trigger at `0` slugs emits a dry-fire click and smart-swaps to your previous loaded weapon or the Pistol automatically.
 
 **Blast.** A glowing gyroscope orb fired from the pistol muzzle toward the crosshair target that explodes on the first
 wall, floor, ceiling or live target/enemy it touches and damages every unobstructed target and enemy in its radius. Solid
@@ -150,7 +155,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun` or `warden`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance` or `warden`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
@@ -211,8 +216,8 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
     (`Pickup`), world object models (`WorldModels`) and effects.
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
     the difficulty levels (`Difficulty`) and the health and armor a stage is entered with (`PlayerLoadout`).
-  - `weapon`: the pistol, the combat scattergun (`Scattergun`), weapon slot switching (`WeaponSlot`), the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
-    `EnemyProjectile`), explosion damage, the pistol & scattergun 3D models (`PistolModel`, `ScattergunModel`), the colours for the
+  - `weapon`: the pistol, the combat scattergun (`Scattergun`), the rail lance (`RailLance`), weapon slot switching (`WeaponSlot`), the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
+    `EnemyProjectile`), explosion damage, the pistol, scattergun & rail lance 3D models (`PistolModel`, `ScattergunModel`, `RailLanceModel`), the colours for the
     hand's mesh (`HandModel`) and the numbers that animate them.
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
     a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
@@ -232,9 +237,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads at start-up:
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
-  - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`: the meshes of the first-person pistol (body and slide) and combat scattergun (body and pump forend).
-  - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/pickup-*.obj`: 3D meshes for
-    targets, pickups (medkit, armor, energy cell, keycards, scattergun, shells) and blast projectiles.
+  - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`, `models/viewmodel-raillance.obj`: the meshes of the first-person pistol (body and slide), shortened double-barrel drum combat scattergun (body and lever forend), and rail lance (body and magnetic bolt).
+  - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/rail-beam.obj`, `models/pickup-*.obj`: 3D meshes for
+    targets, pickups (medkit, armor, energy cell, keycards, scattergun, shells, rail lance, slugs), blast projectiles and rail beam trails.
   - `models/door-bulkhead.obj`, `models/security-console.obj`: 3D meshes for sliding bulkhead doors and security consoles.
   - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-bolt.obj`: 3D meshes
     for articulated enemies and enemy plasma bolts.
@@ -246,7 +251,7 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
-graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
+graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
 track model changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest`) invokes `GenerateAllModels` directly
 to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex deduplication. They cover:
 
@@ -255,7 +260,7 @@ to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex 
   hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, headless sound
   events (weapon, target, enemy, pickup, charge-audio and edge-triggered `LOW ENERGY`), and a stage ending when its
   last target breaks.
-- `world`: layout parsing (including doors, keycards, consoles, pickups, enemies and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all five campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, hitscan, grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
+- `world`: layout parsing (including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
 - `player`: view angles and movement, armor absorbing damage, death, and the dash (its cost, distance, cooldown
@@ -267,8 +272,8 @@ to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex 
 - `audio`: procedural WAV header/sample verification, loop-seam continuity and 3D spatial attenuation/panning math
   (`ProceduralSoundsTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
-- `weapon`: the pistol and combat scattergun (`ScattergunTest`: deterministic 8/16 pellet cones, range falloff, 1-shell fallback, pump curve), the energy meter, the blast's charge rules, the blast projectile (including impact
-  contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol & scattergun models (`PistolModelTest`, `ScattergunModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full pump travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
+- `weapon`: the pistol, combat scattergun (`ScattergunTest`: deterministic 8/16 pellet cones, range falloff, 1-shell fallback, pump curve), and rail lance (`RailLanceTest`: cooldown, bolt cycle, smooth 1.8x zoom optic & cancel latch), the energy meter, the blast's charge rules, the blast projectile (including impact
+  contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol, scattergun & rail lance models (`PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full slide/pump/bolt travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
   normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in

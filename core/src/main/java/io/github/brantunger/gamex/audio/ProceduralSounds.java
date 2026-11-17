@@ -35,6 +35,20 @@ public final class ProceduralSounds {
                 samples = renderScattergunAltFire();
                 peakScale = 30_500.0;
                 break;
+            case RAIL_FIRE:
+                samples = renderRailFire();
+                peakScale = 30_000.0;
+                break;
+            case RAIL_ZOOM_IN:
+                samples = renderToneSteps(0.065, new double[] {0.0, 0.024}, new double[] {0.028, 0.065},
+                    new double[] {680.0, 1020.0}, 0.15);
+                peakScale = 12_000.0;
+                break;
+            case RAIL_ZOOM_OUT:
+                samples = renderToneSteps(0.055, new double[] {0.0, 0.020}, new double[] {0.024, 0.055},
+                    new double[] {920.0, 580.0}, 0.12);
+                peakScale = 11_000.0;
+                break;
             case WEAPON_SWITCH:
                 samples = renderWeaponSwitch();
                 peakScale = 16_000.0;
@@ -138,6 +152,10 @@ public final class ProceduralSounds {
             case PICKUP_SHELLS:
                 samples = renderPickupShells();
                 peakScale = 19_000.0;
+                break;
+            case PICKUP_SLUGS:
+                samples = renderPickupSlugs();
+                peakScale = 18_500.0;
                 break;
             case LOW_ENERGY:
                 samples = renderLowEnergy();
@@ -355,6 +373,52 @@ public final class ProceduralSounds {
             double ping2 = (0.65 * Math.sin(TWO_PI * 1120.0 * t) + 0.40 * Math.sin(TWO_PI * 1790.0 * t))
                 * w2 * Math.exp(-dt2 / 0.032);
             buf[i] = Math.tanh((ping1 + ping2) * 1.2);
+        }
+        return buf;
+    }
+
+    private static double[] renderRailFire() {
+        double[] buf = alloc(0.38);
+        int rng = 0x5A17B3A3;
+        double coilPhase = 0.0;
+        double subPhase = 0.0;
+        double chirpPhase = 0.0;
+        double hpPrev = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double coilFreq = 240.0 + 960.0 * Math.exp(-t / 0.055);
+            double subFreq = 36.0 + 94.0 * Math.exp(-t / 0.060);
+            double chirpFreq = 1600.0 * Math.exp(-t / 0.025) + 420.0;
+            coilPhase += TWO_PI * coilFreq / SAMPLE_RATE;
+            subPhase += TWO_PI * subFreq / SAMPLE_RATE;
+            chirpPhase += TWO_PI * chirpFreq / SAMPLE_RATE;
+
+            rng = nextRng(rng);
+            double white = rngFloat(rng);
+            double hp = white - hpPrev * 0.72;
+            hpPrev = white;
+
+            double crack = hp * Math.exp(-t / 0.018) * 0.85;
+            double coil = (0.65 * Math.sin(coilPhase + 0.8 * Math.sin(chirpPhase))
+                + 0.30 * Math.sin(coilPhase * 2.0)) * Math.exp(-t / 0.115);
+            double thump = Math.sin(subPhase) * Math.exp(-t / 0.085) * 0.80;
+            buf[i] = Math.tanh((crack + coil + thump) * 1.45);
+        }
+        return buf;
+    }
+
+    private static double[] renderPickupSlugs() {
+        double[] buf = alloc(0.17);
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double w1 = pulseWindow(t, 0.0, 0.065, 0.004);
+            double w2 = pulseWindow(t, 0.065, 0.165, 0.004);
+            double c1 = (0.65 * Math.sin(TWO_PI * 1180.0 * t) + 0.35 * Math.sin(TWO_PI * 1770.0 * t))
+                * w1 * Math.exp(-t / 0.026);
+            double dt2 = Math.max(0.0, t - 0.065);
+            double c2 = (0.65 * Math.sin(TWO_PI * 1480.0 * t) + 0.35 * Math.sin(TWO_PI * 2220.0 * t))
+                * w2 * Math.exp(-dt2 / 0.036);
+            buf[i] = Math.tanh((c1 + c2) * 1.25);
         }
         return buf;
     }

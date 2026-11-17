@@ -178,6 +178,11 @@ public final class SoundManager implements Disposable {
                 return 0.78f;
             case SCATTERGUN_ALT_FIRE:
                 return 0.88f;
+            case RAIL_FIRE:
+                return 0.86f;
+            case RAIL_ZOOM_IN:
+            case RAIL_ZOOM_OUT:
+                return 0.36f;
             case WEAPON_SWITCH:
             case WEAPON_DRY_FIRE:
                 return 0.56f;
@@ -199,6 +204,7 @@ public final class SoundManager implements Disposable {
             case PICKUP_ARMOR:
             case PICKUP_ENERGY:
             case PICKUP_SHELLS:
+            case PICKUP_SLUGS:
                 return 0.65f;
             case PICKUP_KEYCARD:
                 return 0.68f;

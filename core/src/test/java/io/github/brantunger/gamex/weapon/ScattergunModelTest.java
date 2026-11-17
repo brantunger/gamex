@@ -135,10 +135,10 @@ class ScattergunModelTest {
                     solid.name + " open/mis-wound edge " + edge.getKey());
             }
         }
-        assertTrue(names.contains("barrel"));
-        assertTrue(names.contains("mag_tube"));
+        assertTrue(names.contains("barrel_left"));
+        assertTrue(names.contains("barrel_right"));
+        assertTrue(names.contains("drum_receiver"));
         assertTrue(names.contains("pump_forend"));
-        assertTrue(names.contains("saddle_hull_0"));
 
         for (ScattergunModel.Group group : ScattergunModel.Group.values()) {
             float[] vertices = MODEL.vertices(group);

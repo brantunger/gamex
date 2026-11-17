@@ -232,4 +232,55 @@ class HitscanTest {
         assertEquals(RayHit.Kind.WALL, openHit.kind);
         assertTrue(Hitscan.hasLineOfSight(MAP, doors, 1.5f, 1.5f, 5.5f, 1.5f));
     }
+
+    @Test
+    void castPiercingPenetratesLinedUpTargetsInOrderAndStopsAtWallsClosedDoorsAndConsoles() {
+        GameMap lane = GameMap.parse(
+            "##########",
+            "#>.......#",
+            "##########");
+        Vector3 start = new Vector3(1.5f, 0.45f, 1.5f);
+        Vector3 east = new Vector3(1f, 0f, 0f);
+
+        Target tFar = new Target(Target.Kind.CANISTER, 7.5f, 1.5f);
+        Target tNear = new Target(Target.Kind.CANISTER, 3.2f, 1.5f);
+        Target tMid = new Target(Target.Kind.CANISTER, 5.1f, 1.5f);
+        Target deadTarget = new Target(Target.Kind.CANISTER, 4.1f, 1.5f);
+        deadTarget.damage(deadTarget.getHealth());
+
+        List<Damageable> objects = new ArrayList<>();
+        objects.add(tFar);
+        objects.add(deadTarget);
+        objects.add(tNear);
+        objects.add(tMid);
+
+        // All three live targets pierced front-to-back up to east wall at x = 9.0.
+        Hitscan.PiercingResult allHit = Hitscan.castPiercing(lane, objects, Collections.emptyList(),
+            start, east, 50f);
+        assertEquals(3, allHit.targetHits.size());
+        assertSame(tNear, allHit.targetHits.get(0).target);
+        assertSame(tMid, allHit.targetHits.get(1).target);
+        assertSame(tFar, allHit.targetHits.get(2).target);
+        assertEquals(RayHit.Kind.WALL, allHit.terminalHit.kind);
+        assertEquals(7.5f, allHit.stopDistance, EPSILON);
+        assertVector(9f, 0.45f, 1.5f, allHit.endPoint);
+
+        // Closed bulkhead door at col 6 stops the rail beam before reaching tFar at col 7.5.
+        Door door = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 6, 1);
+        Hitscan.PiercingResult doorBlocked = Hitscan.castPiercing(lane, objects, Collections.singletonList(door),
+            start, east, 50f);
+        assertEquals(2, doorBlocked.targetHits.size());
+        assertSame(tNear, doorBlocked.targetHits.get(0).target);
+        assertSame(tMid, doorBlocked.targetHits.get(1).target);
+        assertEquals(RayHit.Kind.DOOR, doorBlocked.terminalHit.kind);
+
+        // Indestructible SecurityConsole at col 4.2 blocks piercing hits behind it (tMid, tFar).
+        SecurityConsole console = new SecurityConsole(4.2f, 1.5f);
+        objects.add(console);
+        Hitscan.PiercingResult consoleBlocked = Hitscan.castPiercing(lane, objects, Collections.emptyList(),
+            start, east, 50f);
+        assertEquals(1, consoleBlocked.targetHits.size());
+        assertSame(tNear, consoleBlocked.targetHits.get(0).target);
+        assertSame(console, consoleBlocked.terminalHit.target);
+    }
 }

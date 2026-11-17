@@ -1,5 +1,6 @@
 package io.github.brantunger.gamex.player;
 
+import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 
@@ -19,6 +20,10 @@ public final class PlayerLoadout {
     public final boolean hasScattergun;
     /** Starting shotgun shells carried in the shell pool, within [0, {@link Scattergun#MAX_SHELLS}]. */
     public final int shells;
+    /** Whether the player starts the stage holding the Slot 3 Rail Lance. */
+    public final boolean hasRailLance;
+    /** Starting rail slugs carried in the slug pool, within [0, {@link RailLance#MAX_SLUGS}]. */
+    public final int slugs;
     /** Weapon equipped when entering the stage. */
     public final WeaponSlot activeWeapon;
 
@@ -28,7 +33,7 @@ public final class PlayerLoadout {
      * @param difficulty difficulty tier
      */
     public PlayerLoadout(float health, float armor, Difficulty difficulty) {
-        this(health, armor, difficulty, false, 0, WeaponSlot.PISTOL);
+        this(health, armor, difficulty, false, 0, false, 0, WeaponSlot.PISTOL);
     }
 
     /**
@@ -41,14 +46,34 @@ public final class PlayerLoadout {
      */
     public PlayerLoadout(float health, float armor, Difficulty difficulty,
                          boolean hasScattergun, int shells, WeaponSlot activeWeapon) {
+        this(health, armor, difficulty, hasScattergun, shells, false, 0, activeWeapon);
+    }
+
+    /**
+     * @param health starting health
+     * @param armor starting armor
+     * @param difficulty difficulty tier
+     * @param hasScattergun whether the Scattergun has been acquired
+     * @param shells carried shotgun shells
+     * @param hasRailLance whether the Rail Lance has been acquired
+     * @param slugs carried rail slugs
+     * @param activeWeapon currently equipped weapon slot
+     */
+    public PlayerLoadout(float health, float armor, Difficulty difficulty,
+                         boolean hasScattergun, int shells, boolean hasRailLance, int slugs,
+                         WeaponSlot activeWeapon) {
         this.health = Math.max(1f, Math.min(Player.MAX_HEALTH, health));
         this.armor = Math.max(0f, Math.min(Player.MAX_ARMOR, armor));
         this.difficulty = difficulty == null ? Difficulty.NORMAL : difficulty;
         this.hasScattergun = hasScattergun;
         this.shells = Math.max(0, Math.min(Scattergun.MAX_SHELLS, shells));
+        this.hasRailLance = hasRailLance;
+        this.slugs = Math.max(0, Math.min(RailLance.MAX_SLUGS, slugs));
         WeaponSlot slot = activeWeapon == null ? WeaponSlot.PISTOL : activeWeapon;
         if (slot == WeaponSlot.SCATTERGUN && (!this.hasScattergun || this.shells <= 0)) {
-            slot = WeaponSlot.PISTOL;
+            slot = (this.hasRailLance && this.slugs > 0) ? WeaponSlot.RAIL_LANCE : WeaponSlot.PISTOL;
+        } else if (slot == WeaponSlot.RAIL_LANCE && (!this.hasRailLance || this.slugs <= 0)) {
+            slot = (this.hasScattergun && this.shells > 0) ? WeaponSlot.SCATTERGUN : WeaponSlot.PISTOL;
         }
         this.activeWeapon = slot;
     }
@@ -63,13 +88,13 @@ public final class PlayerLoadout {
      * @return a fresh baseline loadout (100 health, 0 armor, pistol only) for the start of a new run
      */
     public static PlayerLoadout fresh(Difficulty difficulty) {
-        return new PlayerLoadout(Player.MAX_HEALTH, 0f, difficulty, false, 0, WeaponSlot.PISTOL);
+        return new PlayerLoadout(Player.MAX_HEALTH, 0f, difficulty, false, 0, false, 0, WeaponSlot.PISTOL);
     }
 
     /**
      * Builds the default entry loadout when selecting a campaign stage directly from {@code SELECT STAGE}. Stage 01
-     * begins with the Pistol only (unlocking the Scattergun on the stage); Stages 02+ start with the Scattergun and
-     * difficulty-scaled starter shells.
+     * begins with the Pistol only; Stages 02-03 start with the Scattergun; Stages 04+ unlock both the Scattergun and
+     * the Rail Lance (with the Scattergun equipped in hand by default).
      * @param stageIndex zero-based campaign stage index
      * @param difficulty difficulty tier
      * @return starter loadout for direct deployment to {@code stageIndex}
@@ -79,7 +104,14 @@ public final class PlayerLoadout {
         if (stageIndex <= 0) return fresh(safe);
         int starterShells = Math.min(Scattergun.MAX_SHELLS,
             Math.max(1, Math.round(Scattergun.PICKUP_WEAPON_SHELLS * safe.pickupScale)));
-        return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells, WeaponSlot.SCATTERGUN);
+        if (stageIndex < 3) {
+            return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells,
+                false, 0, WeaponSlot.SCATTERGUN);
+        }
+        int starterSlugs = Math.min(RailLance.MAX_SLUGS,
+            Math.max(1, Math.round(RailLance.PICKUP_WEAPON_SLUGS * safe.pickupScale)));
+        return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells,
+            true, starterSlugs, WeaponSlot.SCATTERGUN);
     }
 
     /**
@@ -89,11 +121,11 @@ public final class PlayerLoadout {
      * @return the snapshot for the next level
      */
     public static PlayerLoadout fromPlayer(Player player, Difficulty difficulty) {
-        return fromPlayer(player, difficulty, false, 0, WeaponSlot.PISTOL);
+        return fromPlayer(player, difficulty, false, 0, false, 0, WeaponSlot.PISTOL);
     }
 
     /**
-     * Captures the surviving player's full arsenal and vitals at the end of a cleared level for carry-over.
+     * Captures the surviving player's arsenal and vitals at the end of a cleared level for carry-over.
      * @param player the surviving player
      * @param difficulty the active difficulty
      * @param hasScattergun whether the player unlocked the Scattergun
@@ -103,7 +135,24 @@ public final class PlayerLoadout {
      */
     public static PlayerLoadout fromPlayer(Player player, Difficulty difficulty,
                                            boolean hasScattergun, int shells, WeaponSlot activeWeapon) {
+        return fromPlayer(player, difficulty, hasScattergun, shells, false, 0, activeWeapon);
+    }
+
+    /**
+     * Captures the surviving player's full 3-weapon arsenal and vitals at the end of a cleared level for carry-over.
+     * @param player the surviving player
+     * @param difficulty the active difficulty
+     * @param hasScattergun whether the player unlocked the Scattergun
+     * @param shells remaining shotgun shells
+     * @param hasRailLance whether the player unlocked the Rail Lance
+     * @param slugs remaining rail slugs
+     * @param activeWeapon active weapon slot at stage clear
+     * @return the snapshot for the next level
+     */
+    public static PlayerLoadout fromPlayer(Player player, Difficulty difficulty,
+                                           boolean hasScattergun, int shells,
+                                           boolean hasRailLance, int slugs, WeaponSlot activeWeapon) {
         return new PlayerLoadout(player.getHealth(), player.getArmor(), difficulty,
-            hasScattergun, shells, activeWeapon);
+            hasScattergun, shells, hasRailLance, slugs, activeWeapon);
     }
 }

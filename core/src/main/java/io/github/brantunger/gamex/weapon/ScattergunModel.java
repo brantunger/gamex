@@ -8,9 +8,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * The first-person combat scattergun, loaded from a Wavefront OBJ file and packed as plain float arrays without
- * graphics types. Shares {@link PistolModel}'s rear grip envelope so {@link HandModel} fits cleanly without clipping,
- * while splitting the sliding forend pump into {@link Group#PUMP}.
+ * The first-person shortened double-barrel drum combat scattergun, loaded from a Wavefront OBJ file and packed as plain
+ * float arrays without graphics types. Shares {@link PistolModel}'s rear grip envelope so {@link HandModel} fits cleanly
+ * without clipping, while splitting the compact walnut forend &amp; lever-action loop into {@link Group#PUMP}.
  */
 public final class ScattergunModel {
 
@@ -20,16 +20,18 @@ public final class ScattergunModel {
     public static final int VERTEX_SIZE = ModelVertices.VERTEX_SIZE;
     /** Muzzle socket coordinates in gun space. */
     public static final float MUZZLE_X = 0f;
-    public static final float MUZZLE_Y = 0.020f;
-    public static final float MUZZLE_Z = -0.277f;
-    /** Distance the ribbed pump forend travels back along +Z when racking a shell, in view units. */
-    public static final float PUMP_TRAVEL = 0.052f;
+    /** Muzzle socket Y coordinate centered on the twin barrels. */
+    public static final float MUZZLE_Y = 0.019f;
+    /** Muzzle socket Z coordinate for the shortened sawed-off twin barrels. */
+    public static final float MUZZLE_Z = -0.196f;
+    /** Distance the compact forend &amp; lever loop travel back along +Z when cocking a shell, in view units. */
+    public static final float PUMP_TRAVEL = 0.036f;
 
     /** Logical articulated groups of the scattergun viewmodel. */
     public enum Group {
-        /** Receiver, barrel, tube, side-saddle shells and rear grip. */
+        /** Transverse drum receiver, twin sawed-off barrels and rear wood grip. */
         BODY,
-        /** Ribbed forend pump that slides back along +Z between shots. */
+        /** Compact walnut forend &amp; lever loop that cycle back along +Z between shots. */
         PUMP
     }
 
@@ -47,7 +49,9 @@ public final class ScattergunModel {
         POLYMER_DARK("polymer_dark", 0.14f, 0.15f, 0.18f, 0.10f),
         STIPPLE("stipple", 0.30f, 0.32f, 0.36f, 0.10f),
         SHELL_RED("shell_red", 0.84f, 0.16f, 0.20f, 0.45f),
-        HEATSHIELD("heatshield", 0.16f, 0.18f, 0.22f, 0.60f);
+        HEATSHIELD("heatshield", 0.16f, 0.18f, 0.22f, 0.60f),
+        WOOD("wood", 0.46f, 0.27f, 0.14f, 0.22f),
+        WOOD_DARK("wood_dark", 0.31f, 0.17f, 0.09f, 0.15f);
 
         /** Name referenced by {@code usemtl} lines in the OBJ file. */
         public final String name;

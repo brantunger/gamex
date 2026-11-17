@@ -26,6 +26,12 @@ public final class WorldModels {
     public static final String SCATTERGUN_PICKUP_PATH = "models/pickup-scattergun.obj";
     /** The path of the shotgun shell box pickup model file inside the assets folder. */
     public static final String SHELLS_PICKUP_PATH = "models/pickup-shells.obj";
+    /** The path of the Slot 3 Rail Lance pickup model file inside the assets folder. */
+    public static final String RAIL_LANCE_PICKUP_PATH = "models/pickup-raillance.obj";
+    /** The path of the Rail Lance slug pack pickup model file inside the assets folder. */
+    public static final String RAIL_SLUGS_PICKUP_PATH = "models/pickup-slugs.obj";
+    /** The path of the 3D rail beam trail prism model file inside the assets folder. */
+    public static final String RAIL_BEAM_PATH = "models/rail-beam.obj";
     /** The path of the sentry turret enemy model file inside the assets folder. */
     public static final String TURRET_PATH = "models/enemy-turret.obj";
     /** The path of the rusher drone enemy model file inside the assets folder. */
@@ -96,6 +102,8 @@ public final class WorldModels {
     public static final float[] ACCENT_WARDEN_PHASE1 = {1.00f, 0.30f, 0.14f, 0.96f};
     public static final float[] ACCENT_WARDEN_OVERDRIVE = {0.42f, 0.54f, 1.00f, 0.98f};
     public static final float[] ACCENT_HAZARD_LIVE = {0.18f, 0.86f, 1.00f, 0.95f};
+    public static final float[] ACCENT_RAIL_READY = {0.18f, 0.94f, 1.00f, 0.98f};
+    public static final float[] ACCENT_RAIL_BEAM = {0.36f, 0.96f, 1.00f, 1.00f};
 
     /** The materials the world object model files may use. */
     public enum Material {
@@ -142,6 +150,7 @@ public final class WorldModels {
         SHOTGUN_METAL("shotgun_metal", 0.25f, 0.28f, 0.33f, 0.70f),
         SHOTGUN_DARK("shotgun_dark", 0.11f, 0.13f, 0.16f, 0.45f),
         SHOTGUN_POLYMER("shotgun_polymer", 0.26f, 0.28f, 0.32f, 0.18f),
+        SHOTGUN_WOOD("shotgun_wood", 0.46f, 0.27f, 0.14f, 0.22f),
         SHELL_CRIMSON("shell_crimson", 0.88f, 0.17f, 0.20f, 0.45f),
         SHELL_BRASS("shell_brass", 0.96f, 0.72f, 0.22f, 0.80f),
         SHELL_CRATE("shell_crate", 0.20f, 0.26f, 0.22f, 0.30f),
@@ -151,7 +160,13 @@ public final class WorldModels {
         WARDEN_CORE("warden_core", 1.00f, 0.30f, 0.14f, 0.96f),
         HAZARD_FRAME("hazard_frame", 0.22f, 0.25f, 0.30f, 0.65f),
         HAZARD_DARK("hazard_dark", 0.08f, 0.10f, 0.12f, 0.30f),
-        HAZARD_COIL("hazard_coil", 0.18f, 0.86f, 1.00f, 0.95f);
+        HAZARD_COIL("hazard_coil", 0.18f, 0.86f, 1.00f, 0.95f),
+        RAIL_METAL("rail_metal", 0.24f, 0.28f, 0.35f, 0.72f),
+        RAIL_DARK("rail_dark", 0.10f, 0.12f, 0.16f, 0.45f),
+        RAIL_COPPER("rail_copper", 0.88f, 0.54f, 0.22f, 0.80f),
+        RAIL_CORE("rail_core", 0.18f, 0.94f, 1.00f, 0.98f),
+        RAIL_BEAM("rail_beam", 0.36f, 0.96f, 1.00f, 1.00f),
+        RAIL_BEAM_CORE("rail_beam_core", 0.88f, 0.98f, 1.00f, 1.00f);
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;
