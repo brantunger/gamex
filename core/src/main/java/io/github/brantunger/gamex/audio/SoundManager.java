@@ -1,0 +1,251 @@
+package io.github.brantunger.gamex.audio;
+
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.files.FileHandle;
+import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Disposable;
+import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.hud.MenuState;
+import io.github.brantunger.gamex.settings.GameSettings;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Loads synthesized {@link Sound} buffers in memory and drives 3D spatialized combat audio, centered player/menu audio,
+ * and the pitched blast-charge loop. Degrades cleanly to silent mode when muted or when no audio device exists.
+ */
+public final class SoundManager implements Disposable {
+
+    private final boolean muted;
+    private final Map<SoundEvent.Type, Sound> sounds = new EnumMap<>(SoundEvent.Type.class);
+    private final List<SoundEvent> frameEvents = new ArrayList<>();
+    private final Vector3 listenerEye = new Vector3();
+    private final Sound chargeHum;
+    private boolean available;
+    private long chargeLoopId = -1L;
+
+    /**
+     * @param muted when true (e.g. {@code GAMEX_SCREENSHOT} runs), skips audio creation and suppresses playback
+     */
+    public SoundManager(boolean muted) {
+        this.muted = muted;
+        Sound loadedCharge = null;
+        if (!muted && Gdx.audio != null) {
+            try {
+                for (SoundEvent.Type type : SoundEvent.Type.values()) {
+                    String name = "synth_" + type.name().toLowerCase(Locale.ROOT) + ".wav";
+                    sounds.put(type, Gdx.audio.newSound(new MemoryWavFileHandle(name, ProceduralSounds.synthesize(type))));
+                }
+                loadedCharge = Gdx.audio.newSound(
+                    new MemoryWavFileHandle("synth_charge_hum.wav", ProceduralSounds.synthesizeChargeHum()));
+                available = true;
+            } catch (RuntimeException e) {
+                System.err.println("Audio initialization failed; continuing muted: " + e.getMessage());
+                disposeHandles(loadedCharge);
+                loadedCharge = null;
+                available = false;
+            }
+        }
+        this.chargeHum = loadedCharge;
+    }
+
+    /**
+     * Drains pending menu and simulation sound events, triggers spatial or centered one-shots scaled by master volume,
+     * and updates or stops the blast-charge loop.
+     */
+    public void update(GameSimulation simulation, MenuState menuState, GameSettings settings) {
+        frameEvents.clear();
+        if (menuState != null) menuState.drainSoundEvents(frameEvents);
+        if (simulation != null) simulation.drainSoundEvents(frameEvents);
+
+        float master = settings == null ? GameSettings.DEFAULT_MASTER_VOLUME : settings.getMasterVolume();
+        if (muted || !available) {
+            stopLoops();
+            return;
+        }
+
+        boolean canPlay = master > 0.001f;
+        if (canPlay && !frameEvents.isEmpty()) {
+            float eyeX = 0f;
+            float eyeY = 0f;
+            float eyeZ = 0f;
+            float yawDeg = 0f;
+            if (simulation != null) {
+                simulation.player.eye(listenerEye);
+                eyeX = listenerEye.x;
+                eyeY = listenerEye.y;
+                eyeZ = listenerEye.z;
+                yawDeg = simulation.player.getYaw();
+            }
+            for (int i = 0; i < frameEvents.size(); i++) {
+                playEvent(frameEvents.get(i), master, eyeX, eyeY, eyeZ, yawDeg, simulation != null);
+            }
+        }
+
+        boolean shouldLoop = canPlay && menuState != null && menuState.isPlaying()
+            && simulation != null && simulation.isBlastChargingAudioActive();
+        if (!shouldLoop) {
+            stopLoops();
+            return;
+        }
+
+        float progress = simulation.getBlastChargeProgress();
+        float loopVol = clamp((0.30f + 0.35f * progress) * master, 0f, 1f);
+        float loopPitch = 0.78f + 0.82f * progress;
+        if (chargeLoopId == -1L) {
+            chargeLoopId = chargeHum.loop(loopVol, loopPitch, 0f);
+        } else {
+            chargeHum.setVolume(chargeLoopId, loopVol);
+            chargeHum.setPitch(chargeLoopId, loopPitch);
+        }
+    }
+
+    /** Immediately stops any continuous looping sound (e.g. when pausing or muting). */
+    public void stopLoops() {
+        if (chargeHum != null) {
+            if (chargeLoopId != -1L) chargeHum.stop(chargeLoopId);
+            chargeHum.stop();
+        }
+        chargeLoopId = -1L;
+    }
+
+    @Override
+    public void dispose() {
+        stopLoops();
+        available = false;
+        disposeHandles(chargeHum);
+    }
+
+    /**
+     * Computes distance attenuation {@code [0]} and stereo pan {@code [1]} for a 3D world event relative to listener
+     * eye position and yaw (0 faces negative z, 90 faces positive x).
+     */
+    static float[] computeSpatial(float eyeX, float eyeY, float eyeZ, float yawDeg,
+                                  float worldX, float worldY, float worldZ) {
+        float dx = worldX - eyeX;
+        float dy = worldY - eyeY;
+        float dz = worldZ - eyeZ;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        float horiz = (float) Math.hypot(dx, dz);
+        double yawRad = Math.toRadians(yawDeg);
+        float rightX = (float) Math.cos(yawRad);
+        float rightZ = (float) Math.sin(yawRad);
+        float pan = horiz < 0.05f ? 0f : clamp((dx * rightX + dz * rightZ) / horiz * 0.85f, -0.85f, 0.85f);
+        float over = Math.max(0f, dist - 1.5f);
+        float attenuation = clamp((1f / (1f + 0.16f * over)) * (1f - over / 26.5f), 0f, 1f);
+        return new float[] {attenuation, pan};
+    }
+
+    private void playEvent(SoundEvent event, float master, float eyeX, float eyeY, float eyeZ, float yawDeg,
+                           boolean hasListener) {
+        Sound sound = sounds.get(event.type);
+        if (sound == null) return;
+        float attenuation = 1f;
+        float pan = 0f;
+        if (event.spatial && hasListener) {
+            float[] spatial = computeSpatial(eyeX, eyeY, eyeZ, yawDeg, event.x, event.y, event.z);
+            attenuation = spatial[0];
+            pan = spatial[1];
+        }
+        float volume = clamp(baseGain(event.type) * master * event.intensity * attenuation, 0f, 1f);
+        if (volume < 0.005f) return;
+        sound.play(volume, pitchFor(event), pan);
+    }
+
+    private static float baseGain(SoundEvent.Type type) {
+        switch (type) {
+            case MENU_MOVE:
+                return 0.35f;
+            case MENU_CONFIRM:
+                return 0.50f;
+            case MENU_BACK:
+                return 0.48f;
+            case WALL_IMPACT:
+                return 0.42f;
+            case TARGET_HIT:
+            case ENEMY_HIT:
+                return 0.62f;
+            case PISTOL_SHOT:
+                return 0.68f;
+            case BLAST_RELEASE:
+            case ENEMY_SHOOT:
+            case DRONE_LUNGE:
+            case PLAYER_DASH:
+                return 0.72f;
+            case PICKUP_HEALTH:
+            case PICKUP_ARMOR:
+            case PICKUP_ENERGY:
+                return 0.65f;
+            case LOW_ENERGY:
+                return 0.58f;
+            case TARGET_DESTROYED:
+            case ENEMY_DESTROYED:
+            case PLAYER_HURT:
+            case PLAYER_DEATH:
+                return 0.80f;
+            case EXPLOSION:
+                return 0.90f;
+            default:
+                return 0.70f;
+        }
+    }
+
+    private static float pitchFor(SoundEvent event) {
+        if (event.type == SoundEvent.Type.BLAST_RELEASE) {
+            return 1.12f - 0.24f * clamp(event.intensity, 0.70f, 1.0f);
+        }
+        if (event.type == SoundEvent.Type.EXPLOSION) {
+            return 1.08f - 0.22f * clamp(event.intensity, 0.75f, 1.1f);
+        }
+        return 1.0f;
+    }
+
+    private void disposeHandles(Sound loopHandle) {
+        for (Sound sound : sounds.values()) {
+            if (sound != null) sound.dispose();
+        }
+        sounds.clear();
+        if (loopHandle != null) loopHandle.dispose();
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    /** In-memory {@link FileHandle} exposing synthesized WAV bytes without disk writes. */
+    private static final class MemoryWavFileHandle extends FileHandle {
+        private final byte[] bytes;
+
+        MemoryWavFileHandle(String name, byte[] bytes) {
+            super(name);
+            this.bytes = bytes;
+        }
+
+        @Override
+        public InputStream read() {
+            return new ByteArrayInputStream(bytes);
+        }
+
+        @Override
+        public byte[] readBytes() {
+            return bytes.clone();
+        }
+
+        @Override
+        public long length() {
+            return bytes.length;
+        }
+
+        @Override
+        public boolean exists() {
+            return true;
+        }
+    }
+}

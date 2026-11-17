@@ -7,8 +7,9 @@ blast, and a horizontal energy dash. Battle three hostile robotic archetypes (**
 and **Guard Bots**), chain explosive coolant canisters, collect 3D health, armor and energy pickups, and clear the
 3-stage campaign (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**) across Easy, Normal or Hard
 difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training Range**. Surface and
-effect textures are painted in code at start-up, while every 3D graphical object — the pistol, the gloved hand holding
-it, targets, enemies, projectiles and pickups — is loaded from a Wavefront `.obj` model in `assets/models/`.
+effect textures as well as every weapon, combat and menu sound are synthesised in code at start-up, while every 3D
+graphical object — the pistol, the gloved hand holding it, targets, enemies, projectiles and pickups — is loaded from a
+Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
 
@@ -73,8 +74,8 @@ campaign stages with their best rank and lets you start a fresh run from any unl
 - A cleared stage shows a tally: clear time against par, hostiles cleared on combat stages (or targets cleared in the
   Training Range), damage taken and a rank from `S` down to `C`. The best time and rank for each stage and difficulty
   are saved.
-- The settings are mouse sensitivity, inverted look, field of view, view bob and fullscreen. They are saved between
-  runs.
+- The settings are mouse sensitivity, inverted look, field of view, view bob, master volume and fullscreen. They are
+  saved between runs.
 
 **Health and armor.** You start a campaign with 100 health and no armor; both hold at most 100. While armor is
 left it absorbs half of each hit and the rest comes off health. Enemy attacks, close-range blasts and detonating
@@ -159,9 +160,9 @@ pitch of 90 shows them from above, and the pitch is 0 if left out. A value that 
 and the normal picture is saved.
 
 `GAMEX_SCREENSHOT_FRAME`, `GAMEX_DEMO` and `GAMEX_VIEWMODEL_ORBIT` do nothing unless `GAMEX_SCREENSHOT` is set.
-During such a run the keyboard and mouse are ignored, the cursor stays free, and every frame advances the game by
-1/60 of a second, so the saved frame is the same on every run. Saved settings and campaign progress are neither
-read nor written: the run uses the default settings and Normal difficulty.
+During such a run the keyboard and mouse are ignored, the cursor stays free, sound output is muted, and every frame
+advances the game by 1/60 of a second, so the saved frame is the same on every run. Saved settings and campaign
+progress are neither read nor written: the run uses the default settings and Normal difficulty.
 
 Use an absolute path. The `desktop:run` task runs in the `assets` folder, so a relative path would write the PNG
 there.
@@ -191,7 +192,10 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 
 - `core`: the game, shared by all platforms, under `io.github.brantunger.gamex`.
   - `MainGame`: the libGDX entry point; it reads input, advances the simulation and draws each frame.
-  - `GameSimulation`: the whole game state and its rules. It uses no graphics types, so it runs without a window.
+  - `GameSimulation`: the whole game state and its rules. It uses neither graphics nor audio types, so it runs without
+    a window.
+  - `audio`: procedural 16-bit mono WAV synthesis (`ProceduralSounds`), headless sound-event cues (`SoundEvent`) and
+    3D distance/pan OpenAL playback (`SoundManager`).
   - `world`: the level grid, its layouts and the stage definitions (`Levels`), collision with walls, targets and enemies,
     hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
     (`Pickup`), world object models (`WorldModels`) and effects.
@@ -237,8 +241,9 @@ generator changes. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
   a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
-  hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, and a stage ending
-  when its last target breaks.
+  hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, headless sound
+  events (weapon, target, enemy, pickup, charge-audio and edge-triggered `LOW ENERGY`), and a stage ending when its
+  last target breaks.
 - `world`: layout parsing (including pickups, enemies and exit), the first level (the spawn is clear of walls and every
   target can be reached), the Training Range and all three campaign stages (every target, enemy, pickup and exit can be
   reached), collision, hitscan, grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
@@ -246,10 +251,12 @@ generator changes. They cover:
   the floor and fit their pickup radius).
 - `player`: view angles and movement, armor absorbing damage, death, and the dash (its cost, distance, cooldown
   and refusal on low energy).
-- `hud`: the campaign's path through the menu screens and stage select (`MenuStateTest`), and the pixel font's glyphs
-  (`PixelFontTest`).
-- `settings`: the settings' ranges and their round trip through a store, and the saved run, best times and ranks
-  (`GameSettingsAndSaveTest`).
+- `hud`: the campaign's path through the menu screens, stage select and menu audio events (`MenuStateTest`), and the
+  pixel font's glyphs (`PixelFontTest`).
+- `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, and the saved run,
+  best times and ranks (`GameSettingsAndSaveTest`).
+- `audio`: procedural WAV header/sample verification, loop-seam continuity and 3D spatial attenuation/panning math
+  (`ProceduralSoundsTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
 - `weapon`: the pistol's fire rate, the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol model (every solid is
@@ -260,8 +267,9 @@ generator changes. They cover:
   `assets/models/` (`GeneratedModelsTest`), and model-file error reporting (`ModelVertices.read`).
 - `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and the packaging icons.
 
-Rendering, the drawing of the HUD (`HudRenderer`), the rest of input handling (`InputController`) and the debug
-screenshot mode have no tests, apart from the parsing of `GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`).
+Rendering, the drawing of the HUD (`HudRenderer`), OpenAL audio hardware playback (`SoundManager` runtime), the rest
+of input handling (`InputController`) and the debug screenshot mode have no tests, apart from the parsing of
+`GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`) and spatial attenuation/panning math (`ProceduralSoundsTest`).
 
 A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux and Windows on
 every pull request and push to `main`.

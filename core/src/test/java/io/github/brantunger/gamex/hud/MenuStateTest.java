@@ -5,12 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 class MenuStateTest {
 
@@ -112,5 +115,36 @@ class MenuStateTest {
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertEquals(100f, menu.getActiveLoadout().health, 1e-4f);
+    }
+
+    @Test
+    void settingsIncludesMasterVolumeAndMenuEmitsMoveConfirmAndBackSounds() {
+        GameSettings settings = new GameSettings();
+        SaveData save = new SaveData(new MapKeyValueStore());
+        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        assertTrue(menu.drainSoundEvents().isEmpty(), "construction emits no sound");
+
+        // Move to SETTINGS (index 3 without Continue).
+        menu.moveSelection(3);
+        assertEquals(MenuState.Command.NONE, menu.confirm());
+        assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
+        assertEquals("MASTER VOLUME: < 80% >", menu.getOptions().get(4));
+
+        menu.setSelectedIndex(4);
+        menu.adjustHorizontal(-2);
+        assertEquals(0.60f, settings.getMasterVolume(), 1e-4f);
+        assertEquals("MASTER VOLUME: < 60% >", menu.getOptions().get(4));
+        menu.escape();
+        assertEquals(MenuState.Screen.TITLE, menu.getScreen());
+
+        List<SoundEvent> events = menu.drainSoundEvents();
+        assertEquals(5, events.size());
+        assertEquals(SoundEvent.Type.MENU_MOVE, events.get(0).type);
+        assertEquals(SoundEvent.Type.MENU_CONFIRM, events.get(1).type);
+        assertEquals(SoundEvent.Type.MENU_MOVE, events.get(2).type);
+        assertEquals(SoundEvent.Type.MENU_CONFIRM, events.get(3).type);
+        assertEquals(SoundEvent.Type.MENU_BACK, events.get(4).type);
+        assertTrue(events.stream().noneMatch(e -> e.spatial));
+        assertTrue(menu.drainSoundEvents().isEmpty());
     }
 }

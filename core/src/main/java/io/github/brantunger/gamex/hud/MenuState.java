@@ -1,5 +1,6 @@
 package io.github.brantunger.gamex.hud;
 
+import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerLoadout;
@@ -42,10 +43,13 @@ public final class MenuState {
         QUIT
     }
 
+    private static final int MAX_QUEUED_SOUNDS = 64;
+
     private final List<Levels.Stage> campaign = Levels.campaign();
     private final Levels.Stage trainingRange = Levels.trainingRange();
     private final GameSettings settings;
     private final SaveData saveData;
+    private final List<SoundEvent> soundEvents = new ArrayList<>();
 
     private Screen screen;
     private Screen settingsReturnScreen = Screen.TITLE;
@@ -100,6 +104,20 @@ public final class MenuState {
         return lastSummary;
     }
 
+    /** Appends pending UI sound events to {@code out} and clears the internal queue. */
+    public void drainSoundEvents(List<SoundEvent> out) {
+        if (soundEvents.isEmpty()) return;
+        if (out != null) out.addAll(soundEvents);
+        soundEvents.clear();
+    }
+
+    /** @return a copy of pending UI sound events, clearing the internal queue. */
+    public List<SoundEvent> drainSoundEvents() {
+        List<SoundEvent> copy = new ArrayList<>(soundEvents);
+        soundEvents.clear();
+        return copy;
+    }
+
     /** @return visible menu option labels for the current screen. */
     public List<String> getOptions() {
         List<String> items = new ArrayList<>();
@@ -149,6 +167,7 @@ public final class MenuState {
                 items.add("INVERT LOOK Y: < " + (settings.isInvertY() ? "ON" : "OFF") + " >");
                 items.add("FIELD OF VIEW: < " + Math.round(settings.getFov()) + " >");
                 items.add("VIEW BOB: < " + (settings.isViewBob() ? "ON" : "OFF") + " >");
+                items.add("MASTER VOLUME: < " + Math.round(settings.getMasterVolume() * 100f) + "% >");
                 items.add("FULLSCREEN: < " + (settings.isFullscreen() ? "ON" : "OFF") + " >");
                 items.add("BACK");
                 break;
@@ -173,16 +192,21 @@ public final class MenuState {
     /** Moves the highlighted row up or down, wrapping cleanly. */
     public void moveSelection(int delta) {
         List<String> options = getOptions();
-        if (options.isEmpty()) return;
+        if (options.isEmpty() || delta == 0) return;
         int n = options.size();
-        selectedIndex = ((selectedIndex + delta) % n + n) % n;
+        int next = ((selectedIndex + delta) % n + n) % n;
+        if (next != selectedIndex) {
+            selectedIndex = next;
+            emitUiSound(SoundEvent.Type.MENU_MOVE);
+        }
     }
 
     /** Sets the highlighted row directly (used for mouse hover). */
     public void setSelectedIndex(int index) {
         List<String> options = getOptions();
-        if (index >= 0 && index < options.size()) {
+        if (index >= 0 && index < options.size() && index != selectedIndex) {
             selectedIndex = index;
+            emitUiSound(SoundEvent.Type.MENU_MOVE);
         }
     }
 
@@ -192,18 +216,27 @@ public final class MenuState {
         switch (selectedIndex) {
             case 0:
                 settings.adjustSensitivity(direction);
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             case 1:
                 settings.setInvertY(!settings.isInvertY());
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             case 2:
                 settings.adjustFov(direction);
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             case 3:
                 settings.setViewBob(!settings.isViewBob());
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             case 4:
+                settings.adjustMasterVolume(direction);
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
+                return Command.NONE;
+            case 5:
                 settings.setFullscreen(!settings.isFullscreen());
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.APPLY_DISPLAY;
             default:
                 return Command.NONE;
@@ -224,6 +257,7 @@ public final class MenuState {
                     activeStage = campaign.get(stageIndex);
                     activeLoadout = saveData.getSavedLoadout();
                     setScreen(Screen.PLAYING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
                 if (choice.startsWith("START CAMPAIGN")) {
@@ -231,10 +265,12 @@ public final class MenuState {
                     difficultyReturnScreen = Screen.TITLE;
                     setScreen(Screen.DIFFICULTY_SELECT);
                     selectedIndex = 1; // Default to NORMAL.
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("SELECT STAGE")) {
                     setScreen(Screen.STAGE_SELECT);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("TRAINING RANGE")) {
@@ -244,11 +280,13 @@ public final class MenuState {
                     activeStage = trainingRange;
                     activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
                     setScreen(Screen.BRIEFING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("SETTINGS")) {
                     settingsReturnScreen = Screen.TITLE;
                     setScreen(Screen.SETTINGS);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("QUIT")) return Command.QUIT;
@@ -257,6 +295,7 @@ public final class MenuState {
             case STAGE_SELECT:
                 if (choice.equals("BACK")) {
                     setScreen(Screen.TITLE);
+                    emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
                 if (selectedIndex < campaign.size() && selectedIndex <= saveData.getUnlockedStageIndex()) {
@@ -264,12 +303,16 @@ public final class MenuState {
                     difficultyReturnScreen = Screen.STAGE_SELECT;
                     setScreen(Screen.DIFFICULTY_SELECT);
                     selectedIndex = 1; // Default to NORMAL.
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
+                } else {
+                    emitUiSound(SoundEvent.Type.MENU_BACK);
                 }
                 return Command.NONE;
 
             case DIFFICULTY_SELECT:
                 if (choice.startsWith("BACK")) {
                     setScreen(difficultyReturnScreen);
+                    emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
                 Difficulty diff = choice.startsWith("EASY") ? Difficulty.EASY
@@ -281,32 +324,39 @@ public final class MenuState {
                 activeLoadout = PlayerLoadout.fresh(diff);
                 saveData.saveCampaignRun(stageIndex, activeLoadout);
                 setScreen(Screen.BRIEFING);
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
 
             case BRIEFING:
                 if (choice.startsWith("DEPLOY")) {
                     setScreen(Screen.PLAYING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
                 setScreen(Screen.TITLE);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
 
             case PAUSED:
                 if (choice.startsWith("RESUME")) {
                     setScreen(Screen.PLAYING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("RESTART")) {
                     setScreen(Screen.PLAYING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
                 if (choice.startsWith("SETTINGS")) {
                     settingsReturnScreen = Screen.PAUSED;
                     setScreen(Screen.SETTINGS);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("RETURN TO TITLE")) {
                     setScreen(Screen.TITLE);
+                    emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
                 if (choice.startsWith("QUIT")) return Command.QUIT;
@@ -315,6 +365,7 @@ public final class MenuState {
             case SETTINGS:
                 if (choice.startsWith("BACK")) {
                     setScreen(settingsReturnScreen);
+                    emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
                 return adjustHorizontal(1);
@@ -322,9 +373,11 @@ public final class MenuState {
             case DEAD:
                 if (choice.startsWith("RETRY")) {
                     setScreen(Screen.PLAYING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
                 setScreen(Screen.TITLE);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
 
             case INTERMISSION:
@@ -334,6 +387,7 @@ public final class MenuState {
                     activeStage = campaign.get(stageIndex);
                     saveData.saveCampaignRun(stageIndex, activeLoadout);
                     setScreen(Screen.BRIEFING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
                 if (choice.startsWith("PLAY AGAIN")) {
@@ -346,9 +400,11 @@ public final class MenuState {
                         activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
                     }
                     setScreen(Screen.PLAYING);
+                    emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
                 setScreen(Screen.TITLE);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
 
             default:
@@ -361,21 +417,26 @@ public final class MenuState {
         switch (screen) {
             case PLAYING:
                 setScreen(Screen.PAUSED);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
             case PAUSED:
                 setScreen(Screen.PLAYING);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
             case SETTINGS:
                 setScreen(settingsReturnScreen);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
             case DIFFICULTY_SELECT:
                 setScreen(difficultyReturnScreen);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
             case STAGE_SELECT:
             case BRIEFING:
             case DEAD:
             case INTERMISSION:
                 setScreen(Screen.TITLE);
+                emitUiSound(SoundEvent.Type.MENU_BACK);
                 return Command.NONE;
             case TITLE:
             default:
@@ -387,6 +448,7 @@ public final class MenuState {
     public Command quickRestart() {
         if (screen != Screen.PLAYING && screen != Screen.DEAD && screen != Screen.PAUSED) return Command.NONE;
         setScreen(Screen.PLAYING);
+        emitUiSound(SoundEvent.Type.MENU_CONFIRM);
         return Command.LAUNCH_STAGE;
     }
 
@@ -425,5 +487,11 @@ public final class MenuState {
     private void setScreen(Screen next) {
         this.screen = next;
         this.selectedIndex = 0;
+    }
+
+    private void emitUiSound(SoundEvent.Type type) {
+        if (soundEvents.size() < MAX_QUEUED_SOUNDS) {
+            soundEvents.add(SoundEvent.ui(type));
+        }
     }
 }

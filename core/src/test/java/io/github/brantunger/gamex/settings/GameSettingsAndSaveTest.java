@@ -14,12 +14,20 @@ class GameSettingsAndSaveTest {
     void settingsClampRangesAndRoundTripThroughStore() {
         MapKeyValueStore store = new MapKeyValueStore();
         GameSettings settings = new GameSettings();
+        assertEquals(GameSettings.DEFAULT_MASTER_VOLUME, settings.getMasterVolume(), 1e-4f);
         settings.setMouseSensitivity(9f);
         assertEquals(GameSettings.MAX_SENSITIVITY, settings.getMouseSensitivity(), 1e-4f);
         settings.setMouseSensitivity(0.18f);
         settings.setFov(15f);
         assertEquals(GameSettings.MIN_FOV, settings.getFov(), 1e-4f);
         settings.setFov(95f);
+        settings.setMasterVolume(-0.5f);
+        assertEquals(GameSettings.MIN_MASTER_VOLUME, settings.getMasterVolume(), 1e-4f);
+        settings.setMasterVolume(2.0f);
+        assertEquals(GameSettings.MAX_MASTER_VOLUME, settings.getMasterVolume(), 1e-4f);
+        settings.setMasterVolume(0.80f);
+        settings.adjustMasterVolume(-2);
+        assertEquals(0.60f, settings.getMasterVolume(), 1e-4f);
         settings.setInvertY(true);
         settings.setViewBob(false);
         settings.setFullscreen(true);
@@ -28,6 +36,7 @@ class GameSettingsAndSaveTest {
         GameSettings loaded = GameSettings.load(store);
         assertEquals(0.18f, loaded.getMouseSensitivity(), 1e-4f);
         assertEquals(95f, loaded.getFov(), 1e-4f);
+        assertEquals(0.60f, loaded.getMasterVolume(), 1e-4f);
         assertTrue(loaded.isInvertY());
         assertFalse(loaded.isViewBob());
         assertTrue(loaded.isFullscreen());
