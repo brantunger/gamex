@@ -17,16 +17,23 @@ public final class GameSettings {
     public static final float MAX_FOV = 110f;
     public static final float FOV_STEP = 5f;
 
+    public static final float DEFAULT_MASTER_VOLUME = 0.80f;
+    public static final float MIN_MASTER_VOLUME = 0.0f;
+    public static final float MAX_MASTER_VOLUME = 1.0f;
+    public static final float MASTER_VOLUME_STEP = 0.10f;
+
     private static final String KEY_SENSITIVITY = "mouseSensitivity";
     private static final String KEY_INVERT_Y = "invertY";
     private static final String KEY_FOV = "fov";
     private static final String KEY_VIEW_BOB = "viewBob";
+    private static final String KEY_MASTER_VOLUME = "masterVolume";
     private static final String KEY_FULLSCREEN = "fullscreen";
 
     private float mouseSensitivity = DEFAULT_SENSITIVITY;
     private boolean invertY;
     private float fov = DEFAULT_FOV;
     private boolean viewBob = true;
+    private float masterVolume = DEFAULT_MASTER_VOLUME;
     private boolean fullscreen;
 
     /** Loads settings from {@code store}, clamping any out-of-range values. */
@@ -37,6 +44,7 @@ public final class GameSettings {
         settings.setInvertY(store.getBoolean(KEY_INVERT_Y, false));
         settings.setFov(store.getFloat(KEY_FOV, DEFAULT_FOV));
         settings.setViewBob(store.getBoolean(KEY_VIEW_BOB, true));
+        settings.setMasterVolume(store.getFloat(KEY_MASTER_VOLUME, DEFAULT_MASTER_VOLUME));
         settings.setFullscreen(store.getBoolean(KEY_FULLSCREEN, false));
         return settings;
     }
@@ -48,6 +56,7 @@ public final class GameSettings {
         store.putBoolean(KEY_INVERT_Y, invertY);
         store.putFloat(KEY_FOV, fov);
         store.putBoolean(KEY_VIEW_BOB, viewBob);
+        store.putFloat(KEY_MASTER_VOLUME, masterVolume);
         store.putBoolean(KEY_FULLSCREEN, fullscreen);
         store.flush();
     }
@@ -92,6 +101,19 @@ public final class GameSettings {
 
     public void setViewBob(boolean viewBob) {
         this.viewBob = viewBob;
+    }
+
+    public float getMasterVolume() {
+        return masterVolume;
+    }
+
+    public void setMasterVolume(float value) {
+        float clamped = Math.max(MIN_MASTER_VOLUME, Math.min(MAX_MASTER_VOLUME, value));
+        masterVolume = Math.round(clamped * 100f) / 100f;
+    }
+
+    public void adjustMasterVolume(int steps) {
+        setMasterVolume(masterVolume + steps * MASTER_VOLUME_STEP);
     }
 
     public boolean isFullscreen() {

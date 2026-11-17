@@ -3,6 +3,7 @@ package io.github.brantunger.gamex;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
+import io.github.brantunger.gamex.audio.SoundManager;
 import io.github.brantunger.gamex.debug.DemoRun;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
@@ -36,6 +37,7 @@ public class MainGame extends ApplicationAdapter {
     private WorldRenderer worldRenderer;
     private ViewmodelRenderer viewmodelRenderer;
     private HudRenderer hudRenderer;
+    private SoundManager soundManager;
     private InputController controller;
     /** The unattended screenshot run, or null in a normal game. */
     private DemoRun demoRun;
@@ -78,6 +80,7 @@ public class MainGame extends ApplicationAdapter {
         worldRenderer = new WorldRenderer(simulation.map, textures);
         viewmodelRenderer = new ViewmodelRenderer(textures);
         hudRenderer = new HudRenderer(textures);
+        soundManager = new SoundManager(demoRun != null);
         if (demoRun == null) controller = new InputController(menuState, settings);
     }
 
@@ -95,6 +98,7 @@ public class MainGame extends ApplicationAdapter {
 
     @Override
     public void pause() {
+        if (soundManager != null) soundManager.stopLoops();
         if (controller != null) {
             controller.pause();
             simulation.pause();
@@ -109,10 +113,12 @@ public class MainGame extends ApplicationAdapter {
             if (menuState.getScreen() == MenuState.Screen.TITLE) {
                 worldRenderer.renderBackdrop(simulation, settings, backdropTime);
                 hudRenderer.render(simulation, menuState);
+                soundManager.update(simulation, menuState, settings);
                 demoRun.frameRendered();
                 return;
             }
             simulation.update(DemoRun.FRAME_TIME, input);
+            soundManager.update(simulation, menuState, settings);
             float[] orbit = demoRun.getViewmodelOrbit();
             if (orbit != null) {
                 viewmodelRenderer.renderAlone(orbit[0], orbit[1]);
@@ -163,6 +169,7 @@ public class MainGame extends ApplicationAdapter {
             input.clear();
             simulation.update(stepDt, input);
         }
+        soundManager.update(simulation, menuState, settings);
 
         MenuState.Screen renderScreen = menuState.getScreen();
         if (renderScreen == MenuState.Screen.TITLE
@@ -228,6 +235,7 @@ public class MainGame extends ApplicationAdapter {
         if (settings != null && settingsStore != null && demoRun == null) {
             settings.save(settingsStore);
         }
+        if (soundManager != null) soundManager.dispose();
         worldRenderer.dispose();
         viewmodelRenderer.dispose();
         hudRenderer.dispose();

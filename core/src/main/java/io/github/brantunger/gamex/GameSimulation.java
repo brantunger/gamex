@@ -2,6 +2,7 @@ package io.github.brantunger.gamex;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
@@ -27,8 +28,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The whole game state and the rules that advance it. It uses no graphics types, so it runs without a window: the
- * renderers only read it, and each frame's {@link PlayerInput} is its only input.
+ * The whole game state and the rules that advance it. It uses neither graphics nor audio types, so it runs without a
+ * window: renderers and sound managers only read its state and events, and each frame's {@link PlayerInput} is its only
+ * input.
  */
 public final class GameSimulation {
 
@@ -51,6 +53,7 @@ public final class GameSimulation {
     private static final float BLAST_SPAWN_FORWARD = 0.52f;
     private static final float BLAST_SPAWN_RIGHT = 0.11f;
     private static final float BLAST_SPAWN_DOWN = 0.05f;
+    private static final int MAX_QUEUED_SOUNDS = 256;
 
     /** The level. */
     public final GameMap map;
@@ -93,6 +96,9 @@ public final class GameSimulation {
     private final Vector2 spawnCheckPos = new Vector2();
     private final boolean[] breakHandled;
     private final boolean[] enemyBreakHandled;
+    private final float[] targetHealthBefore;
+    private final float[] enemyHealthBefore;
+    private final List<SoundEvent> soundEvents = new ArrayList<>();
     private float time;
     private float damageTaken;
     private boolean levelCleared;
@@ -100,6 +106,8 @@ public final class GameSimulation {
     private boolean hitMarkerKill;
     private String toastMessage;
     private float toastTimer;
+    private boolean prevDashInput;
+    private boolean prevChargeRefused;
 
     /** @param map the level to play on Normal difficulty */
     public GameSimulation(GameMap map) {
@@ -132,6 +140,8 @@ public final class GameSimulation {
         }
         breakHandled = new boolean[targets.size()];
         enemyBreakHandled = new boolean[enemies.size()];
+        targetHealthBefore = new float[targets.size()];
+        enemyHealthBefore = new float[enemies.size()];
     }
 
     /**
@@ -147,6 +157,8 @@ public final class GameSimulation {
 
         if (levelCleared || player.isDead()) {
             charger.cancel();
+            prevDashInput = false;
+            prevChargeRefused = false;
             viewmodel.update(dt, false, 0f, 0f, 0f);
             updateEnemiesWhenInactive(dt);
             updateTargetsAndEffects(dt);
@@ -158,10 +170,17 @@ public final class GameSimulation {
         float beforePitch = player.getPitch();
         player.look(input.yawDelta, input.pitchDelta);
 
+        boolean dashPressedEdge = input.dash && !prevDashInput;
         if (input.dash) {
             charger.cancel();
-            player.tryDash(input.moveForward, input.moveStrafe, energy);
+            boolean canAffordDash = energy.canSpend(Player.DASH_COST);
+            if (player.tryDash(input.moveForward, input.moveStrafe, energy)) {
+                emitPlayerSound(SoundEvent.Type.PLAYER_DASH, 1f);
+            } else if (dashPressedEdge && !canAffordDash && !player.isDead() && !player.isDashing()) {
+                emitPlayerSound(SoundEvent.Type.LOW_ENERGY, 1f);
+            }
         }
+        prevDashInput = input.dash;
 
         float beforeX = player.position.x;
         float beforeZ = player.position.y;
@@ -173,10 +192,16 @@ public final class GameSimulation {
         player.direction(direction);
 
         float vitalsBefore = player.getHealth() + player.getArmor();
+        snapshotDamageableHealth();
         boolean fired = !levelCleared && pistol.update(dt, input.fire);
         if (fired) firePistol();
 
         float firedCharge = charger.update(dt, !levelCleared && !player.isDashing() && input.charge);
+        boolean refusedNow = charger.isRefused();
+        if (refusedNow && !prevChargeRefused) {
+            emitPlayerSound(SoundEvent.Type.LOW_ENERGY, 1f);
+        }
+        prevChargeRefused = refusedNow;
 
         // The gun bobs with the distance actually covered, so it settles when the player is held up by a wall.
         float walked = player.position.dst(beforeX, beforeZ);
@@ -194,6 +219,8 @@ public final class GameSimulation {
             projectiles.remove(i);
             float radius = BlastProjectile.blastRadius(projectile.getCharge());
             effects.add(new Effect(Effect.Type.EXPLOSION, projectile.position, Vector3.Y, radius));
+            emitWorldSound(SoundEvent.Type.EXPLOSION, projectile.position.x, projectile.position.y,
+                projectile.position.z, 0.75f + 0.35f * projectile.getCharge());
             alertNoise(projectile.position.x, projectile.position.z, 11.0f, 5.5f);
             if (totalDamageableHealth() < healthBefore) {
                 triggerHitMarker(getTargetsRemaining() + getEnemiesRemaining() < aliveBefore);
@@ -207,8 +234,20 @@ public final class GameSimulation {
         if (!enemies.isEmpty()) {
             pathfinder.compute(map, player.position.x, player.position.y);
             for (int i = 0; i < enemies.size(); i++) {
-                enemies.get(i).update(dt, map, pathfinder, player, entryLoadout.difficulty,
+                Enemy enemy = enemies.get(i);
+                Enemy.State stateBefore = enemy.getState();
+                int boltsBefore = enemyProjectiles.size();
+                enemy.update(dt, map, pathfinder, player, entryLoadout.difficulty,
                     allDamageables, enemyProjectiles);
+                for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
+                    EnemyProjectile bolt = enemyProjectiles.get(b);
+                    emitWorldSound(SoundEvent.Type.ENEMY_SHOOT, bolt.position.x, bolt.position.y, bolt.position.z, 1f);
+                }
+                if (enemy.getKind() == Enemy.Kind.DRONE && stateBefore != Enemy.State.LUNGING
+                    && enemy.getState() == Enemy.State.LUNGING) {
+                    emitWorldSound(SoundEvent.Type.DRONE_LUNGE, enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ(),
+                        1f);
+                }
             }
         }
         for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
@@ -219,9 +258,17 @@ public final class GameSimulation {
         }
 
         resolveDestroyedObjects();
+        emitNonLethalHitSounds();
 
         float vitalsLost = Math.max(0f, vitalsBefore - (player.getHealth() + player.getArmor()));
         damageTaken += vitalsLost;
+        if (vitalsLost > 0f) {
+            if (player.isDead()) {
+                emitPlayerSound(SoundEvent.Type.PLAYER_DEATH, 1f);
+            } else {
+                emitPlayerSound(SoundEvent.Type.PLAYER_HURT, Math.min(1f, 0.6f + vitalsLost / 50f));
+            }
+        }
 
         if (!player.isDead() && completeOnAllTargets
             && (!targets.isEmpty() || !enemies.isEmpty())
@@ -267,12 +314,38 @@ public final class GameSimulation {
         return Math.min(1f, toastTimer / 0.4f);
     }
 
+    /** Appends pending simulation sound events to {@code out} and clears the internal queue. */
+    public void drainSoundEvents(List<SoundEvent> out) {
+        if (soundEvents.isEmpty()) return;
+        if (out != null) out.addAll(soundEvents);
+        soundEvents.clear();
+    }
+
+    /** @return a copy of pending simulation sound events, clearing the internal queue. */
+    public List<SoundEvent> drainSoundEvents() {
+        List<SoundEvent> copy = new ArrayList<>(soundEvents);
+        soundEvents.clear();
+        return copy;
+    }
+
+    /** @return whether the continuous blast-charge loop audio should currently be active. */
+    public boolean isBlastChargingAudioActive() {
+        return !levelCleared && !player.isDead() && charger.isCharging();
+    }
+
+    /** @return normalized blast charge progress [0, 1] while charging, otherwise 0. */
+    public float getBlastChargeProgress() {
+        return charger.isCharging() ? charger.getCharge() : 0f;
+    }
+
     /**
      * Call when the game is paused. A blast that is charging is dropped at no cost, so that letting go of the button
      * during the pause does not fire it on return.
      */
     public void pause() {
         charger.cancel();
+        prevDashInput = false;
+        prevChargeRefused = false;
     }
 
     /** @return the number of targets that are not destroyed. */
@@ -314,11 +387,25 @@ public final class GameSimulation {
 
     private void collectPickups() {
         for (int i = 0; i < pickups.size(); i++) {
-            String message = pickups.get(i).tryCollect(player, energy, entryLoadout.difficulty.pickupScale);
+            Pickup pickup = pickups.get(i);
+            String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale);
             if (message != null) {
                 toastMessage = message;
                 toastTimer = TOAST_TIME;
+                emitPlayerSound(pickupSoundFor(pickup.getKind()), 1f);
             }
+        }
+    }
+
+    private static SoundEvent.Type pickupSoundFor(Pickup.Kind kind) {
+        switch (kind) {
+            case MEDKIT:
+                return SoundEvent.Type.PICKUP_HEALTH;
+            case ARMOR:
+                return SoundEvent.Type.PICKUP_ARMOR;
+            case ENERGY_CELL:
+            default:
+                return SoundEvent.Type.PICKUP_ENERGY;
         }
     }
 
@@ -363,9 +450,11 @@ public final class GameSimulation {
         if (blastDir.len2() < 1e-6f) blastDir.set(direction);
         else blastDir.nor();
         projectiles.add(new BlastProjectile(blastOrigin, blastDir, charge));
+        emitPlayerSound(SoundEvent.Type.BLAST_RELEASE, 0.7f + 0.3f * charge);
     }
 
     private void firePistol() {
+        emitPlayerSound(SoundEvent.Type.PISTOL_SHOT, 1f);
         alertNoise(player.position.x, player.position.y, 9.0f, 4.5f);
         RayHit hit = Hitscan.cast(map, allDamageables, eye, direction, Pistol.RANGE);
         if (!hit.isHit()) return;
@@ -373,6 +462,7 @@ public final class GameSimulation {
         hit.point.mulAdd(hit.normal, MARK_OFFSET);
         if (hit.kind != RayHit.Kind.TARGET) {
             effects.add(new Effect(Effect.Type.IMPACT, hit.point, hit.normal, 0.11f));
+            emitWorldSound(SoundEvent.Type.WALL_IMPACT, hit.point.x, hit.point.y, hit.point.z, 1f);
             return;
         }
         hit.target.damage(Pistol.DAMAGE);
@@ -399,9 +489,12 @@ public final class GameSimulation {
                     effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, CANISTER_BLAST_RADIUS));
                     Explosion.apply(map, target.getX(), target.getZ(), CANISTER_BLAST_RADIUS, CANISTER_BLAST_DAMAGE,
                         allDamageables, player, canisterPlayerScale);
+                    emitWorldSound(SoundEvent.Type.EXPLOSION, centre.x, centre.y, centre.z, 1.0f);
                     alertNoise(target.getX(), target.getZ(), 11.0f, 5.5f);
                 } else {
                     addBreakEffect(target);
+                    emitWorldSound(SoundEvent.Type.TARGET_DESTROYED, target.getX(), target.getHeight() * 0.5f,
+                        target.getZ(), 1.0f);
                 }
             }
             for (int i = 0; i < enemies.size(); i++) {
@@ -412,8 +505,43 @@ public final class GameSimulation {
                 Enemy enemy = enemies.get(i);
                 Vector3 centre = new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ());
                 effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, enemy.getHeight() * 0.8f));
+                emitWorldSound(SoundEvent.Type.ENEMY_DESTROYED, centre.x, centre.y, centre.z, 1.0f);
                 alertNoise(enemy.getX(), enemy.getZ(), 5.0f, 3.0f);
             }
+        }
+    }
+
+    private void snapshotDamageableHealth() {
+        for (int i = 0; i < targets.size(); i++) targetHealthBefore[i] = targets.get(i).getHealth();
+        for (int i = 0; i < enemies.size(); i++) enemyHealthBefore[i] = enemies.get(i).getHealth();
+    }
+
+    private void emitNonLethalHitSounds() {
+        for (int i = 0; i < targets.size(); i++) {
+            Target target = targets.get(i);
+            if (!target.isDestroyed() && target.getHealth() < targetHealthBefore[i]) {
+                emitWorldSound(SoundEvent.Type.TARGET_HIT, target.getX(), target.getHeight() * 0.5f, target.getZ(), 1f);
+            }
+        }
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy enemy = enemies.get(i);
+            if (!enemy.isDestroyed() && enemy.getHealth() < enemyHealthBefore[i]) {
+                emitWorldSound(SoundEvent.Type.ENEMY_HIT, enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ(), 1f);
+            }
+        }
+    }
+
+    private void emitPlayerSound(SoundEvent.Type type, float intensity) {
+        addSoundEvent(SoundEvent.player(type, intensity));
+    }
+
+    private void emitWorldSound(SoundEvent.Type type, float x, float y, float z, float intensity) {
+        addSoundEvent(SoundEvent.world(type, x, y, z, intensity));
+    }
+
+    private void addSoundEvent(SoundEvent event) {
+        if (soundEvents.size() < MAX_QUEUED_SOUNDS) {
+            soundEvents.add(event);
         }
     }
 

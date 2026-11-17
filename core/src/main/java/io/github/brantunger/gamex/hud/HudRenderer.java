@@ -151,7 +151,7 @@ public final class HudRenderer implements Disposable {
             case PAUSED:
                 return cy + 44f * u;
             case SETTINGS:
-                return cy + 82f * u;
+                return cy + 94f * u;
             case DEAD:
                 return cy - 48f * u;
             case INTERMISSION:
@@ -478,12 +478,12 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.70f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy, 600f * unit, 430f * unit);
+        drawPanel(cx, cy, 600f * unit, 472f * unit);
         batch.setColor(0.78f, 0.65f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SETTINGS", cx, cy + 152f * unit, 5.8f * unit);
+        PixelFont.drawCentred(batch, textures.white, "SETTINGS", cx, cy + 168f * unit, 5.8f * unit);
         batch.setColor(0.66f, 0.78f, 0.86f, 0.88f);
         PixelFont.drawCentred(batch, textures.white, "LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", cx,
-            cy + 124f * unit, 2.2f * unit);
+            cy + 140f * unit, 2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.SETTINGS));
     }
 

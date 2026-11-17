@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
@@ -15,6 +16,8 @@ import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Target;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 class GameSimulationTest {
 
@@ -39,6 +42,14 @@ class GameSimulationTest {
         int count = 0;
         for (Effect effect : simulation.effects) {
             if (effect.type == type) count++;
+        }
+        return count;
+    }
+
+    private static int countSound(List<SoundEvent> events, SoundEvent.Type type) {
+        int count = 0;
+        for (SoundEvent event : events) {
+            if (event.type == type) count++;
         }
         return count;
     }
@@ -412,5 +423,175 @@ class GameSimulationTest {
         }
         assertTrue(simulation.projectiles.isEmpty());
         assertTrue(simulation.targets.get(0).getHealth() < Target.Kind.RING_BOARD.maxHealth);
+    }
+
+    @Test
+    void pistolShotWallImpactAndTargetDestroyEmitExpectedSoundEvents() {
+        // Long range beyond Pistol.RANGE hits nothing: only PISTOL_SHOT.
+        String wallRow = "#".repeat(70);
+        String openRow = "#>" + ".".repeat(67) + "#";
+        GameSimulation longSim = new GameSimulation(GameMap.parse(wallRow, openRow, wallRow));
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+        longSim.update(FRAME, input);
+        List<SoundEvent> airShot = longSim.drainSoundEvents();
+        assertEquals(1, airShot.size());
+        assertEquals(SoundEvent.Type.PISTOL_SHOT, airShot.get(0).type);
+        assertFalse(airShot.get(0).spatial);
+
+        // Short corridor: PISTOL_SHOT + spatial WALL_IMPACT.
+        GameSimulation wallSim = emptyCorridor();
+        wallSim.update(FRAME, input);
+        List<SoundEvent> wallShot = wallSim.drainSoundEvents();
+        assertEquals(2, wallShot.size());
+        assertEquals(SoundEvent.Type.PISTOL_SHOT, wallShot.get(0).type);
+        assertEquals(SoundEvent.Type.WALL_IMPACT, wallShot.get(1).type);
+        assertTrue(wallShot.get(1).spatial);
+        assertEquals(9f, wallShot.get(1).x, 0.05f);
+
+        // Canister: first hit emits TARGET_HIT, third hit emits spatial EXPLOSION.
+        GameSimulation canisterSim = corridorWithCanister();
+        canisterSim.update(FRAME, input);
+        List<SoundEvent> firstHit = canisterSim.drainSoundEvents();
+        assertEquals(1, countSound(firstHit, SoundEvent.Type.PISTOL_SHOT));
+        assertEquals(1, countSound(firstHit, SoundEvent.Type.TARGET_HIT));
+        for (int i = 0; i < 40; i++) canisterSim.update(FRAME, input);
+        List<SoundEvent> lethalHits = canisterSim.drainSoundEvents();
+        assertEquals(1, countSound(lethalHits, SoundEvent.Type.TARGET_HIT));
+        assertEquals(1, countSound(lethalHits, SoundEvent.Type.EXPLOSION));
+
+        // Ring board (120 HP = 6 shots): final shot emits TARGET_DESTROYED.
+        GameSimulation boardSim = new GameSimulation(GameMap.parse("#########", "#>.O....#", "#########"));
+        for (int i = 0; i < 100 && !boardSim.targets.get(0).isDestroyed(); i++) {
+            boardSim.update(FRAME, input);
+        }
+        assertTrue(boardSim.targets.get(0).isDestroyed());
+        List<SoundEvent> boardEvents = boardSim.drainSoundEvents();
+        assertEquals(1, countSound(boardEvents, SoundEvent.Type.TARGET_DESTROYED));
+    }
+
+    @Test
+    void blastChargeAudioStopsOnPauseDashOrShortReleaseAndEmitsOnReleaseAndExplosion() {
+        GameSimulation simulation = emptyCorridor();
+        PlayerInput input = new PlayerInput();
+
+        // Charging starts active charge audio, and pause() cancels it cleanly.
+        input.charge = true;
+        for (int i = 0; i < 20; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.isBlastChargingAudioActive());
+        assertTrue(simulation.getBlastChargeProgress() > 0f);
+        simulation.pause();
+        assertFalse(simulation.isBlastChargingAudioActive());
+        assertEquals(0f, simulation.getBlastChargeProgress(), 1e-6f);
+        input.charge = false;
+        simulation.update(FRAME, input);
+        assertEquals(0, countSound(simulation.drainSoundEvents(), SoundEvent.Type.BLAST_RELEASE));
+
+        // Dashing cancels charge audio and emits PLAYER_DASH without firing.
+        input.charge = true;
+        for (int i = 0; i < 15; i++) simulation.update(FRAME, input);
+        assertTrue(simulation.isBlastChargingAudioActive());
+        input.dash = true;
+        simulation.update(FRAME, input);
+        input.dash = false;
+        input.charge = false;
+        assertFalse(simulation.isBlastChargingAudioActive());
+        List<SoundEvent> dashEvents = simulation.drainSoundEvents();
+        assertEquals(1, countSound(dashEvents, SoundEvent.Type.PLAYER_DASH));
+        assertEquals(0, countSound(dashEvents, SoundEvent.Type.BLAST_RELEASE));
+
+        // Sub-threshold tap cancels without BLAST_RELEASE.
+        input.charge = true;
+        for (int i = 0; i < 5; i++) simulation.update(FRAME, input);
+        input.charge = false;
+        simulation.update(FRAME, input);
+        assertFalse(simulation.isBlastChargingAudioActive());
+        assertEquals(0, countSound(simulation.drainSoundEvents(), SoundEvent.Type.BLAST_RELEASE));
+
+        // Valid release emits BLAST_RELEASE, then impact emits spatial EXPLOSION.
+        input.charge = true;
+        for (int i = 0; i < 60; i++) simulation.update(FRAME, input);
+        input.charge = false;
+        simulation.update(FRAME, input);
+        List<SoundEvent> releaseEvents = simulation.drainSoundEvents();
+        assertEquals(1, countSound(releaseEvents, SoundEvent.Type.BLAST_RELEASE));
+        for (int i = 0; i < 120 && !simulation.projectiles.isEmpty(); i++) {
+            simulation.update(FRAME, input);
+        }
+        List<SoundEvent> impactEvents = simulation.drainSoundEvents();
+        assertEquals(1, countSound(impactEvents, SoundEvent.Type.EXPLOSION));
+        assertTrue(impactEvents.stream().anyMatch(e -> e.type == SoundEvent.Type.EXPLOSION && e.spatial));
+    }
+
+    @Test
+    void lowEnergyRefusalIsEdgeTriggeredForChargeAndDash() {
+        GameSimulation simulation = emptyCorridor();
+        simulation.energy.setEnergy(10f);
+        PlayerInput input = new PlayerInput();
+
+        input.charge = true;
+        for (int i = 0; i < 10; i++) simulation.update(FRAME, input);
+        assertEquals(1, countSound(simulation.drainSoundEvents(), SoundEvent.Type.LOW_ENERGY));
+
+        input.charge = false;
+        simulation.update(FRAME, input);
+        simulation.energy.setEnergy(10f);
+        input.dash = true;
+        simulation.update(FRAME, input);
+        simulation.update(FRAME, input);
+        assertEquals(1, countSound(simulation.drainSoundEvents(), SoundEvent.Type.LOW_ENERGY));
+    }
+
+    @Test
+    void pickupsAndEnemyCombatEmitExpectedPlayerAndSpatialSounds() {
+        GameSimulation pickupSim = new GameSimulation(
+            GameMap.parse("#########", "#>+ae...#", "#########"),
+            new PlayerLoadout(60f, 0f, Difficulty.NORMAL), false);
+        pickupSim.energy.setEnergy(50f);
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        for (int i = 0; i < 60; i++) pickupSim.update(FRAME, input);
+        List<SoundEvent> pickupEvents = pickupSim.drainSoundEvents();
+        assertEquals(1, countSound(pickupEvents, SoundEvent.Type.PICKUP_HEALTH));
+        assertEquals(1, countSound(pickupEvents, SoundEvent.Type.PICKUP_ARMOR));
+        assertEquals(1, countSound(pickupEvents, SoundEvent.Type.PICKUP_ENERGY));
+
+        // Guard (100 HP): pistol hit emits ENEMY_HIT, charged blast kill emits ENEMY_DESTROYED.
+        GameSimulation guardSim = new GameSimulation(GameMap.parse("###########", "#>.G......#", "###########"));
+        input.clear();
+        input.fire = true;
+        guardSim.update(FRAME, input);
+        assertEquals(1, countSound(guardSim.drainSoundEvents(), SoundEvent.Type.ENEMY_HIT));
+        input.fire = false;
+        input.charge = true;
+        for (int i = 0; i < 60; i++) guardSim.update(FRAME, input);
+        input.charge = false;
+        for (int i = 0; i < 120 && !guardSim.enemies.get(0).isDestroyed(); i++) {
+            guardSim.update(FRAME, input);
+        }
+        assertTrue(guardSim.enemies.get(0).isDestroyed());
+        assertEquals(1, countSound(guardSim.drainSoundEvents(), SoundEvent.Type.ENEMY_DESTROYED));
+
+        // Drone lunge & Turret shoot/player hurt/death.
+        GameSimulation droneSim = new GameSimulation(GameMap.parse("########", "#>D....#", "########"));
+        input.clear();
+        for (int i = 0; i < 60; i++) droneSim.update(FRAME, input);
+        List<SoundEvent> droneEvents = droneSim.drainSoundEvents();
+        assertTrue(countSound(droneEvents, SoundEvent.Type.DRONE_LUNGE) >= 1);
+        assertTrue(countSound(droneEvents, SoundEvent.Type.PLAYER_HURT) >= 1);
+
+        GameSimulation turretSim = new GameSimulation(
+            GameMap.parse("#########", "#>..T...#", "#########"),
+            new PlayerLoadout(5f, 0f, Difficulty.NORMAL), false);
+        input.fire = true;
+        turretSim.update(FRAME, input);
+        input.fire = false;
+        for (int i = 0; i < 240 && !turretSim.player.isDead(); i++) {
+            turretSim.update(FRAME, input);
+        }
+        assertTrue(turretSim.player.isDead());
+        List<SoundEvent> turretEvents = turretSim.drainSoundEvents();
+        assertTrue(countSound(turretEvents, SoundEvent.Type.ENEMY_SHOOT) >= 1);
+        assertEquals(1, countSound(turretEvents, SoundEvent.Type.PLAYER_DEATH));
     }
 }
