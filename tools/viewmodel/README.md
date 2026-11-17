@@ -48,8 +48,8 @@ The first draws the pistol and hand alone from the left side; the second saves t
   path is smoothed into a curve and skinned as a tube of elliptical cross-sections, so a finger is one surface with a
   pinch at each crease and a rounded tip.
 - Glove vertices that would land inside the pistol are pushed back out to its surface. That is what presses the
-  fingers and the palm against the grip. The outlines of the grip, frame and slide at the top of `HandSculpt.java`
-  are copies of the ones in `PistolSculpt.java`; if the pistol changes, change them too. `HandModelTest` measures the
+  fingers and the palm against the grip. The outlines of the grip, frame, slide, beavertail and magazine plate at the
+  top of `HandSculpt.java` are copies of the ones in `PistolSculpt.java`; if the pistol changes, change them too. `HandModelTest` measures the
   written file against the real grip from `viewmodel-pistol.obj`, and fails if the grip has grown into the glove or
   shrunk away from it: on either side, at the front strap or at the back strap. It does not notice a change to a part
   of the pistol that the hand does not touch, or a change smaller than about 2 mm.
