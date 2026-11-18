@@ -43,6 +43,11 @@ public final class MenuState {
         QUIT
     }
 
+    /** Prompt shown on the Title and Pause screens after a first press of the quit key. */
+    public static final String QUIT_PROMPT = "PRESS Q AGAIN TO QUIT";
+    /** How long a first press of the quit key stays armed, in seconds. */
+    public static final float QUIT_CONFIRM_SECONDS = 2f;
+
     private static final int MAX_QUEUED_SOUNDS = 64;
 
     private final List<Levels.Stage> campaign = Levels.campaign();
@@ -61,7 +66,11 @@ public final class MenuState {
     private int stageIndex;
     private Levels.Stage activeStage;
     private PlayerLoadout activeLoadout;
+    /** Loadout the active stage was entered with; PLAY AGAIN replays from it after a clear. */
+    private PlayerLoadout entryLoadout;
     private SaveData.CompletionSummary lastSummary;
+    /** Seconds left in which a second press of the quit key quits; 0 when no quit is pending. */
+    private float quitConfirmTimer;
 
     /**
      * @param settings live settings model
@@ -73,6 +82,7 @@ public final class MenuState {
         this.saveData = saveData;
         this.activeStage = campaign.get(0);
         this.activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
+        this.entryLoadout = activeLoadout;
         setScreen(startScreen);
     }
 
@@ -102,6 +112,36 @@ public final class MenuState {
 
     public SaveData.CompletionSummary getLastSummary() {
         return lastSummary;
+    }
+
+    /** @return the screen that Settings goes back to: {@link Screen#TITLE} or {@link Screen#PAUSED}. */
+    public Screen getSettingsReturnScreen() {
+        return settingsReturnScreen;
+    }
+
+    /** @return whether {@link #QUIT_PROMPT} should be shown, after a first press of the quit key. */
+    public boolean isQuitPromptVisible() {
+        return quitConfirmTimer > 0f;
+    }
+
+    /** Advances menu timers by {@code dt} seconds; a pending quit expires {@link #QUIT_CONFIRM_SECONDS} on. */
+    public void update(float dt) {
+        if (quitConfirmTimer > 0f && dt > 0f) quitConfirmTimer = Math.max(0f, quitConfirmTimer - dt);
+    }
+
+    /**
+     * Handles the quit key on the Title and Pause screens. The first press only shows {@link #QUIT_PROMPT}; a second
+     * press within {@link #QUIT_CONFIRM_SECONDS} quits. Does nothing on other screens.
+     */
+    public Command requestQuit() {
+        if (screen != Screen.TITLE && screen != Screen.PAUSED) return Command.NONE;
+        if (quitConfirmTimer > 0f) {
+            quitConfirmTimer = 0f;
+            return Command.QUIT;
+        }
+        quitConfirmTimer = QUIT_CONFIRM_SECONDS;
+        emitUiSound(SoundEvent.Type.MENU_BACK);
+        return Command.NONE;
     }
 
     /** Appends pending UI sound events to {@code out} and clears the internal queue. */
@@ -256,6 +296,7 @@ public final class MenuState {
                     stageIndex = Math.min(saveData.getSavedStageIndex(), campaign.size() - 1);
                     activeStage = campaign.get(stageIndex);
                     activeLoadout = saveData.getSavedLoadout();
+                    entryLoadout = activeLoadout;
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
@@ -279,6 +320,7 @@ public final class MenuState {
                     stageIndex = 0;
                     activeStage = trainingRange;
                     activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
+                    entryLoadout = activeLoadout;
                     setScreen(Screen.BRIEFING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
@@ -322,13 +364,15 @@ public final class MenuState {
                 stageIndex = Math.min(pendingStageIndex, campaign.size() - 1);
                 activeStage = campaign.get(stageIndex);
                 activeLoadout = PlayerLoadout.forStage(stageIndex, diff);
-                saveData.saveCampaignRun(stageIndex, activeLoadout);
+                entryLoadout = activeLoadout;
+                // The run is saved on DEPLOY, so backing out of the briefing keeps the old CONTINUE save.
                 setScreen(Screen.BRIEFING);
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
 
             case BRIEFING:
                 if (choice.startsWith("DEPLOY")) {
+                    if (!inTrainingRange) saveData.saveCampaignRun(stageIndex, activeLoadout);
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
@@ -385,6 +429,7 @@ public final class MenuState {
                     campaignCompleted = false;
                     stageIndex++;
                     activeStage = campaign.get(stageIndex);
+                    entryLoadout = activeLoadout;
                     saveData.saveCampaignRun(stageIndex, activeLoadout);
                     setScreen(Screen.BRIEFING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
@@ -392,13 +437,8 @@ public final class MenuState {
                 }
                 if (choice.startsWith("PLAY AGAIN")) {
                     campaignCompleted = false;
-                    if (!inTrainingRange) {
-                        activeLoadout = saveData.hasSavedRun() && saveData.getSavedStageIndex() == stageIndex
-                            ? saveData.getSavedLoadout()
-                            : PlayerLoadout.forStage(stageIndex, activeLoadout.difficulty);
-                    } else {
-                        activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
-                    }
+                    // A side trip: replay from the stage's entry loadout and leave the CONTINUE save alone.
+                    activeLoadout = entryLoadout;
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
@@ -444,7 +484,10 @@ public final class MenuState {
         }
     }
 
-    /** Quick-restarts the active stage from its entry loadout (for example via R on death or during play). */
+    /**
+     * Quick-restarts the active stage from its entry loadout (for example via R during play, on the Pause menu or on
+     * death).
+     */
     public Command quickRestart() {
         if (screen != Screen.PLAYING && screen != Screen.DEAD && screen != Screen.PAUSED) return Command.NONE;
         setScreen(Screen.PLAYING);
@@ -474,6 +517,8 @@ public final class MenuState {
 
     /**
      * Records stage completion with a full carried-over weapon/vital snapshot and opens {@link Screen#INTERMISSION}.
+     * Clearing a campaign stage other than the last saves the next stage with the carry-over at once, so progress
+     * survives leaving the tally without NEXT STAGE; clearing the last stage clears the saved run.
      */
     public void onStageCleared(PlayerLoadout carryOver, float clearTime, int destroyed, int totalTargets,
                                float damageTaken) {
@@ -486,6 +531,7 @@ public final class MenuState {
                 : carryOver;
             if (stageIndex + 1 < campaign.size()) {
                 saveData.unlockStage(stageIndex + 1);
+                saveData.saveCampaignRun(stageIndex + 1, nextLoadout);
                 activeLoadout = nextLoadout;
             } else {
                 saveData.clearSavedRun();
@@ -497,6 +543,7 @@ public final class MenuState {
     private void setScreen(Screen next) {
         this.screen = next;
         this.selectedIndex = 0;
+        this.quitConfirmTimer = 0f;
     }
 
     private void emitUiSound(SoundEvent.Type type) {

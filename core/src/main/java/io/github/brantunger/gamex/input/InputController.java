@@ -128,15 +128,18 @@ public final class InputController extends InputAdapter {
     }
 
     private MenuState.Command pollMenu() {
+        menuState.update(Gdx.graphics.getDeltaTime());
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             return menuState.escape();
         }
-        if (menuState.getScreen() == MenuState.Screen.DEAD && Gdx.input.isKeyJustPressed(Input.Keys.R)) {
+        if ((menuState.getScreen() == MenuState.Screen.DEAD || menuState.getScreen() == MenuState.Screen.PAUSED)
+            && Gdx.input.isKeyJustPressed(Input.Keys.R)) {
             return menuState.quickRestart();
         }
+        // Q quits only on a second press, so one stray key does not close the game.
         if ((menuState.getScreen() == MenuState.Screen.PAUSED || menuState.getScreen() == MenuState.Screen.TITLE)
             && Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
-            return MenuState.Command.QUIT;
+            return menuState.requestQuit();
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.UP) || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
             menuState.moveSelection(-1);

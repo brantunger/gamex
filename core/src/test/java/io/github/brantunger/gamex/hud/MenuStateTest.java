@@ -34,16 +34,17 @@ class MenuStateTest {
         assertEquals(MenuState.Screen.DIFFICULTY_SELECT, menu.getScreen());
         assertEquals(1, menu.getSelectedIndex(), "defaults to Normal");
 
-        // Move down to HARD and confirm -> enters BRIEFING and saves run.
+        // Move down to HARD and confirm -> enters BRIEFING; the run is not saved until DEPLOY.
         menu.moveSelection(1);
         assertEquals(MenuState.Command.NONE, menu.confirm());
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertEquals(Difficulty.HARD, menu.getActiveLoadout().difficulty);
-        assertTrue(save.hasSavedRun());
+        assertFalse(save.hasSavedRun());
 
-        // Confirm DEPLOY -> launches stage into PLAYING.
+        // Confirm DEPLOY -> saves the run and launches stage into PLAYING.
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm());
         assertTrue(menu.isPlaying());
+        assertTrue(save.hasSavedRun());
 
         // Esc pauses; open Settings from Pause and adjust FOV.
         menu.escape();

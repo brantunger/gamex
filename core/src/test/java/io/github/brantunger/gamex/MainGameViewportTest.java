@@ -1,16 +1,25 @@
 package io.github.brantunger.gamex;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.graphics.GL20;
+import io.github.brantunger.gamex.hud.MenuState;
+import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.MapKeyValueStore;
+import io.github.brantunger.gamex.settings.SaveData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 
 class MainGameViewportTest {
 
@@ -53,6 +62,53 @@ class MainGameViewportTest {
                         return defaultValue(method.getReturnType());
                 }
             });
+    }
+
+    /** A stub window that records each switch to fullscreen or windowed mode and then reports the new mode. */
+    private static final class DisplayRecorder {
+        final List<String> switches = new ArrayList<>();
+        boolean fullscreen;
+        final Graphics graphics;
+
+        DisplayRecorder(boolean startsFullscreen) {
+            fullscreen = startsFullscreen;
+            Graphics.DisplayMode desktopMode = new Graphics.DisplayMode(1920, 1080, 60, 32) {};
+            graphics = (Graphics) Proxy.newProxyInstance(
+                Graphics.class.getClassLoader(),
+                new Class<?>[] {Graphics.class},
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "getWidth":
+                        case "getBackBufferWidth":
+                            return fullscreen ? 1920 : 800;
+                        case "getHeight":
+                        case "getBackBufferHeight":
+                            return fullscreen ? 1080 : 600;
+                        case "isFullscreen":
+                            return fullscreen;
+                        case "getDisplayMode":
+                            return desktopMode;
+                        case "setFullscreenMode":
+                            switches.add("fullscreen");
+                            fullscreen = true;
+                            return true;
+                        case "setWindowedMode":
+                            switches.add("windowed " + args[0] + "x" + args[1]);
+                            fullscreen = false;
+                            return true;
+                        default:
+                            return defaultValue(method.getReturnType());
+                    }
+                });
+        }
+    }
+
+    private static GameSettings savedSettings(boolean fullscreen) {
+        MapKeyValueStore store = new MapKeyValueStore();
+        GameSettings settings = new GameSettings();
+        settings.setFullscreen(fullscreen);
+        settings.save(store);
+        return GameSettings.load(store);
     }
 
     private static final class ViewportRecorder {
@@ -137,5 +193,86 @@ class MainGameViewportTest {
         assertEquals(1, recorder.calls, "minimized zero size must not clobber glViewport");
         assertEquals(1600, game.getWindowedWidth());
         assertEquals(900, game.getWindowedHeight());
+    }
+
+    @Test
+    void disposeBeforeCreateFinishedDoesNotThrow() {
+        MainGame game = new MainGame();
+
+        assertDoesNotThrow(game::dispose, "a failed create() must not be masked by a NullPointerException");
+    }
+
+    @Test
+    void forcedWindowedStartIsNotUndoneByASavedFullscreenSetting() {
+        DisplayRecorder display = new DisplayRecorder(false);
+        Gdx.graphics = display.graphics;
+        GameSettings settings = savedSettings(true);
+
+        MainGame game = new MainGame(800, 600, true);
+        game.applyStartupDisplayMode(settings);
+
+        assertEquals(List.of(), display.switches, "GAMEX_WINDOW keeps the window it asked for");
+        assertFalse(display.fullscreen);
+        assertTrue(settings.isFullscreen(), "the saved fullscreen setting is not changed");
+        assertEquals(800, game.getWindowedWidth());
+        assertEquals(600, game.getWindowedHeight());
+    }
+
+    @Test
+    void unforcedStartStillSwitchesToTheSavedDisplayMode() {
+        DisplayRecorder windowed = new DisplayRecorder(false);
+        Gdx.graphics = windowed.graphics;
+        MainGame game = new MainGame(1280, 720);
+        game.applyStartupDisplayMode(savedSettings(true));
+        assertEquals(List.of("fullscreen"), windowed.switches, "a saved fullscreen setting goes fullscreen");
+        assertEquals(800, game.getWindowedWidth(), "the windowed size to go back to is the starting window's");
+        assertEquals(600, game.getWindowedHeight());
+
+        DisplayRecorder fullscreen = new DisplayRecorder(true);
+        Gdx.graphics = fullscreen.graphics;
+        new MainGame(1280, 720).applyStartupDisplayMode(savedSettings(false));
+        assertEquals(List.of("windowed 1280x720"), fullscreen.switches, "a saved windowed setting leaves fullscreen");
+
+        DisplayRecorder matching = new DisplayRecorder(false);
+        Gdx.graphics = matching.graphics;
+        new MainGame(1280, 720).applyStartupDisplayMode(savedSettings(false));
+        assertEquals(List.of(), matching.switches, "no switch when the window already matches the setting");
+    }
+
+    @Test
+    void settingsOpenedFromTheTitleKeepsTheTitleBackdrop() {
+        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState.Screen.TITLE);
+        assertTrue(MainGame.showsBackdrop(menu), "Title");
+        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        menu.confirm();
+        assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
+
+        assertTrue(MainGame.showsBackdrop(menu), "Settings from the Title");
+    }
+
+    @Test
+    void settingsOpenedFromPauseKeepsTheFirstPersonView() {
+        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState.Screen.PLAYING);
+        assertFalse(MainGame.showsBackdrop(menu), "in play");
+        menu.escape();
+        assertFalse(MainGame.showsBackdrop(menu), "Pause");
+        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        menu.confirm();
+        assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
+
+        assertFalse(MainGame.showsBackdrop(menu), "Settings from Pause");
+    }
+
+    @Test
+    void backdropShowsOnTheMenuScreensBeforeARunOnly() {
+        for (MenuState.Screen screen : MenuState.Screen.values()) {
+            if (screen == MenuState.Screen.SETTINGS) continue;
+            boolean expected = screen == MenuState.Screen.TITLE || screen == MenuState.Screen.STAGE_SELECT
+                || screen == MenuState.Screen.DIFFICULTY_SELECT || screen == MenuState.Screen.BRIEFING;
+            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()), screen);
+            assertEquals(expected, MainGame.showsBackdrop(menu), screen.name());
+        }
     }
 }
