@@ -1,0 +1,27 @@
+id: 06_warden_core
+title: 06: WARDEN CORE
+par: 110
+complete_on_all_targets: false
+briefing: CORE THREAT DETECTED: DESTROY THE WARDEN MECH TO UNSEAL EXTRACTION.
+briefing: JUMP OR DASH ACROSS LIVE SHOCK GRATES (~) WITHOUT TAKING ARC DAMAGE.
+briefing: DEFEAT THE WARDEN MECH (B) TO UNLOCK THE SEALED EXTRACTION BULKHEAD (M).
+
+######&&&&&&&&&&################
+#.R..#..........#..............#
+#.W..#..o....k..#..a........s..#
+#.s..#....~~....#....&&..&&.r..#
+#.>..=...D..G...#..o........o..#
+#.a..#....~~....L......~~......#
+#.+..#..e....s..#..D........T..#
+#.r..#..........#....&....&....#
+######&&&&A&&&&&#......B.......#
+%%%%%%..........#....&....&....#
+%..o.%..........#..e........+..#
+%.T..=...~~..G..#......~~......#
+%....%..........L..o........o..#
+%.a..%..........#....&&..&&....#
+%..s.%...o...D..#..........r...#
+%..+.%..e....S..#######M########
+%..o.%....~~....#..a........+..#
+%....%..........#..s...X...e...#
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
