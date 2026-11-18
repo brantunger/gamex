@@ -8,12 +8,16 @@ dependencies {
   testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
-// Tells the tests where the assets folder is. Editing a committed model reruns the tests; it is tracked by
-// relative path to stay out of the build cache key.
+// Tells the tests where the assets folder is. Editing a committed model or sound reruns the tests; paths are tracked
+// relatively to stay out of the build cache key.
 class TestLocations implements CommandLineArgumentProvider {
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
   File models
+
+  @InputDirectory
+  @PathSensitive(PathSensitivity.RELATIVE)
+  File sounds
 
   @Override
   Iterable<String> asArguments() {
@@ -26,7 +30,8 @@ class TestLocations implements CommandLineArgumentProvider {
 test {
   useJUnitPlatform()
   jvmArgumentProviders.add(new TestLocations(
-    models: rootProject.file("assets/models")
+    models: rootProject.file("assets/models"),
+    sounds: rootProject.file("assets/sounds")
   ))
 }
 

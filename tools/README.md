@@ -1,6 +1,6 @@
-# `tools` — 3D Procedural Model Generators & Live Previewer
+# `tools` — 3D Model & Audio Asset Generators & Live Previewer
 
-This Gradle subproject (`:tools`) builds all 15 `.obj` assets in `../assets/models/` directly against `:core` constants, materials, and dimensions, and provides an interactive LWJGL3 model previewer.
+This Gradle subproject (`:tools`) builds all `.obj` model assets in `../assets/models/` and all 16-bit mono PCM `.wav` sound effects in `../assets/sounds/` directly against `:core` constants, materials, dimensions, and sound cues, and provides an interactive LWJGL3 model previewer.
 
 ## Quick Commands
 
@@ -10,7 +10,13 @@ Regenerate every `.obj` model in `assets/models/`:
 ./gradlew tools:generateModels
 ```
 
-Verify committed `.obj` files match the generators byte-for-byte (also runs in `./gradlew build` and CI):
+Regenerate every `.wav` sound effect in `assets/sounds/`:
+
+```sh
+./gradlew tools:generateSounds
+```
+
+Verify committed `.obj` and `.wav` files match the generators byte-for-byte (also runs in `./gradlew build` and CI):
 
 ```sh
 ./gradlew tools:test

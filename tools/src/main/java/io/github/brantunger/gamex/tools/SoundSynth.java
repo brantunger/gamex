@@ -1,10 +1,12 @@
-package io.github.brantunger.gamex.audio;
+package io.github.brantunger.gamex.tools;
+
+import io.github.brantunger.gamex.audio.SoundEvent;
 
 /**
- * Pure-Java procedural 16-bit mono PCM synthesizer producing industrial sci-fi WAV byte buffers in memory so the
- * game needs no external audio files.
+ * Offline 16-bit mono PCM synthesizer used by {@link GenerateAllSounds} to write deterministic RIFF/WAVE assets into
+ * {@code assets/sounds/}.
  */
-public final class ProceduralSounds {
+public final class SoundSynth {
 
     /** Output PCM sample rate in Hz. */
     public static final int SAMPLE_RATE = 44_100;
@@ -12,7 +14,7 @@ public final class ProceduralSounds {
     private static final double TWO_PI = 2.0 * Math.PI;
     private static final float CHARGE_HUM_SECONDS = 0.50f;
 
-    private ProceduralSounds() {}
+    private SoundSynth() {}
 
     /**
      * Synthesizes a complete RIFF/WAVE 16-bit mono buffer for the requested one-shot sound type.
@@ -191,11 +193,12 @@ public final class ProceduralSounds {
                 peakScale = 14_000.0;
                 break;
             case MENU_BACK:
-            default:
                 samples = renderToneSteps(0.075, new double[] {0.0, 0.030}, new double[] {0.035, 0.075},
                     new double[] {740.0, 495.0}, 0.18);
                 peakScale = 14_000.0;
                 break;
+            default:
+                throw new IllegalArgumentException("Unhandled sound event type: " + type);
         }
         applyEdgeRamps(samples);
         return encodeWav(quantize(samples, peakScale), SAMPLE_RATE);
@@ -784,7 +787,7 @@ public final class ProceduralSounds {
 
     private static double[] renderHazardZap() {
         double[] buf = alloc(0.13);
-        int rng = 0x7A9C011L > 0 ? 0x7A9C011 : 1;
+        int rng = 0x07A9C011;
         double last = 0.0;
         for (int i = 0; i < buf.length; i++) {
             double t = (double) i / SAMPLE_RATE;

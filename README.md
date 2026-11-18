@@ -9,8 +9,8 @@ tactical zoom optic, a free physical jump, and a horizontal energy dash. Battle 
 keycards, override Security Consoles, collect 3D health, armor, energy, weapon, shell and slug pickups, and clear the 6-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
-Range**. Surface and effect textures as well as every weapon, combat and menu sound are synthesised in code at
-start-up, while every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
+Range**. Surface and effect textures are synthesised in code at start-up, while every weapon, combat and menu sound is
+loaded from a 16-bit mono PCM `.wav` file in `assets/sounds/` and every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
 pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
@@ -207,8 +207,8 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `MainGame`: the libGDX entry point; it reads input, advances the simulation and draws each frame.
   - `GameSimulation`: the whole game state and its rules. It uses neither graphics nor audio types, so it runs without
     a window.
-  - `audio`: procedural 16-bit mono WAV synthesis (`ProceduralSounds`), headless sound-event cues (`SoundEvent`) and
-    3D distance/pan OpenAL playback (`SoundManager`).
+  - `audio`: headless sound-event cues (`SoundEvent`) and internal `.wav` asset loading with 3D distance/pan OpenAL
+    playback (`SoundManager`).
   - `world`: the level grid, its layouts and the stage definitions (`Levels`), collision with walls, targets and enemies,
     hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
     (`Pickup`), world object models (`WorldModels`) and effects.
@@ -230,10 +230,11 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
     (`LookAccumulator`), and handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings and the window icons.
-- `tools`: the Gradle model authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
-  DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `HandSculpt`, `GenerateAllModels`, and the interactive LWJGL3
-  previewer (`ModelPreviewApp`).
+- `tools`: the Gradle model and audio authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
+  DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `RailLanceSculpt`, `HandSculpt`, `GenerateAllModels`,
+  `SoundSynth`, `GenerateAllSounds`, and the interactive LWJGL3 previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads at start-up:
+  - `sounds/*.wav`: 16-bit mono PCM `.wav` files for every weapon, combat, world, pickup and menu cue plus the seamless `charge-hum.wav` blast-charge loop.
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`, `models/viewmodel-raillance.obj`: the meshes of the first-person pistol (body and slide), shortened double-barrel drum combat scattergun (body and lever forend), and rail lance (body and magnetic bolt).
   - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/rail-beam.obj`, `models/pickup-*.obj`: 3D meshes for
@@ -249,9 +250,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
-graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest` and `WorldModelsTest` read `.obj` models from `assets/models` and
-track model changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest`) invokes `GenerateAllModels` directly
-to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex deduplication. They cover:
+graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`, `WorldModelsTest` and `SoundManagerTest` read `.obj` models and `.wav` sounds from `assets/models` and `assets/sounds` and
+track asset changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest` and `GeneratedSoundsTest`) invokes `GenerateAllModels` and `GenerateAllSounds` directly
+to verify byte-for-byte reproduction of every shipped `.obj` and `.wav` asset and indexed vertex deduplication. They cover:
 
 - `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
   a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
@@ -267,8 +268,8 @@ to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex 
   pixel font's glyphs (`PixelFontTest`).
 - `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, and the saved run,
   best times and ranks (`GameSettingsAndSaveTest`).
-- `audio`: procedural WAV header/sample verification, loop-seam continuity and 3D spatial attenuation/panning math
-  (`ProceduralSoundsTest`).
+- `audio`: shipped `.wav` asset coverage/format verification, loop-seam continuity, muted headless draining and 3D
+  spatial attenuation/panning math (`SoundManagerTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulator`).
 - `weapon`: the pistol, combat scattergun (`ScattergunTest`: deterministic 8/16 pellet cones, range falloff, 1-shell fallback, pump curve), and rail lance (`RailLanceTest`: cooldown, bolt cycle, smooth 1.8x zoom optic & cancel latch), the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol, scattergun & rail lance models (`PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full slide/pump/bolt travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
@@ -281,7 +282,7 @@ to verify byte-for-byte reproduction of every shipped `.obj` and indexed vertex 
 
 Rendering, the drawing of the HUD (`HudRenderer`), OpenAL audio hardware playback (`SoundManager` runtime), the rest
 of input handling (`InputController`) and the debug screenshot mode have no tests, apart from the parsing of
-`GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`) and spatial attenuation/panning math (`ProceduralSoundsTest`).
+`GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`) and spatial attenuation/panning math (`SoundManagerTest`).
 
 A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux, Windows and
 macOS on every pull request and push to `main`.
@@ -293,6 +294,7 @@ Windows.
 
 - `desktop:run`: starts the game.
 - `tools:generateModels`: regenerates every sculpted `.obj` model in `assets/models/`.
+- `tools:generateSounds`: regenerates every synthesized `.wav` sound effect in `assets/sounds/`.
 - `tools:preview`: launches the interactive 3D OBJ model previewer (`R` rebuilds & reloads live).
 - `test`: runs the unit tests across `core`, `desktop`, and `tools`.
 - `build`: builds and tests every project.
