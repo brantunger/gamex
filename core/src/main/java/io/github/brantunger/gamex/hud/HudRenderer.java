@@ -919,11 +919,13 @@ public final class HudRenderer implements Disposable {
 
     /**
      * @return the tally's line of damage taken, pickups collected and accuracy; {@code --} when no shot was fired.
-     *     Damage is rounded up, so it reads 0 only on a run that took none and earns {@link Medal#UNTOUCHED}.
+     *     Damage is rounded to the nearest whole and never below 1 once any was taken, so it reads 0 only on a run
+     *     that took none and earns {@link Medal#UNTOUCHED}.
      */
     static String tallyStatsLine(SaveData.CompletionSummary sum) {
         int accuracy = sum.accuracyPercent();
-        return "DAMAGE TAKEN: " + (int) Math.ceil(sum.damageTaken) + "   PICKUPS: " + sum.pickupsCollected + "/"
+        int damage = sum.damageTaken <= 0f ? 0 : Math.max(1, Math.round(sum.damageTaken));
+        return "DAMAGE TAKEN: " + damage + "   PICKUPS: " + sum.pickupsCollected + "/"
             + sum.pickupsTotal + "   ACCURACY: " + (accuracy < 0 ? "--" : accuracy + "%");
     }
 
