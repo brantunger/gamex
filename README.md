@@ -31,8 +31,10 @@ The build compiles and runs with a Java 21 toolchain. If Gradle finds no Java 21
 downloads one, so it can take a while.
 
 The game opens in a 1280x720 window, on the Title screen, with the mouse cursor free. If fullscreen was switched
-on in the settings on an earlier run, it opens fullscreen instead. The cursor is captured while you play and is
-freed whenever a menu is up.
+on in the settings on an earlier run, it opens fullscreen instead. Two environment variables keep it in a window
+whatever the saved setting says, and leave that setting as it is: `GAMEX_WINDOW`, which sets the window size, and
+`GAMEX_SCREENSHOT` (both under [Debug screenshot mode](#debug-screenshot-mode)). The cursor is captured while you
+play and is freed whenever a menu is up.
 
 ## Controls
 
@@ -59,60 +61,119 @@ In the menus:
 | `Enter` / `Space` | Choose the highlighted row; on a setting, step it up or flip it |
 | Mouse | Highlight the row under the cursor; a left click chooses it |
 | `Left` / `Right` or `A` / `D` | Change the highlighted setting on the Settings screen |
-| `Esc` | Go back: Pause resumes play, Settings returns to where it was opened, others return to the Title |
-| `R` | Retry the stage on the death screen |
-| `Q` | Quit while on the Title or Pause screen |
+| `Esc` | Go back: Pause resumes play, Settings and the difficulty screen return to where they were opened, others return to the Title |
+| `R` | Restart the stage on the pause menu or the death screen |
+| `Q` | Quit from the Title or Pause screen: the first press shows `PRESS Q AGAIN TO QUIT`, a second press within about 2 seconds quits |
 
 On the Settings screen a click on the left half of a setting's row steps it down and a click on the right half
-steps it up. An on/off setting flips either way.
+steps it up. An on/off setting flips either way. A key press or a click acts once, however long it is held. The
+`QUIT` row quits at once, without the second press that `Q` needs.
 
 The game also pauses and frees the cursor when the window loses the focus or is minimised during play. It stays
 paused until you press `Esc` or choose `RESUME`; a click anywhere else does not resume it. Pausing cancels a blast
-charge that is building, at no energy cost. A mouse button that is still down when play starts or resumes does
-nothing until it is released, so the click that chose `RESUME` or `DEPLOY` does not fire a shot.
+charge that is building, at no energy cost, and drops the Rail Lance zoom. A mouse button that is still down when
+play starts or resumes does nothing until it is released, so the click that chose `RESUME` or `DEPLOY` does not fire
+a shot. A `Space` still held from choosing a row is ignored the same way, so it does not jump.
 
 ## Gameplay basics
 
 **Menus and stages.** The Title screen offers `START CAMPAIGN`, `SELECT STAGE`, `TRAINING RANGE`, `SETTINGS` and
-`QUIT`, and `CONTINUE CAMPAIGN` when a campaign run is saved. Starting a campaign asks for a difficulty and saves the
-run, replacing any saved one; a briefing follows, and `DEPLOY` starts the stage. `SELECT STAGE` lists unlocked
-campaign stages with their best rank and lets you start a fresh run from any unlocked stage.
+`QUIT`, and `CONTINUE CAMPAIGN` when a campaign run is saved. `START CAMPAIGN` asks for a difficulty and shows the
+briefing of the first stage; `DEPLOY` starts it. `SELECT STAGE` lists all six campaign stages and starts a fresh run,
+the same way, from any unlocked one:
+
+- A stage you have not reached yet reads `[LOCKED]`; an unlocked one reads `[READY]` until you clear it.
+- A cleared stage shows its best rank and its fastest clear, each taken over all three difficulties, with the
+  difficulty the fastest clear was made on: `[BEST: S] 1:42 (HARD)`.
+- Under the list, the highlighted stage shows how many medals it has on each difficulty, once it has any:
+  `MEDALS: EASY 2/4  NORMAL 4/4  HARD 0/4`.
+
+**The saved run.** `CONTINUE CAMPAIGN` resumes the one saved campaign run. It starts the saved stage straight away,
+without the briefing.
+
+| When | What happens to the saved run |
+| --- | --- |
+| You pick a difficulty | Nothing. Backing out of the briefing keeps the run that was saved before. |
+| You choose `DEPLOY` on a campaign briefing | The stage, the difficulty and the health, armor, weapons and ammo you enter with are saved, replacing any saved run. |
+| You clear a stage other than the last | The next stage is saved at once, with the health, armor, weapons and ammo you finished with. Leaving the results screen without `NEXT STAGE` loses nothing. |
+| You choose `PLAY AGAIN` on the results screen | Nothing. The stage is replayed with what you entered it with. Clearing the replay saves the next stage again, with what you finished the replay with. |
+| You die, restart or return to the Title | Nothing. |
+| You clear the final stage | The saved run is removed. |
+| You play the Training Range | Nothing. |
+
+Where the run is stored, and how to reset it, is under [Saved settings and progress](#saved-settings-and-progress).
+
+**Stages.**
 
 - **01: Outer Breach** introduces Rusher Drones and Sentry Turrets and ends at the extraction pad.
 - **02: Coolant Core** adds mobile Guard Bots across multi-lane reactor conduits.
 - **03: Security Hub** combines coordinated squads of all three archetypes and unlocks the **Rail Lance** (`R` / `r`) ahead of its long combat corridors.
 - **04: Lockdown Wing** introduces sliding bulkhead doors (`=`), Amber keycard wing gating (`k` -> `A`), and a Security Console lockdown override (`S` -> `L`) protecting extraction and ambush bays.
 - **05: Command Vault** chains Amber and Cyan keycard clearances (`k` -> `A`, `c` -> `C`) to a vault Security Console override and flanking ambush.
-- **06: Warden Core** introduces live **Shock Grate** dash trenches (`~`) and culminates in the two-phase **Warden Mech** boss (`B`) sealing the `M` extraction bulkhead before `CAMPAIGN COMPLETE`.
-- The **Training Range** includes practice targets, a Shock Grate dash trench, and both the Scattergun and Rail Lance racks, ending when every target is destroyed (always played on Normal).
-- A cleared stage shows a tally: clear time against par, hostiles cleared on combat stages (or targets cleared in the
-  Training Range), damage taken and a rank from `S` down to `C`. The best time and rank for each stage and difficulty
-  are saved.
-- The settings are mouse sensitivity, inverted look, field of view, view bob, master volume and fullscreen. They are
-  saved between runs.
+- **06: Warden Core** introduces live two-cell **Shock Grates** (`~`), adds an Amber keycard door (`k` -> `A`) and a Security Console that overrides two lockdown doors (`S` -> `L`), and culminates in the two-phase **Warden Mech** boss (`B`) sealing the `M` extraction bulkhead before `CAMPAIGN COMPLETE`.
+- The **Training Range** includes practice targets, a one-cell Shock Grate that a plain jump clears, and both the Scattergun and Rail Lance racks, ending when every target is destroyed (always played on Normal).
+
+**Objective.** A line near the top left of the HUD names the next step towards the exit and follows your progress:
+`FIND THE AMBER KEYCARD` or `FIND THE CYAN KEYCARD`, `OVERRIDE THE SECURITY CONSOLE`, `DESTROY THE WARDEN MECH`, then
+`REACH EXIT PAD`. When more than one step is open, the one you can walk to comes first. The Training Range shows
+`DESTROY ALL TARGETS`. On a window narrower than about 16:9 the line sits a little lower, so that it clears the boss
+bar and the pickup messages.
+
+**Results.** A cleared stage shows:
+
+- the clear time against par;
+- the best time for the difficulty just played, as in `BEST (NORMAL): 01:42.3`, with `*NEW BEST!*` when this run
+  set it;
+- hostiles cleared on combat stages, or targets cleared in the Training Range;
+- damage taken (rounded to the nearest whole number, and never shown as `0` once you took any), pickups collected
+  out of the stage's total, and accuracy (rounded down; `--` if you never fired);
+- a rank from `S` down to `C`, beside your best rank on that difficulty;
+- the medals the run earned, with the ones earned for the first time between asterisks: `MEDALS: *UNTOUCHED*  SWEEP`.
+
+The best time, best rank and medals are saved for each stage and difficulty.
+
+**Medals.** Each campaign stage has four medals on each difficulty. They are separate from the rank, and a medal
+once earned is kept, whatever later runs do.
+
+| Medal | Earned by clearing the stage |
+| --- | --- |
+| `UNTOUCHED` | Without losing any health or armor |
+| `SWEEP` | With every hostile destroyed |
+| `UNDER PAR` | In less than the par time; a clear exactly on par does not count |
+| `SHARPSHOOTER` | With at least 60% of your shots hitting |
+
+A shot is one trigger pull: a pistol shot, a charged blast, a Scattergun blast (one shell or two) or a rail beam. It
+is a hit if it damages at least one hostile, ring board or canister, however many pellets land and however many
+targets a beam pierces. A charged blast becomes a hit only when its explosion damages one of them. The Training Range awards
+no medals.
+
+**Settings.** The settings are mouse sensitivity, inverted look, field of view, view bob, master volume and
+fullscreen. They are saved between runs. Opened from the Title, the Settings screen keeps the Title's moving
+backdrop; opened from the pause menu, it stays over the paused game.
 
 **Health and armor.** You start a campaign with 100 health and no armor; both hold at most 100. While armor is
 left it absorbs half of each hit and the rest comes off health. Enemy attacks, close-range blasts and detonating
 canisters all deal directional damage. At zero health the view drops to the floor and the death screen follows;
-retrying, like `R`, restarts the stage with the health and armor you entered it with.
+retrying, like `R`, restarts the stage with the health, armor, weapons and ammo you entered it with. Dying on the
+very frame you reach the exit, or break the last target, is a death, not a clear.
 
 **Difficulty.** Easy scales the damage you take to 70%, pickups to 125%, and enemy attack speed/bolt speed to 85%;
 Hard scales damage taken to 140%, pickups to 80%, and enemy attack speed/bolt speed to 120% while keeping enemy hit
 points constant across difficulties.
 
-**Jump & Dash.** `Space` performs a free physical jump (`0` energy, `~0.32u` apex below the `1.0u` ceiling, `~0.48s` hang time) with full `WASD` air control and a `0.10s` pre-landing jump buffer (press-per-jump, no double-jump). Jumping elevates your 3D camera, weapon aim origin, and vertical hitbox (`[feetY, topY]`), clears floor-level **Shock Grates** (`~`) while airborne, and leaves Pistol Blast charging and Rail Lance `1.8x` zoom active for jump-shots. `Shift` triggers a horizontal **Energy Dash** (`0.14s` at `11.5 u/s`, ~`1.6u`) along your movement keys (or straight ahead when standing still): it costs `25` energy on a `0.35s` cooldown, cancels active Blast charges or Rail zoom, grants `100%` Shock Grate immunity, and suspends downward fall when chained mid-air to vault wide trenches. With less than `25` energy a dash is refused and the HUD shows `LOW ENERGY`.
+**Jump & Dash.** `Space` performs a free physical jump (`0` energy, `~0.32u` apex below the `1.0u` ceiling, `~0.48s` hang time) with full `WASD` air control and a `0.10s` pre-landing jump buffer that is the same at any frame rate (press-per-jump, no double-jump). Jumping elevates your 3D camera, weapon aim origin, and vertical hitbox (`[feetY, topY]`), clears floor-level **Shock Grates** (`~`) while airborne, and leaves Pistol Blast charging and Rail Lance `1.8x` zoom active for jump-shots. `Shift` triggers a horizontal **Energy Dash** (`0.14s` at `11.5 u/s`, ~`1.6u`) along your movement keys (or straight ahead when standing still): it costs `25` energy on a `0.35s` cooldown, cancels active Blast charges or Rail zoom, grants `100%` Shock Grate immunity, and suspends downward fall when chained mid-air. A plain jump carries you over a one-cell grate, as in the Training Range. A two-cell grate, as in **06: Warden Core**, needs a jump with a dash in mid-air: along its length a jump alone comes down on the grate, and a dash alone ends on it. With less than `25` energy a dash is refused and the HUD shows `LOW ENERGY`.
 
-**Pistol, Combat Scattergun & Rail Lance.** All three weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch cleanly at any time with `1`, `2`, `3`, `Q` (quick-swap last weapon) or the mouse wheel (cycle owned weapons):
+**Pistol, Combat Scattergun & Rail Lance.** All three weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch at any time with `1`, `2`, `3`, `Q` (quick-swap last weapon) or the mouse wheel (cycle owned weapons). A swap takes `0.18s`, and no weapon fires until it ends. Asking for a third weapon during a swap starts the swap again; asking for the weapon you are leaving reverses it from where it has got to.
 
 - **Pistol (`1`)**: Instant hitscan (`20` damage, `0.3s` interval, up to `60` world units away, infinite ammo). Right mouse button charges the violet **Energy Blast** orb.
 - **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach**, **06: Warden Core**, and the **Training Range** (and equipped directly when deploying to Stages `02`–`06` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Caddy (`+6`) pickups scaled by difficulty:
-  - **Primary fire (LMB, `1` shell)**: `8` deterministic pellets across a `4.2°` half-angle cone (`12` base damage each, linear falloff from `7u` to `26u` max range, `0.75s` pump cycle).
-  - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets across a `6.8°` cone (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
-  - Pulling the trigger at `0` shells emits a dry-fire click and smart-swaps to a loaded weapon or the Pistol automatically.
+  - **Primary fire (LMB, `1` shell)**: `8` deterministic pellets across a `4.2°` half-angle cone (`12` base damage each out to `7u`, falling in a straight line to `35%` at the `26u` max range, `0.75s` pump cycle).
+  - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets: one in the centre, an inner ring of `5` at `3.4°` and an outer ring of `10` at `6.8°` (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
+  - Pulling the trigger at `0` shells emits a dry-fire click and smart-swaps automatically: to your previous weapon if it is loaded, otherwise to a loaded Rail Lance, otherwise to the Pistol.
 - **Rail Lance (`3`)**: Unlocked in **03: Security Hub**, **06: Warden Core**, and the **Training Range** (and unlocked directly in Slot 3 when deploying to Stages `04`–`06` from Select Stage). Draws from a carried `15`-slug pool fed by Rail Lance (`+5`) and Slug Pack (`+3`) pickups scaled by difficulty:
   - **Primary fire (LMB, `1` slug)**: Instant `60u` piercing hitscan beam (`1.10s` capacitor recharge, `0` distance falloff) that penetrates every live target and enemy in line (`120` damage; `90` vs Warden Mech boss plating), stopping only at solid walls, closed bulkheads, or Security Consoles and leaving a fading 3D beam wake.
-  - **Tactical Zoom Optic (hold RMB, `0` cost)**: Smooth `1.8x` FOV magnification with proportional look-sensitivity scaling, centered low-ADS framing, rangefinder HUD brackets, full arena move speed, and instant zoom cancel on Dash or weapon swap.
-  - Pulling the trigger at `0` slugs emits a dry-fire click and smart-swaps to your previous loaded weapon or the Pistol automatically.
+  - **Tactical Zoom Optic (hold RMB, `0` cost)**: Smooth `1.8x` FOV magnification with proportional look-sensitivity scaling, centered low-ADS framing, rangefinder HUD brackets, full arena move speed, and instant zoom cancel on Dash, weapon swap or pause.
+  - Pulling the trigger at `0` slugs emits a dry-fire click and smart-swaps automatically: to your previous weapon if it is loaded, otherwise to a loaded Scattergun, otherwise to the Pistol.
 
 **Blast.** A glowing gyroscope orb fired from the pistol muzzle toward the crosshair target that explodes on the first
 wall, floor, ceiling or live target/enemy it touches and damages every unobstructed target and enemy in its radius. Solid
@@ -127,7 +188,8 @@ walls shield targets, enemies and the player from explosions, while close-range 
 
 **Energy.** The meter holds 100 and starts full.
 
-- It refills at 14 per second, but not while a charge is building.
+- It refills at 14 per second with any weapon in hand and during a weapon swap, but not while a Pistol blast charge
+  is building.
 - A charge stops growing at what the meter can pay for.
 - With less than 20 energy a charge cannot start. The HUD shows `LOW ENERGY`, and the meter keeps refilling even
   while the button is held.
@@ -143,7 +205,29 @@ chain-reacting area explosions when destroyed, ring boards (120 health, six pist
 - **Guard Bot** (100 health): mobile skirmisher that avoids Shock Grates, strafes at medium range and fires single aimed plasma bolts.
 - **Warden Mech** (600 health): two-phase sanctum boss tracked by a top-center health bar. Fires twin-arm 3-bolt fan volleys and telegraphed hydraulic charge slams in Phase 1, shifting at `<= 50%` HP into **Overdrive** (electric violet-cyan reactor, `30%` faster stride/cadence, and 5-bolt fan barrages).
 
-**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **jumping (`Space`) clears floor grates while airborne** and **Energy Dash (`Shift`) grants 100% immunity** (`0` damage) to cross wider conduit trenches unscathed. Guard Bots detour around `~` grates while Drones and the Warden Mech traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden Mech** automatically unseals all `M` boss extraction bulkheads.
+Drones, Guard Bots and the Warden Mech walk round canisters, ring boards, Security Consoles, turrets and each other
+instead of stopping against them, and they turn doorway corners without catching on them.
+
+**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **jumping (`Space`) clears floor grates while airborne** and **Energy Dash (`Shift`) grants 100% immunity** (`0` damage) for as long as the dash lasts. Guard Bots detour around `~` grates while Drones and the Warden Mech traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden Mech** automatically unseals all `M` boss extraction bulkheads.
+
+## Saved settings and progress
+
+The game keeps two files in the `.prefs` folder of your home directory: `~/.prefs/` on Linux and macOS,
+`%USERPROFILE%\.prefs\` on Windows.
+
+| File | Holds |
+| --- | --- |
+| `io.github.brantunger.gamex.settings` | The six settings |
+| `io.github.brantunger.gamex.save` | The saved campaign run, the stages unlocked, and the best time, best rank and medals of each stage and difficulty |
+
+To reset, close the game and delete the file: without `.settings` the settings go back to their defaults, and
+without `.save` there is no run to continue, only the first stage is unlocked and every record is gone.
+
+Both are XML property files that can be edited by hand. A value the game cannot use does not stop it:
+
+- a number that is not a number reads as its default, and a setting out of range is pulled back into range;
+- an unknown difficulty reads as Normal and an unknown weapon as the Pistol;
+- a best time that is not a number above zero counts as no best time, so the next clear replaces it.
 
 ## Debug screenshot mode
 
@@ -155,7 +239,7 @@ on by environment variables:
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
 | `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden` or `jump`. Without it the player stands still. |
-| `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
+| `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the weapon in hand and the hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
 - `targets`: the player turns towards the nearest canister and fires the pistol at it from frame 30. The third
@@ -164,12 +248,25 @@ on by environment variables:
   turret fire, turns toward the room's Drone and Turret and fires the pistol.
 - `title`: the saved frame shows the Title screen over its moving view of the Outer Breach stage. Nothing is
   played, and `GAMEX_VIEWMODEL_ORBIT` is ignored.
+- `stages`: the saved frame shows the Select Stage screen with all six stages unlocked, over a moving view of the
+  Lockdown Wing stage. Nothing is played, and `GAMEX_VIEWMODEL_ORBIT` is ignored.
+- `lockdown`: on the Lockdown Wing stage, the player walks up to the first bulkhead, opens it on frame 25 and walks
+  on from frame 45.
+- `scattergun`: in the Training Range, holding the Scattergun with 16 shells, the player walks forward and fires one
+  blast on frame 24.
+- `raillance`: on the Security Hub stage, holding the Rail Lance, the player holds the zoom from frame 6 to frame 38
+  and fires a beam on frame 24.
+- `warden`: on the Warden Core stage, placed in the Warden's arena with the Scattergun, the player pulls the trigger
+  on frames 1 and 3, which fires one blast, and then walks forward.
+- `jump`: in the Training Range, the player walks at the Shock Grate and jumps it on frame 19, without a dash and
+  without taking damage.
 
 `action`, `targets` and a run without a script start in play on the original first level, which has no pickups and
 no exit. The script name is not case-sensitive, and an unknown name is the same as no script.
 
-With `GAMEX_VIEWMODEL_ORBIT` the saved frame shows the pistol and hand alone, at rest, on a plain grey background,
-without the world or the HUD. A yaw of 0 shows them from behind, 90 from the left side and 180 from the front; a
+With `GAMEX_VIEWMODEL_ORBIT` the saved frame shows the weapon in hand and the hand alone, at rest, on a plain grey
+background, without the world or the HUD. That weapon is the Pistol, except in the `scattergun`, `warden` and `jump`
+scripts (the Scattergun) and the `raillance` script (the Rail Lance). A yaw of 0 shows them from behind, 90 from the left side and 180 from the front; a
 pitch of 90 shows them from above, and the pitch is 0 if left out. A value that is not a number prints a warning
 and the normal picture is saved.
 
@@ -183,7 +280,9 @@ there.
 
 One more variable works on any run, with or without `GAMEX_SCREENSHOT`: `GAMEX_WINDOW` sets the window size as
 `WIDTHxHEIGHT`, for example `800x600`. A value that is malformed, smaller than 160x120 or larger than 7680x4320 prints a
-warning and the window opens at 1280x720.
+warning and the window opens at 1280x720. Whenever the variable is set, even to such a value, the game stays in a
+window although fullscreen is saved on. The saved setting is not changed, so the Settings screen still reads
+`FULLSCREEN: ON`.
 
 PowerShell:
 
@@ -221,12 +320,13 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
     a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
     indexed deduplication). None use graphics types.
-  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the pistol and hand over it (`ViewmodelRenderer`), and the textures painted in code.
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), and the textures painted in code.
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
     or input types) and the built-in pixel font.
-  - `settings`: the player's settings (`GameSettings`), the saved campaign run and best records (`SaveData`), and
-    the key-value store they are kept in: libGDX preferences in the game, a map in tests and debug runs.
+  - `settings`: the player's settings (`GameSettings`), the saved campaign run and best records (`SaveData`), the
+    medals (`Medal`), what a finished run hands to the results screen (`RunStats`), and the key-value store they are
+    kept in: libGDX preferences in the game, a map in tests and debug runs.
   - `input`: reads the keyboard and mouse for play and for the menus, adds up mouse movement for looking around
     (`LookAccumulator`), and handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
@@ -241,9 +341,9 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`, `models/viewmodel-raillance.obj`: the meshes of the first-person pistol (body and slide), shortened double-barrel drum combat scattergun (body and lever forend), and rail lance (body and magnetic bolt).
   - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/rail-beam.obj`, `models/pickup-*.obj`: 3D meshes for
     targets, pickups (medkit, armor, energy cell, keycards, scattergun, shells, rail lance, slugs), blast projectiles and rail beam trails.
-  - `models/door-bulkhead.obj`, `models/security-console.obj`: 3D meshes for sliding bulkhead doors and security consoles.
-  - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-bolt.obj`: 3D meshes
-    for articulated enemies and enemy plasma bolts.
+  - `models/door-bulkhead.obj`, `models/security-console.obj`, `models/hazard-grate.obj`: 3D meshes for sliding bulkhead doors, security consoles and shock grates.
+  - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-warden.obj`,
+    `models/enemy-bolt.obj`: 3D meshes for articulated enemies, the Warden Mech boss and enemy plasma bolts.
 
 ## Tests
 
@@ -252,39 +352,52 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
-graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`, `WorldModelsTest`, `SoundManagerTest` and `LevelsTest` read `.obj` models, `.wav` sounds and `.map` levels from `assets/models`, `assets/sounds` and `assets/levels` and
-track asset changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest` and `GeneratedSoundsTest`) invokes `GenerateAllModels` and `GenerateAllSounds` directly
-to verify byte-for-byte reproduction of every shipped `.obj` and `.wav` asset and indexed vertex deduplication. They cover:
+graphics context; the few that touch libGDX's `Gdx` globals put stubs there (`InputControllerTest`,
+`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `LevelsTest`). The `core` tests read `.obj` models, `.wav` sounds and `.map`
+levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/build.gradle` tracks those folders, so
+editing an asset reruns them. They cover:
 
-- `GameSimulation`: pistol hits, a charged blast from release to explosion, muzzle launch and crosshair convergence,
-  a pause dropping a charge, targets blocking the player, the clamp on long frames, canister explosions chaining and
-  hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, headless sound
-  events (weapon, target, enemy, pickup, charge-audio and edge-triggered `LOW ENERGY`), and a stage ending when its
-  last target breaks.
-- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
+- `GameSimulation` (`GameSimulationTest`): pistol hits, a charged blast from release to explosion, muzzle launch and
+  crosshair convergence, a pause dropping a charge, targets blocking the player, the clamp on long frames, canister
+  explosions chaining and hurting the player, a dash dropping a charge and collecting pickups, enemy
+  alerting/damage/kills, headless sound events, weapon swaps, the energy refill, jumps over one-cell and two-cell
+  Shock Grates, a stage ending when its last target breaks, a death on the frame the exit is reached, and no enemy
+  seeing the spawn point on any campaign stage.
+- The HUD objective line (`ObjectiveTextTest`) and the shot and hit counts behind the accuracy figure
+  (`ShotAccuracyTest`).
+- `MainGame` (`MainGameViewportTest`): the GL viewport on resize and on HiDPI displays, the windowed size to fall
+  back to, a forced windowed start, and which screens draw the backdrop.
+- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
-- `player`: view angles and movement, armor absorbing damage, death, and the dash (its cost, distance, cooldown
-  and refusal on low energy).
-- `hud`: the campaign's path through the menu screens, stage select and menu audio events (`MenuStateTest`), and the
-  pixel font's glyphs (`PixelFontTest`).
-- `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, and the saved run,
-  best times and ranks (`GameSettingsAndSaveTest`).
+- `player`: view angles and movement, armor absorbing damage, death, the dash (its cost, distance, cooldown
+  and refusal on low energy), and the jump (its arc, the mid-air dash, and the jump buffer at low frame rates).
+- `hud`: the menu screens, the saved run, quick restart and the `Q` quit prompt (`MenuStateTest`,
+  `MenuStateFlowTest`), the Select Stage rows and the lines of the results screen, including that they fit their
+  panels (`StageRecordsDisplayTest`), when the combat HUD is shown (`HudRendererTest`), and the pixel font's glyphs
+  (`PixelFontTest`).
+- `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, the saved run,
+  best times and ranks (`GameSettingsAndSaveTest`), the medals (`MedalTest`), and damaged or hand-edited settings and
+  save values (`CorruptPrefsTest`).
 - `audio`: shipped `.wav` asset coverage/format verification, loop-seam continuity, muted headless draining and 3D
-  spatial attenuation/panning math (`SoundManagerTest`).
-- `input`: adding up mouse movement for looking around (`LookAccumulator`).
+  spatial attenuation/panning math (`SoundManagerTest`), and sound files that fail to load
+  (`SoundManagerPartialLoadTest`).
+- `input`: adding up mouse movement for looking around (`LookAccumulatorTest`), and menu keys and clicks acting once
+  per press, `R`, `Q`, and held buttons and `Space` being ignored when play resumes (`InputControllerTest`).
 - `weapon`: the pistol, combat scattergun (`ScattergunTest`: deterministic 8/16 pellet cones, range falloff, 1-shell fallback, pump curve), and rail lance (`RailLanceTest`: cooldown, bolt cycle, smooth 1.8x zoom optic & cancel latch), the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol, scattergun & rail lance models (`PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full slide/pump/bolt travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
   normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
-- `model`: the OBJ parser (including files it must reject), byte-for-byte generator freshness for every `.obj` in
-  `assets/models/` (`GeneratedModelsTest`), and model-file error reporting (`ModelVertices.read`).
-- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), the packaging icons, and when and
-  how `StartupHelper` relaunches the JVM on macOS.
+- `model`: the OBJ parser (including files it must reject) and model-file error reporting (`ModelVertices.read`).
+- `debug`: the parsing of `GAMEX_VIEWMODEL_ORBIT` and the `jump` demo script (`DemoRunTest`).
+- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), when the game starts fullscreen,
+  the packaging icons, and when and how `StartupHelper` relaunches the JVM on macOS.
+- `tools` (`:tools:test`): `GeneratedModelsTest` and `GeneratedSoundsTest` run `GenerateAllModels` and
+  `GenerateAllSounds` and check that every shipped `.obj` and `.wav` matches the generators byte for byte;
+  `GeneratedModelsTest` also checks the indexed vertex deduplication.
 
-Rendering, the drawing of the HUD (`HudRenderer`), OpenAL audio hardware playback (`SoundManager` runtime), the rest
-of input handling (`InputController`) and the debug screenshot mode have no tests, apart from the parsing of
-`GAMEX_VIEWMODEL_ORBIT` (`DemoRunTest`) and spatial attenuation/panning math (`SoundManagerTest`).
+Rendering, the drawing of the HUD and the menus on screen, OpenAL audio hardware playback and the other demo scripts
+have no tests.
 
 A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux, Windows and
 macOS on every pull request and push to `main`.
@@ -296,13 +409,26 @@ Windows.
 
 - `desktop:run`: starts the game.
 - `tools:generateModels`: regenerates every sculpted `.obj` model in `assets/models/`.
-- `tools:generateSounds`: regenerates every synthesized `.wav` sound effect in `assets/sounds/`.
+- `tools:generateSounds`: regenerates every synthesized `.wav` sound effect in `assets/sounds/`. To add a sound, see
+  [Adding a Sound](tools/README.md#adding-a-sound).
 - `tools:preview`: launches the interactive 3D OBJ model previewer (`R` rebuilds & reloads live).
 - `test`: runs the unit tests across `core`, `desktop`, and `tools`.
 - `build`: builds and tests every project.
-- `desktop:jar`: builds a runnable jar in `desktop/build/libs`.
 - `clean`: removes the `build` folders.
 - `idea`: generates IntelliJ project data; `cleanIdea` removes it.
+
+### Packaging
+
+- `desktop:jar`: builds a runnable jar, `gamex-1.0.0.jar`, in `desktop/build/libs`. It holds the game, its assets and
+  every dependency. `desktop:dist` does the same.
+- `desktop:jarWin`, `desktop:jarLinux`, `desktop:jarMac`: the same jar with the native libraries of one system only
+  (`gamex-1.0.0-win.jar`, `-linux`, `-mac`).
+- `desktop:distZip`, `desktop:distTar`: an archive in `desktop/build/distributions` that holds only that jar, in
+  `lib/`, and the start scripts `bin/gamex` and `bin/gamex.bat`.
+- `desktop:packageWinX64`, `desktop:packageLinuxX64`, `desktop:packageMacM1`, `desktop:packageMacX64`: Construo
+  bundles of the game with its own Java 21 runtime, so the player needs no Java. Each downloads a JDK for its target.
+
+### Running tasks
 
 A task can be run for one project with a `name:` prefix: `core:clean` removes the `build` folder of `core` only.
 
@@ -311,3 +437,5 @@ Useful flags:
 - `--offline`: uses cached dependencies only.
 - `--refresh-dependencies`: checks every dependency again and downloads any that changed.
 - `--continue`: keeps running tasks after one fails.
+- `--configuration-cache`: reuses the configured build on the next run. The build works with it; it is not switched
+  on by default.
