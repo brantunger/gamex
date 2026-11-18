@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.input;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
+import com.badlogic.gdx.utils.IntSet;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
@@ -11,6 +12,10 @@ import io.github.brantunger.gamex.settings.GameSettings;
 /**
  * Reads the keyboard and mouse for both active gameplay ({@link PlayerInput}) and menu navigation ({@link MenuState}).
  * Captures the cursor automatically while playing and frees it whenever a menu, death or intermission screen is up.
+ *
+ * <p>Menu actions are taken from the key-down and button-down events, not from the polled just-pressed flags. The
+ * desktop backend keeps rendering a minimised window without clearing those flags, so a polled key pressed as the
+ * window is minimised would repeat its action on every frame; an event is delivered once per press.
  */
 public final class InputController extends InputAdapter {
 
@@ -25,6 +30,12 @@ public final class InputController extends InputAdapter {
     /** The same for Space, so confirming DEPLOY or RESUME does not jump on the first frame of play. */
     private boolean swallowJump;
     private int pendingScrollSwap;
+    /** Keys whose key-down event arrived since the last poll; menu screens act on these. */
+    private final IntSet pressedKeys = new IntSet();
+    /** Set when a left-button-down event arrived since the last poll, at ({@link #clickX}, {@link #clickY}). */
+    private boolean clickPending;
+    private int clickX;
+    private int clickY;
 
     /**
      * @param menuState screen & menu state machine
@@ -41,6 +52,22 @@ public final class InputController extends InputAdapter {
     public void pause() {
         menuState.onWindowPaused();
         syncCursorCapture();
+    }
+
+    @Override
+    public boolean keyDown(int keycode) {
+        pressedKeys.add(keycode);
+        return true;
+    }
+
+    @Override
+    public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        if (button == Input.Buttons.LEFT) {
+            clickPending = true;
+            clickX = screenX;
+            clickY = screenY;
+        }
+        return true;
     }
 
     @Override
@@ -81,9 +108,12 @@ public final class InputController extends InputAdapter {
 
         if (!menuState.isPlaying()) {
             MenuState.Command cmd = pollMenu();
+            clearPresses();
             syncCursorCapture();
             return cmd;
         }
+        // A press made during play must not act on a menu that opens later.
+        clearPresses();
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             MenuState.Command cmd = menuState.escape();
@@ -127,38 +157,45 @@ public final class InputController extends InputAdapter {
         return MenuState.Command.NONE;
     }
 
+    /** Forgets the key and button presses collected for the menus since the last poll. */
+    private void clearPresses() {
+        pressedKeys.clear();
+        clickPending = false;
+    }
+
+    /** Advances the menu by one frame, acting once on each press delivered as an event since the last poll. */
     private MenuState.Command pollMenu() {
         menuState.update(Gdx.graphics.getDeltaTime());
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+        if (pressedKeys.contains(Input.Keys.ESCAPE)) {
             return menuState.escape();
         }
         if ((menuState.getScreen() == MenuState.Screen.DEAD || menuState.getScreen() == MenuState.Screen.PAUSED)
-            && Gdx.input.isKeyJustPressed(Input.Keys.R)) {
+            && pressedKeys.contains(Input.Keys.R)) {
             return menuState.quickRestart();
         }
         // Q quits only on a second press, so one stray key does not close the game.
         if ((menuState.getScreen() == MenuState.Screen.PAUSED || menuState.getScreen() == MenuState.Screen.TITLE)
-            && Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
+            && pressedKeys.contains(Input.Keys.Q)) {
             return menuState.requestQuit();
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.UP) || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
+        if (pressedKeys.contains(Input.Keys.UP) || pressedKeys.contains(Input.Keys.W)) {
             menuState.moveSelection(-1);
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN) || Gdx.input.isKeyJustPressed(Input.Keys.S)) {
+        if (pressedKeys.contains(Input.Keys.DOWN) || pressedKeys.contains(Input.Keys.S)) {
             menuState.moveSelection(1);
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT) || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+        if (pressedKeys.contains(Input.Keys.LEFT) || pressedKeys.contains(Input.Keys.A)) {
             return menuState.adjustHorizontal(-1);
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT) || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+        if (pressedKeys.contains(Input.Keys.RIGHT) || pressedKeys.contains(Input.Keys.D)) {
             return menuState.adjustHorizontal(1);
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        if (pressedKeys.contains(Input.Keys.ENTER) || pressedKeys.contains(Input.Keys.SPACE)) {
             return menuState.confirm();
         }
-        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
-            int sx = Gdx.input.getX();
-            int sy = Gdx.input.getY();
+        if (clickPending) {
+            int sx = clickX;
+            int sy = clickY;
             int clicked = HudRenderer.optionAt(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), sx, sy, menuState);
             if (clicked >= 0) {
                 menuState.setSelectedIndex(clicked);
