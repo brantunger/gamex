@@ -60,7 +60,7 @@ public final class GenerateAllModels {
         for (Map.Entry<String, Supplier<MeshBuilder>> entry : GENERATORS.entrySet()) {
             MeshBuilder builder = entry.getValue().get();
             Path target = outputDir.resolve(entry.getKey());
-            Files.write(target, builder.toObjString().getBytes(StandardCharsets.UTF_8));
+            Files.writeString(target, builder.toObjString());
             System.out.println("Wrote " + target + ": " + builder.getGroupCount() + " groups, "
                 + builder.getVertexCount() + " vertices, " + builder.getFaceCount() + " faces");
         }

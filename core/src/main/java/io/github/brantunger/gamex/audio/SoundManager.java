@@ -2,15 +2,12 @@ package io.github.brantunger.gamex.audio;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Sound;
-import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.settings.GameSettings;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -18,10 +15,18 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Loads synthesized {@link Sound} buffers in memory and drives 3D spatialized combat audio, centered player/menu audio,
- * and the pitched blast-charge loop. Degrades cleanly to silent mode when muted or when no audio device exists.
+ * Loads {@link Sound} assets from {@code assets/sounds/} via libGDX internal file handles and drives 3D spatialized
+ * combat audio, centered player/menu audio, and the pitched blast-charge loop. Degrades cleanly to silent mode when
+ * muted or when no audio device exists.
  */
 public final class SoundManager implements Disposable {
+
+    /** Directory inside {@code assets/} holding shipped {@code .wav} sound effects. */
+    public static final String SOUNDS_DIR = "sounds";
+    /** File name of the seamless blast-charge loop inside {@link #SOUNDS_DIR}. */
+    public static final String CHARGE_HUM_FILE = "charge-hum.wav";
+    /** Internal asset path of the seamless blast-charge loop. */
+    public static final String CHARGE_HUM_PATH = SOUNDS_DIR + "/" + CHARGE_HUM_FILE;
 
     private final boolean muted;
     private final Map<SoundEvent.Type, Sound> sounds = new EnumMap<>(SoundEvent.Type.class);
@@ -37,14 +42,12 @@ public final class SoundManager implements Disposable {
     public SoundManager(boolean muted) {
         this.muted = muted;
         Sound loadedCharge = null;
-        if (!muted && Gdx.audio != null) {
+        if (!muted && Gdx.audio != null && Gdx.files != null) {
             try {
                 for (SoundEvent.Type type : SoundEvent.Type.values()) {
-                    String name = "synth_" + type.name().toLowerCase(Locale.ROOT) + ".wav";
-                    sounds.put(type, Gdx.audio.newSound(new MemoryWavFileHandle(name, ProceduralSounds.synthesize(type))));
+                    sounds.put(type, Gdx.audio.newSound(Gdx.files.internal(assetPath(type))));
                 }
-                loadedCharge = Gdx.audio.newSound(
-                    new MemoryWavFileHandle("synth_charge_hum.wav", ProceduralSounds.synthesizeChargeHum()));
+                loadedCharge = Gdx.audio.newSound(Gdx.files.internal(CHARGE_HUM_PATH));
                 available = true;
             } catch (RuntimeException e) {
                 System.err.println("Audio initialization failed; continuing muted: " + e.getMessage());
@@ -54,6 +57,16 @@ public final class SoundManager implements Disposable {
             }
         }
         this.chargeHum = loadedCharge;
+    }
+
+    /** @return the {@code .wav} file name inside {@link #SOUNDS_DIR} for {@code type}. */
+    public static String fileName(SoundEvent.Type type) {
+        return type.name().toLowerCase(Locale.ROOT).replace('_', '-') + ".wav";
+    }
+
+    /** @return the internal asset path ({@code sounds/<cue>.wav}) for {@code type}. */
+    public static String assetPath(SoundEvent.Type type) {
+        return SOUNDS_DIR + "/" + fileName(type);
     }
 
     /**
@@ -253,35 +266,5 @@ public final class SoundManager implements Disposable {
 
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
-    }
-
-    /** In-memory {@link FileHandle} exposing synthesized WAV bytes without disk writes. */
-    private static final class MemoryWavFileHandle extends FileHandle {
-        private final byte[] bytes;
-
-        MemoryWavFileHandle(String name, byte[] bytes) {
-            super(name);
-            this.bytes = bytes;
-        }
-
-        @Override
-        public InputStream read() {
-            return new ByteArrayInputStream(bytes);
-        }
-
-        @Override
-        public byte[] readBytes() {
-            return bytes.clone();
-        }
-
-        @Override
-        public long length() {
-            return bytes.length;
-        }
-
-        @Override
-        public boolean exists() {
-            return true;
-        }
     }
 }

@@ -27,6 +27,14 @@ tasks.register('generateModels', JavaExec) {
   args = [rootProject.file('assets/models').path]
 }
 
+tasks.register('generateSounds', JavaExec) {
+  group = 'gamex'
+  description = 'Regenerates all synthesized .wav sound effects in assets/sounds/'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.brantunger.gamex.tools.GenerateAllSounds'
+  args = [rootProject.file('assets/sounds').path]
+}
+
 def previewJvmArgs = [
   '--enable-native-access=ALL-UNNAMED',
   '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
@@ -50,6 +58,10 @@ class ToolsAssetsLocation implements CommandLineArgumentProvider {
   @PathSensitive(PathSensitivity.RELATIVE)
   File models
 
+  @InputDirectory
+  @PathSensitive(PathSensitivity.RELATIVE)
+  File sounds
+
   @Override
   Iterable<String> asArguments() {
     ["-Dgamex.assets=${models.parentFile.path}".toString()]
@@ -59,6 +71,7 @@ class ToolsAssetsLocation implements CommandLineArgumentProvider {
 test {
   useJUnitPlatform()
   jvmArgumentProviders.add(new ToolsAssetsLocation(
-    models: rootProject.file('assets/models')
+    models: rootProject.file('assets/models'),
+    sounds: rootProject.file('assets/sounds')
   ))
 }
