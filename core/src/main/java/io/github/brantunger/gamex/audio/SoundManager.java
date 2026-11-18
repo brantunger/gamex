@@ -185,7 +185,10 @@ public final class SoundManager implements Disposable {
                 return 0.36f;
             case WEAPON_SWITCH:
             case WEAPON_DRY_FIRE:
+            case PLAYER_JUMP:
                 return 0.56f;
+            case PLAYER_LAND:
+                return 0.52f;
             case BLAST_RELEASE:
             case ENEMY_SHOOT:
             case DRONE_LUNGE:

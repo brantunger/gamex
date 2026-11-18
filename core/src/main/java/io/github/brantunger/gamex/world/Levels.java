@@ -94,7 +94,7 @@ public final class Levels {
             true,
             map,
             "LIVE FIRE CALIBRATION COURSE ONLINE.",
-            "TEST SCATTERGUN, RAIL LANCE OPTIC ZOOM, ENERGY DASH AND CHAIN BLASTS.",
+            "TEST SCATTERGUN, RAIL LANCE, JUMP, ENERGY DASH AND CHAIN BLASTS.",
             "DESTROY ALL 11 TARGETS TO COMPLETE THE RUN.");
     }
 
@@ -304,7 +304,7 @@ public final class Levels {
             false,
             map,
             "CORE THREAT DETECTED: DESTROY THE WARDEN MECH TO UNSEAL EXTRACTION.",
-            "DASH ACROSS LIVE SHOCK GRATES (~) WITHOUT TAKING ARC DAMAGE.",
+            "JUMP OR DASH ACROSS LIVE SHOCK GRATES (~) WITHOUT TAKING ARC DAMAGE.",
             "DEFEAT THE WARDEN MECH (B) TO UNLOCK THE SEALED EXTRACTION BULKHEAD (M).");
     }
 

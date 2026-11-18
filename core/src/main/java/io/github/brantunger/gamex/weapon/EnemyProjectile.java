@@ -99,7 +99,7 @@ public final class EnemyProjectile {
                 return true;
             }
             if (player != null && !player.isDead()
-                && ny + RADIUS >= 0f && ny - RADIUS <= Player.EYE_HEIGHT + 0.18f) {
+                && ny + RADIUS >= player.getFeetY() && ny - RADIUS <= player.getTopY()) {
                 float dx = player.position.x - nx;
                 float dz = player.position.y - nz;
                 float reach = Player.RADIUS + RADIUS;

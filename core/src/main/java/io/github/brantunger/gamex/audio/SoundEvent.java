@@ -30,6 +30,8 @@ public final class SoundEvent {
         BOSS_SLAM,
         BOSS_OVERDRIVE,
         BOSS_DESTROYED,
+        PLAYER_JUMP,
+        PLAYER_LAND,
         PLAYER_DASH,
         PLAYER_HURT,
         PLAYER_DEATH,

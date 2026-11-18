@@ -113,6 +113,14 @@ public final class ProceduralSounds {
                 samples = renderBossDestroyed();
                 peakScale = 31_000.0;
                 break;
+            case PLAYER_JUMP:
+                samples = renderPlayerJump();
+                peakScale = 18_500.0;
+                break;
+            case PLAYER_LAND:
+                samples = renderPlayerLand();
+                peakScale = 17_500.0;
+                break;
             case PLAYER_DASH:
                 samples = renderPlayerDash();
                 peakScale = 22_000.0;
@@ -592,6 +600,42 @@ public final class ProceduralSounds {
             double screech = Math.sin(phase) + 0.40 * Math.sin(2.0 * phase);
             double env = Math.sin(Math.PI * Math.min(1.0, u)) * Math.exp(-t / 0.15);
             buf[i] = Math.tanh((screech * 0.65 + rngFloat(rng) * 0.20) * env * 1.35);
+        }
+        return buf;
+    }
+
+    private static double[] renderPlayerJump() {
+        double[] buf = alloc(0.12);
+        int rng = 0x4A554D50;
+        double servoPhase = 0.0;
+        double lp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double freq = 92.0 + 146.0 * (1.0 - Math.exp(-t / 0.042));
+            servoPhase += TWO_PI * freq / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.24 * (rngFloat(rng) - lp);
+            double push = (0.72 * Math.sin(servoPhase) + 0.24 * Math.sin(2.0 * servoPhase)) * Math.exp(-t / 0.052);
+            double cuff = lp * pulseWindow(t, 0.0, 0.075, 0.008) * 0.55;
+            buf[i] = Math.tanh((push + cuff) * 1.3);
+        }
+        return buf;
+    }
+
+    private static double[] renderPlayerLand() {
+        double[] buf = alloc(0.11);
+        int rng = 0x4C414E44;
+        double thudPhase = 0.0;
+        double lp = 0.0;
+        for (int i = 0; i < buf.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double freq = 42.0 + 82.0 * Math.exp(-t / 0.024);
+            thudPhase += TWO_PI * freq / SAMPLE_RATE;
+            rng = nextRng(rng);
+            lp += 0.30 * (rngFloat(rng) - lp);
+            double sole = (rngFloat(rng) * 0.30 + lp * 0.75) * Math.exp(-t / 0.020);
+            double body = Math.sin(thudPhase) * Math.exp(-t / 0.042) * 0.85;
+            buf[i] = Math.tanh((sole * 0.65 + body) * 1.35);
         }
         return buf;
     }

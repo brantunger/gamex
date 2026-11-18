@@ -593,7 +593,8 @@ public final class HudRenderer implements Disposable {
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
         PixelFont.drawCentred(batch, textures.white,
-            "WASD: MOVE   SHIFT: DASH   E: USE   1-3/Q/SCROLL: WEAPON   LMB/RMB: FIRE/ALT", cx, 32f * unit, 2.1f * unit);
+            "WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
+            cx, 32f * unit, 2.0f * unit);
     }
 
     private void drawStageSelectScreen(MenuState menuState) {

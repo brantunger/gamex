@@ -1138,4 +1138,75 @@ class GameSimulationTest {
         for (int i = 0; i < 12; i++) sim.update(FRAME, input);
         assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
     }
+
+    @Test
+    void jumpClearsFloorShockGrateWithoutSpendingEnergyAndDoesNotAutoHopWhenHeld() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "###########",
+            "#.>.~.....#",
+            "###########"));
+        sim.player.position.set(3.85f, 1.5f); // just west of the ~ shock grate at x = [4, 5]
+
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        input.jump = true;
+        sim.update(FRAME, input);
+
+        assertEquals(100f, sim.energy.getEnergy(), 1e-4f, "jump spends zero energy");
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.PLAYER_JUMP));
+
+        int landSounds = 0;
+        for (int i = 0; i < 35; i++) {
+            sim.update(FRAME, input); // keep holding jump across touchdown
+            landSounds += countSound(sim.drainSoundEvents(), SoundEvent.Type.PLAYER_LAND);
+        }
+
+        assertTrue(sim.player.position.x > 5.2f, "cleared across the 1u shock grate tile");
+        assertEquals(Player.MAX_HEALTH, sim.player.getHealth(), 1e-4f, "took zero shock grate damage while airborne");
+        assertEquals(1, landSounds, "emitted landing thud on touchdown");
+        assertFalse(sim.player.isAirborne(), "holding Space across landing does not auto-hop");
+
+        // Releasing and pressing Space again triggers a fresh jump.
+        input.jump = false;
+        sim.update(FRAME, input);
+        input.jump = true;
+        sim.update(FRAME, input);
+        assertTrue(sim.player.isAirborne());
+    }
+
+    @Test
+    void jumpPreservesBlastChargeAndRailLanceZoomUnlikeDash() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse("#########", "#.>...o.#", "#########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 4, WeaponSlot.PISTOL),
+            false);
+        PlayerInput input = new PlayerInput();
+        input.charge = true;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertTrue(sim.charger.isCharging());
+
+        input.jump = true;
+        sim.update(FRAME, input);
+        input.jump = false;
+        assertTrue(sim.player.isAirborne());
+        assertTrue(sim.charger.isCharging(), "Pistol Blast charge continues uninterrupted mid-jump");
+
+        // Switch to Rail Lance, engage full 1.8x zoom, and jump -> zoom stays locked at 1.0.
+        input.charge = false;
+        for (int i = 0; i < 35; i++) sim.update(FRAME, input);
+        input.weaponSlot = 3;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+
+        input.charge = true;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(1f, sim.getZoom(), 1e-4f);
+
+        input.jump = true;
+        sim.update(FRAME, input);
+        input.jump = false;
+        assertTrue(sim.player.isAirborne());
+        assertEquals(1f, sim.getZoom(), 1e-4f, "Rail Lance 1.8x zoom remains active mid-jump");
+    }
 }

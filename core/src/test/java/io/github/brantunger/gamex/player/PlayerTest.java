@@ -179,4 +179,101 @@ class PlayerTest {
         assertFalse(player.tryDash(1f, 0f, energy), "refused on low energy");
         assertTrue(player.isDashRefused());
     }
+
+    @Test
+    void jumpArcElevatesEyeAndHitboxBelowCeilingAndLandsWithDip() {
+        Player player = new Player(3.5f, 3.5f, 0f);
+        Vector3 eye = new Vector3();
+
+        assertTrue(player.tryJump());
+        assertTrue(player.consumeJumpTriggered());
+        assertTrue(player.isAirborne());
+
+        float peakFeet = 0f;
+        float peakEye = 0f;
+        for (int step = 0; step < 60 && player.isAirborne(); step++) {
+            player.move(ROOM, 0f, 0f, 1f / 60f);
+            peakFeet = Math.max(peakFeet, player.getJumpHeight());
+            peakEye = Math.max(peakEye, player.eye(eye).y);
+            assertTrue(eye.y < GameMap.WALL_HEIGHT - 0.12f, "camera clears ceiling: " + eye.y);
+        }
+
+        assertTrue(peakFeet > 0.28f && peakFeet <= Player.MAX_JUMP_HEIGHT, "peak feet height: " + peakFeet);
+        assertTrue(peakEye > Player.EYE_HEIGHT + 0.28f, "peak eye height: " + peakEye);
+        assertFalse(player.isAirborne(), "landed cleanly back on floor");
+        assertEquals(0f, player.getFeetY(), EPSILON);
+        assertTrue(player.consumeLandedTriggered());
+
+        player.updateTimers(0.05f);
+        assertTrue(player.getLandingDip() > 0.2f, "landing knee-flex dip active right after touchdown");
+        player.updateTimers(0.2f);
+        assertEquals(0f, player.getLandingDip(), EPSILON);
+    }
+
+    @Test
+    void midAirJumpBuffersNearTouchdownWithoutDoubleJumping() {
+        Player player = new Player(3.5f, 3.5f, 0f);
+
+        // Early mid-air Space press: rejected for double-jump and expires well before touchdown.
+        assertTrue(player.tryJump());
+        player.consumeJumpTriggered();
+        player.move(ROOM, 0f, 0f, 0.05f);
+        assertFalse(player.tryJump(), "no double-jump in mid-air");
+        for (int i = 0; i < 40 && player.isAirborne(); i++) {
+            player.move(ROOM, 0f, 0f, 1f / 60f);
+        }
+        assertFalse(player.isAirborne(), "expired early press does not auto-hop on landing");
+
+        // Late pre-landing Space press within JUMP_BUFFER_TIME launches immediately on touchdown.
+        assertTrue(player.tryJump());
+        player.consumeJumpTriggered();
+        player.consumeLandedTriggered();
+        while (player.getVerticalVelocity() > 0f || player.getJumpHeight() > 0.09f) {
+            player.move(ROOM, 0f, 0f, 1f / 60f);
+        }
+        assertTrue(player.isAirborne());
+        assertFalse(player.tryJump(), "queued in jump buffer just above floor");
+
+        boolean relaunched = false;
+        for (int i = 0; i < 10; i++) {
+            player.move(ROOM, 0f, 0f, 1f / 60f);
+            if (player.consumeLandedTriggered() && player.consumeJumpTriggered()) {
+                relaunched = true;
+                break;
+            }
+        }
+        assertTrue(relaunched, "buffered jump fires automatically on touchdown");
+        assertTrue(player.isAirborne());
+    }
+
+    @Test
+    void midAirDashCombosWithJumpAndHoldsHorizontalThrusterAltitude() {
+        GameMap longHall = GameMap.parse(
+            "##############",
+            "#............#",
+            "#.>..........#",
+            "#............#",
+            "##############");
+        Player player = new Player(2.5f, 2.5f, 90f);
+        EnergyMeter energy = new EnergyMeter(100f, 0f);
+
+        assertTrue(player.tryJump());
+        while (player.getVerticalVelocity() > 0f) {
+            player.move(longHall, 1f, 0f, 1f / 60f);
+        }
+        float apexHeight = player.getJumpHeight();
+        float xAtDashStart = player.position.x;
+
+        assertTrue(player.tryDash(1f, 0f, energy));
+        assertEquals(100f - Player.DASH_COST, energy.getEnergy(), EPSILON);
+        player.move(longHall, 1f, 0f, Player.DASH_DURATION);
+
+        assertEquals(apexHeight, player.getJumpHeight(), 1e-4f, "downward fall pauses during horizontal air-dash");
+        assertEquals(xAtDashStart + Player.DASH_SPEED * Player.DASH_DURATION, player.position.x, 1e-3f);
+
+        for (int i = 0; i < 40 && player.isAirborne(); i++) {
+            player.move(longHall, 1f, 0f, 1f / 60f);
+        }
+        assertFalse(player.isAirborne());
+    }
 }
