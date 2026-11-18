@@ -213,12 +213,17 @@ public final class ViewmodelRenderer implements Disposable {
         float ads = zoom * zoom * (3f - 2f * zoom);
         float swayScale = 1f - 0.72f * ads;
 
+        float vy = simulation.player.getVerticalVelocity();
+        float landDip = simulation.player.getLandingDip();
+        float airOffsetY = (MathUtils.clamp(-vy * 0.0045f, -0.012f, 0.012f) - landDip * 0.014f) * swayScale;
+        float airPitch = (MathUtils.clamp(-vy * 1.1f, -3.0f, 3.0f) - landDip * 2.8f) * swayScale;
+
         float baseX = MathUtils.lerp(restX, 0f, ads) + bobX * swayScale;
-        float baseY = MathUtils.lerp(REST_Y, -0.076f, ads) + bobY * swayScale
+        float baseY = MathUtils.lerp(REST_Y, -0.076f, ads) + bobY * swayScale + airOffsetY
             + recoil * KICK_UP * (1f - 0.25f * ads) - swapDip * 0.14f;
         float baseZ = MathUtils.lerp(REST_Z, -0.500f, ads) + recoil * KICK_BACK + swapDip * 0.045f;
         float baseYaw = MathUtils.lerp(REST_YAW, 0f, ads) - animation.getSwayYaw() * swayScale;
-        float basePitch = MathUtils.lerp(REST_PITCH, -0.6f, ads)
+        float basePitch = MathUtils.lerp(REST_PITCH, -0.6f, ads) + airPitch
             + recoil * KICK_PITCH * (1f - 0.35f * ads) + animation.getSwayPitch() * swayScale - swapDip * 20f;
         float baseRoll = MathUtils.lerp(REST_ROLL, 0f, ads);
 

@@ -113,6 +113,13 @@ public class MainGame extends ApplicationAdapter {
                     warden.completeOnAllTargets);
                 simulation.player.position.set(23.5f, 13.6f);
                 simulation.player.look(-90f, -4f);
+            } else if ("jump".equals(script)) {
+                Levels.Stage range = Levels.trainingRange();
+                simulation = new GameSimulation(range.map,
+                    new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
+                    range.completeOnAllTargets);
+                simulation.player.position.set(9.8f, 15.5f);
+                simulation.player.look(0f, -14f);
             } else if ("breach".equals(script) || showTitle) {
                 Levels.Stage breach = Levels.outerBreach();
                 simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(), breach.completeOnAllTargets);

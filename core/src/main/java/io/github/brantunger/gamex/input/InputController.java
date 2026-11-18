@@ -22,6 +22,8 @@ public final class InputController extends InputAdapter {
     private boolean swallowFire;
     /** The same for the blast button, so that it does not start a charge. */
     private boolean swallowCharge;
+    /** The same for Space, so confirming DEPLOY or RESUME does not jump on the first frame of play. */
+    private boolean swallowJump;
     private int pendingScrollSwap;
 
     /**
@@ -103,8 +105,10 @@ public final class InputController extends InputAdapter {
         if (Gdx.input.isKeyPressed(Input.Keys.A)) out.moveStrafe -= 1f;
 
         out.dash = Gdx.input.isKeyJustPressed(Input.Keys.SHIFT_LEFT)
-            || Gdx.input.isKeyJustPressed(Input.Keys.SHIFT_RIGHT)
-            || Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
+            || Gdx.input.isKeyJustPressed(Input.Keys.SHIFT_RIGHT);
+        boolean spaceDown = Gdx.input.isKeyPressed(Input.Keys.SPACE);
+        if (!spaceDown) swallowJump = false;
+        out.jump = spaceDown && !swallowJump;
         out.interact = Gdx.input.isKeyJustPressed(Input.Keys.E);
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) out.weaponSlot = 1;
@@ -175,9 +179,11 @@ public final class InputController extends InputAdapter {
             look.capture();
             swallowFire = true;
             swallowCharge = true;
+            swallowJump = Gdx.input.isKeyPressed(Input.Keys.SPACE);
             pendingScrollSwap = 0;
         } else {
             look.release();
+            swallowJump = false;
             pendingScrollSwap = 0;
         }
     }

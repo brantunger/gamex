@@ -65,4 +65,33 @@ class EnemyProjectileTest {
         assertTrue(player.hasDirectionalHurt());
         assertEquals(-90f, player.getHurtRelativeYaw(), 5f);
     }
+
+    @Test
+    void lowBoltHitsGroundedPlayerButPassesHarmlesslyUnderJumpingPlayer() {
+        GameMap hall = GameMap.parse(
+            "##########",
+            "#>.......#",
+            "##########");
+        Player grounded = new Player(4.5f, 1.5f, 0f);
+        EnemyProjectile lowHit = new EnemyProjectile(new Vector3(3.5f, 0.16f, 1.5f),
+            new Vector3(1f, 0f, 0f), 8f, 20f, null);
+        for (int i = 0; i < 30 && !lowHit.isFinished(); i++) {
+            lowHit.update(DT, hall, grounded, 1f, Collections.emptyList(), Collections.emptyList(), new ArrayList<>());
+        }
+        assertEquals(Player.MAX_HEALTH - 20f, grounded.getHealth(), 1e-4f);
+
+        Player jumping = new Player(4.5f, 1.5f, 0f);
+        assertTrue(jumping.tryJump());
+        while (jumping.getVerticalVelocity() > 0f) {
+            jumping.move(hall, 0f, 0f, DT);
+        }
+        assertTrue(jumping.getFeetY() > 0.16f + EnemyProjectile.RADIUS);
+
+        EnemyProjectile lowMiss = new EnemyProjectile(new Vector3(3.5f, 0.16f, 1.5f),
+            new Vector3(1f, 0f, 0f), 8f, 20f, null);
+        for (int i = 0; i < 30 && !lowMiss.isFinished(); i++) {
+            lowMiss.update(DT, hall, jumping, 1f, Collections.emptyList(), Collections.emptyList(), new ArrayList<>());
+        }
+        assertEquals(Player.MAX_HEALTH, jumping.getHealth(), 1e-4f, "airborne player clears low bolt");
+    }
 }

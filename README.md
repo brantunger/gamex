@@ -4,8 +4,8 @@ An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
 blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, a piercing **Rail Lance** with 1.8x
-tactical zoom optic, and a horizontal energy dash. Battle four hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
-**Guard Bots**, and the two-phase **Warden Mech** boss), dash over live **Shock Grates**, chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
+tactical zoom optic, a free physical jump, and a horizontal energy dash. Battle four hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
+**Guard Bots**, and the two-phase **Warden Mech** boss), jump or dash over live **Shock Grates**, chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
 keycards, override Security Consoles, collect 3D health, armor, energy, weapon, shell and slug pickups, and clear the 6-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
@@ -40,7 +40,8 @@ While playing:
 | Input | Action |
 | --- | --- |
 | `W` `A` `S` `D` | Move forward, left, back, right |
-| `Shift` / `Space` | Horizontal energy dash (`25` energy) |
+| `Space` | Vertical jump (`0` energy, full air control, pre-landing buffer; keeps weapons & zoom active) |
+| `Shift` | Horizontal energy dash (`25` energy; chains cleanly in mid-air) |
 | Mouse | Look around |
 | Left mouse button | Fire the active weapon (Pistol shot, 1-shell Scattergun spread, or piercing Rail Lance beam) |
 | Right mouse button | Pistol: charge Energy Blast / Scattergun: 2-shell Double-Blast / Rail Lance: 1.8x Tactical Zoom Optic |
@@ -98,10 +99,7 @@ retrying, like `R`, restarts the stage with the health and armor you entered it 
 Hard scales damage taken to 140%, pickups to 80%, and enemy attack speed/bolt speed to 120% while keeping enemy hit
 points constant across difficulties.
 
-**Dash.** A short burst, 0.14 seconds at 11.5 units per second (about 1.6 units), in the direction of the movement
-keys, or straight ahead when none is held. It costs 25 energy and the next dash can start 0.35 seconds after the
-last one started. Pressing dash cancels a blast charge that is building, and a charge cannot build during a dash.
-With less than 25 energy the dash is refused and the HUD shows `LOW ENERGY`.
+**Jump & Dash.** `Space` performs a free physical jump (`0` energy, `~0.32u` apex below the `1.0u` ceiling, `~0.48s` hang time) with full `WASD` air control and a `0.10s` pre-landing jump buffer (press-per-jump, no double-jump). Jumping elevates your 3D camera, weapon aim origin, and vertical hitbox (`[feetY, topY]`), clears floor-level **Shock Grates** (`~`) while airborne, and leaves Pistol Blast charging and Rail Lance `1.8x` zoom active for jump-shots. `Shift` triggers a horizontal **Energy Dash** (`0.14s` at `11.5 u/s`, ~`1.6u`) along your movement keys (or straight ahead when standing still): it costs `25` energy on a `0.35s` cooldown, cancels active Blast charges or Rail zoom, grants `100%` Shock Grate immunity, and suspends downward fall when chained mid-air to vault wide trenches. With less than `25` energy a dash is refused and the HUD shows `LOW ENERGY`.
 
 **Pistol, Combat Scattergun & Rail Lance.** All three weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch cleanly at any time with `1`, `2`, `3`, `Q` (quick-swap last weapon) or the mouse wheel (cycle owned weapons):
 
@@ -144,7 +142,7 @@ chain-reacting area explosions when destroyed, ring boards (120 health, six pist
 - **Guard Bot** (100 health): mobile skirmisher that avoids Shock Grates, strafes at medium range and fires single aimed plasma bolts.
 - **Warden Mech** (600 health): two-phase sanctum boss tracked by a top-center health bar. Fires twin-arm 3-bolt fan volleys and telegraphed hydraulic charge slams in Phase 1, shifting at `<= 50%` HP into **Overdrive** (electric violet-cyan reactor, `30%` faster stride/cadence, and 5-bolt fan barrages).
 
-**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **Energy Dash grants 100% immunity** (`0` damage) to cross conduits unscathed. Guard Bots detour around `~` grates while Drones and the Warden Mech traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden Mech** automatically unseals all `M` boss extraction bulkheads.
+**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **jumping (`Space`) clears floor grates while airborne** and **Energy Dash (`Shift`) grants 100% immunity** (`0` damage) to cross wider conduit trenches unscathed. Guard Bots detour around `~` grates while Drones and the Warden Mech traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden Mech** automatically unseals all `M` boss extraction bulkheads.
 
 ## Debug screenshot mode
 
@@ -155,7 +153,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance` or `warden`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden` or `jump`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the pistol and hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.

@@ -24,7 +24,9 @@ public final class PlayerInput {
     public boolean fire;
     /** Whether the secondary trigger (charge blast, double-blast, or zoom optic) is held. */
     public boolean charge;
-    /** Whether a horizontal energy dash was requested this frame. */
+    /** Whether a vertical jump is requested (Space). */
+    public boolean jump;
+    /** Whether a horizontal energy dash was requested this frame (Shift). */
     public boolean dash;
     /** Whether the interact action was requested this frame. */
     public boolean interact;
@@ -42,6 +44,7 @@ public final class PlayerInput {
         pitchDelta = 0f;
         fire = false;
         charge = false;
+        jump = false;
         dash = false;
         interact = false;
         weaponSlot = 0;

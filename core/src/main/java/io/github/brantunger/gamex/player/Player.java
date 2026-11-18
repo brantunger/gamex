@@ -12,14 +12,16 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * The player, "gamerx": a position on the floor plus a yaw and a pitch, health and armor, and an energy-powered
- * horizontal dash. The view direction is always derived from yaw and pitch, never accumulated, so it cannot drift or
- * pick up roll.
+ * The player, "gamerx": a position on the floor plus vertical jump kinematics, a yaw and a pitch, health and armor,
+ * a free physical jump, and an energy-powered horizontal dash. The view direction is always derived from yaw and pitch,
+ * never accumulated, so it cannot drift or pick up roll.
  */
 public final class Player {
 
-    /** The height of the eyes above the floor while alive. */
+    /** The height of the eyes above the floor while alive and grounded. */
     public static final float EYE_HEIGHT = 0.5f;
+    /** Total standing body height from floor to crown, used for 3D projectile hitboxes. */
+    public static final float BODY_HEIGHT = EYE_HEIGHT + 0.18f;
     /** The height the camera settles to when the player dies. */
     public static final float DEAD_EYE_HEIGHT = 0.18f;
     /** The collision radius on the XZ plane. */
@@ -28,6 +30,17 @@ public final class Player {
     public static final float MOVE_SPEED = 3.2f;
     /** The steepest pitch, up or down, in degrees. */
     public static final float MAX_PITCH = 80f;
+
+    /** Upward launch velocity of a free physical jump, in world units per second (~0.32u peak, ~0.48s airtime). */
+    public static final float JUMP_VELOCITY = 2.68f;
+    /** Downward gravity acceleration while airborne, in world units per second squared. */
+    public static final float GRAVITY = 11.2f;
+    /** Maximum feet elevation above the floor so the eye camera stays safely clear of the 1.0u ceiling. */
+    public static final float MAX_JUMP_HEIGHT = GameMap.WALL_HEIGHT - EYE_HEIGHT - 0.14f;
+    /** Forgiving pre-landing window during which an early jump press is queued for touchdown, in seconds. */
+    public static final float JUMP_BUFFER_TIME = 0.10f;
+    private static final float LANDING_DIP_TIME = 0.14f;
+    private static final float LANDING_DIP_EYE = 0.026f;
 
     /** Maximum player health. */
     public static final float MAX_HEALTH = 100f;
@@ -72,6 +85,13 @@ public final class Player {
     private float dashRefusedTimer;
     private float dashDirX;
     private float dashDirZ;
+
+    private float jumpHeight;
+    private float verticalVelocity;
+    private float jumpBufferTimer;
+    private float landingDipTimer;
+    private boolean jumpTriggered;
+    private boolean landedTriggered;
 
     /**
      * @param x the starting world x
@@ -154,8 +174,64 @@ public final class Player {
         return dashRefusedTimer > 0f;
     }
 
+    /** @return current feet height above the floor in world units (0 when grounded). */
+    public float getJumpHeight() {
+        return jumpHeight;
+    }
+
+    /** @return current vertical velocity in world units per second (positive rising, negative falling). */
+    public float getVerticalVelocity() {
+        return verticalVelocity;
+    }
+
+    /** @return whether the player is currently off the floor or rising into a jump. */
+    public boolean isAirborne() {
+        return jumpHeight > 0f || verticalVelocity > 0f;
+    }
+
+    /** @return bottom of the player's 3D body cylinder in world Y. */
+    public float getFeetY() {
+        return jumpHeight;
+    }
+
+    /** @return top of the player's 3D body cylinder in world Y, clamped to the ceiling. */
+    public float getTopY() {
+        return Math.min(GameMap.WALL_HEIGHT, jumpHeight + BODY_HEIGHT);
+    }
+
+    /** @return upper-torso world Y aimed at by ranged enemy projectiles. */
+    public float getAimTargetY() {
+        return (EYE_HEIGHT - 0.06f) + jumpHeight;
+    }
+
+    /** @return normalized knee-flex cushion in [0, 1] right after landing on the floor, otherwise 0. */
+    public float getLandingDip() {
+        if (landingDipTimer <= 0f || isDead()) return 0f;
+        float progress = 1f - landingDipTimer / LANDING_DIP_TIME;
+        return (float) Math.sin(Math.PI * Math.max(0f, Math.min(1f, progress)));
+    }
+
+    /** @return true once after each jump takeoff (including buffered touchdown jumps). */
+    public boolean consumeJumpTriggered() {
+        boolean triggered = jumpTriggered;
+        jumpTriggered = false;
+        return triggered;
+    }
+
+    /** @return true once each time the player touches back down on the floor from a jump. */
+    public boolean consumeLandedTriggered() {
+        boolean triggered = landedTriggered;
+        landedTriggered = false;
+        return triggered;
+    }
+
+    /** Clears any queued pre-landing jump input (for example when pausing). */
+    public void clearJumpBuffer() {
+        jumpBufferTimer = 0f;
+    }
+
     /**
-     * Advances non-movement timers (hurt flash, dash cooldown, death camera settle).
+     * Advances non-movement timers (hurt flash, dash cooldown, landing cushion, death camera settle).
      * @param dt the time step in seconds
      */
     public void updateTimers(float dt) {
@@ -163,7 +239,18 @@ public final class Player {
         hurtFlash = Math.max(0f, hurtFlash - dt);
         dashCooldown = Math.max(0f, dashCooldown - dt);
         dashRefusedTimer = Math.max(0f, dashRefusedTimer - dt);
+        landingDipTimer = Math.max(0f, landingDipTimer - dt);
         if (isDead()) {
+            jumpBufferTimer = 0f;
+            landingDipTimer = 0f;
+            if (jumpHeight > 0f || verticalVelocity != 0f) {
+                jumpHeight += verticalVelocity * dt - 0.5f * GRAVITY * dt * dt;
+                verticalVelocity -= GRAVITY * dt;
+                if (jumpHeight <= 0f) {
+                    jumpHeight = 0f;
+                    verticalVelocity = 0f;
+                }
+            }
             currentEyeHeight = Math.max(DEAD_EYE_HEIGHT, currentEyeHeight - DEATH_DROP_SPEED * dt);
         }
     }
@@ -263,6 +350,29 @@ public final class Player {
     }
 
     /**
+     * Attempts a free physical jump. Launches immediately when grounded, or arms a short pre-landing jump buffer
+     * ({@link #JUMP_BUFFER_TIME}) when already airborne so pressing {@code Space} just before touchdown feels crisp
+     * without allowing mid-air double jumps.
+     * @return whether an immediate takeoff occurred on this call
+     */
+    public boolean tryJump() {
+        if (isDead()) return false;
+        if (!isAirborne()) {
+            launchJump();
+            return true;
+        }
+        jumpBufferTimer = JUMP_BUFFER_TIME;
+        return false;
+    }
+
+    private void launchJump() {
+        verticalVelocity = JUMP_VELOCITY;
+        jumpBufferTimer = 0f;
+        landingDipTimer = 0f;
+        jumpTriggered = true;
+    }
+
+    /**
      * Turns the view.
      * @param yawDelta the change in yaw in degrees; positive turns right
      * @param pitchDelta the change in pitch in degrees; positive looks up
@@ -287,12 +397,16 @@ public final class Player {
     }
 
     /**
-     * Computes the eye position.
+     * Computes the eye position, including active jump elevation and landing knee-flex cushion.
      * @param out the vector to fill
      * @return {@code out}
      */
     public Vector3 eye(Vector3 out) {
-        return out.set(position.x, currentEyeHeight, position.y);
+        float dip = getLandingDip() * LANDING_DIP_EYE;
+        float y = isDead()
+            ? currentEyeHeight + jumpHeight
+            : Math.max(DEAD_EYE_HEIGHT, currentEyeHeight + jumpHeight - dip);
+        return out.set(position.x, y, position.y);
     }
 
     /**
@@ -332,13 +446,15 @@ public final class Player {
                      float dt) {
         if (isDead() || dt <= 0f) return;
         float remainingDt = dt;
+        float dashDt = 0f;
         if (dashRemaining > 0f) {
-            float dashDt = Math.min(remainingDt, dashRemaining);
+            dashDt = Math.min(remainingDt, dashRemaining);
             dashRemaining -= dashDt;
             remainingDt -= dashDt;
             Collision.move(map, solids, doors, position, dashDirX * DASH_SPEED * dashDt, dashDirZ * DASH_SPEED * dashDt,
                 RADIUS);
         }
+        advanceVertical(dt, dashDt);
         if (remainingDt <= 0f) return;
         float length = (float) Math.sqrt(forward * forward + strafe * strafe);
         if (length < 1e-4f) return;
@@ -352,6 +468,48 @@ public final class Player {
         float beforeX = position.x;
         float beforeZ = position.y;
         Collision.move(map, solids, doors, position, dx, dz, RADIUS);
-        bobPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * BOB_RATE;
+        if (!isAirborne()) {
+            bobPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * BOB_RATE;
+        }
+    }
+
+    private void advanceVertical(float dt, float dashDt) {
+        if (jumpBufferTimer > 0f) {
+            jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
+        }
+        if (!isAirborne()) return;
+
+        if (dashDt > 0f) {
+            if (verticalVelocity > 0f) {
+                jumpHeight += verticalVelocity * dashDt - 0.5f * GRAVITY * dashDt * dashDt;
+                verticalVelocity = Math.max(0f, verticalVelocity - GRAVITY * dashDt);
+                if (jumpHeight >= MAX_JUMP_HEIGHT) {
+                    jumpHeight = MAX_JUMP_HEIGHT;
+                    verticalVelocity = 0f;
+                }
+            } else {
+                verticalVelocity = 0f;
+            }
+        }
+
+        float freeDt = dt - dashDt;
+        if (freeDt > 0f) {
+            jumpHeight += verticalVelocity * freeDt - 0.5f * GRAVITY * freeDt * freeDt;
+            verticalVelocity -= GRAVITY * freeDt;
+            if (jumpHeight >= MAX_JUMP_HEIGHT) {
+                jumpHeight = MAX_JUMP_HEIGHT;
+                if (verticalVelocity > 0f) verticalVelocity = 0f;
+            }
+            if (jumpHeight <= 0f) {
+                jumpHeight = 0f;
+                verticalVelocity = 0f;
+                landedTriggered = true;
+                if (jumpBufferTimer > 0f) {
+                    launchJump();
+                } else {
+                    landingDipTimer = LANDING_DIP_TIME;
+                }
+            }
+        }
     }
 }

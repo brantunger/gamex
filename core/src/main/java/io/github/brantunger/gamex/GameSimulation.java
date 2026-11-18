@@ -89,8 +89,10 @@ public final class GameSimulation {
     public static final float TOAST_TIME = 2.0f;
     /** Base interval between consecutive shock grate damage ticks while standing on {@code ~}, in seconds. */
     public static final float HAZARD_INTERVAL = 0.35f;
-    /** Base damage dealt per shock grate tick while not dashing. */
+    /** Base damage dealt per shock grate tick while grounded and not dashing. */
     public static final float HAZARD_DAMAGE = 8f;
+    /** Minimum feet height above the floor that clears live {@code ~} shock grates while jumping. */
+    public static final float HAZARD_CLEARANCE_HEIGHT = 0.06f;
 
     /** How far a mark sits off the surface it lies on, so it does not fight with the surface for depth. */
     private static final float MARK_OFFSET = 0.012f;
@@ -165,6 +167,7 @@ public final class GameSimulation {
     private boolean hitMarkerKill;
     private String toastMessage;
     private float toastTimer;
+    private boolean prevJumpInput;
     private boolean prevDashInput;
     private boolean prevChargeRefused;
     private boolean prevInteractInput;
@@ -298,6 +301,8 @@ public final class GameSimulation {
             pistol.update(dt, false);
             scattergun.updateIdle(dt);
             railLance.updateIdle(dt);
+            player.clearJumpBuffer();
+            prevJumpInput = false;
             prevDashInput = false;
             prevChargeRefused = false;
             prevInteractInput = false;
@@ -316,6 +321,12 @@ public final class GameSimulation {
         handleWeaponSwitchInput(input.weaponSlot);
         advanceWeaponSwap(dt);
 
+        boolean jumpPressedEdge = input.jump && !prevJumpInput;
+        if (jumpPressedEdge) {
+            player.tryJump();
+        }
+        prevJumpInput = input.jump;
+
         boolean dashPressedEdge = input.dash && !prevDashInput;
         if (input.dash) {
             charger.cancel();
@@ -332,6 +343,12 @@ public final class GameSimulation {
         float beforeX = player.position.x;
         float beforeZ = player.position.y;
         player.move(map, allDamageables, doors, input.moveForward, input.moveStrafe, dt);
+        if (player.consumeLandedTriggered()) {
+            emitPlayerSound(SoundEvent.Type.PLAYER_LAND, 0.85f);
+        }
+        if (player.consumeJumpTriggered()) {
+            emitPlayerSound(SoundEvent.Type.PLAYER_JUMP, 0.90f);
+        }
         collectPickups();
         boolean interactPressedEdge = input.interact && !prevInteractInput;
         prevInteractInput = input.interact;
@@ -412,8 +429,8 @@ public final class GameSimulation {
             }
         }
 
-        // The gun bobs with the distance actually covered, so it settles when the player is held up by a wall.
-        float walked = player.position.dst(beforeX, beforeZ);
+        // The gun bobs with the distance actually walked on the floor, settling against walls or while airborne.
+        float walked = player.isAirborne() ? 0f : player.position.dst(beforeX, beforeZ);
         float walkSpeed = dt > 0f ? walked / (Player.MOVE_SPEED * dt) : 0f;
         // It sways with the turn actually made, so it settles when the view is held at the pitch limit.
         float turned = (player.getYaw() - beforeYaw + 540f) % 360f - 180f;
@@ -641,6 +658,8 @@ public final class GameSimulation {
     public void pause() {
         charger.cancel();
         railLance.cancelZoom();
+        player.clearJumpBuffer();
+        prevJumpInput = false;
         prevDashInput = false;
         prevChargeRefused = false;
         prevInteractInput = false;
@@ -1187,7 +1206,7 @@ public final class GameSimulation {
     }
 
     private void updateHazards(float dt) {
-        if (player.isDashing()) {
+        if (player.isDashing() || player.getJumpHeight() > HAZARD_CLEARANCE_HEIGHT) {
             playerHazardTimer = 0f;
         } else {
             playerHazardTimer = Math.max(0f, playerHazardTimer - dt);
