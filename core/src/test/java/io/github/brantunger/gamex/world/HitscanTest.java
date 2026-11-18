@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.world;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -282,5 +283,53 @@ class HitscanTest {
         assertEquals(1, consoleBlocked.targetHits.size());
         assertSame(tNear, consoleBlocked.targetHits.get(0).target);
         assertSame(console, consoleBlocked.terminalHit.target);
+    }
+
+    @Test
+    void rayFromAboveEntersAShortEnemyThroughItsTop() {
+        Enemy drone = new Enemy(Enemy.Kind.DRONE, 4.5f, 1.5f, 0f);
+        List<Enemy> drones = Collections.singletonList(drone);
+        // An eye at the top of a jump, 0.25 from the drone's side, looking 30 degrees down: the ray is still above
+        // the drone where it crosses the side, and comes down through the top 0.044 short of the axis.
+        Vector3 eye = new Vector3(4.5f - drone.getRadius() - 0.25f, 0.82f, 1.5f);
+        double pitch = Math.toRadians(-30.0);
+        Vector3 down = new Vector3((float) Math.cos(pitch), (float) Math.sin(pitch), 0f);
+
+        RayHit hit = Hitscan.cast(MAP, drones, eye, down, RANGE);
+        assertEquals(RayHit.Kind.TARGET, hit.kind);
+        assertSame(drone, hit.target);
+        assertEquals((0.82f - drone.getHeight()) / 0.5f, hit.distance, EPSILON);
+        assertEquals(drone.getHeight(), hit.point.y, EPSILON);
+        assertVector(0f, 1f, 0f, hit.normal);
+
+        // The piercing cast finds the same entry.
+        Hitscan.PiercingResult pierced = Hitscan.castPiercing(MAP, drones, Collections.<Door>emptyList(), eye, down,
+            RANGE);
+        assertEquals(1, pierced.targetHits.size());
+        assertEquals(hit.distance, pierced.targetHits.get(0).distance, EPSILON);
+
+        // An eye right over the drone hits its top too, straight down included; a ray that leaves the outline
+        // before it has come down to the top does not.
+        Vector3 above = new Vector3(4.5f, 0.9f, 1.5f);
+        double steepPitch = Math.toRadians(-70.0);
+        Vector3 steep = new Vector3((float) Math.cos(steepPitch), (float) Math.sin(steepPitch), 0f);
+        assertEquals(RayHit.Kind.TARGET, Hitscan.cast(MAP, drones, above, steep, RANGE).kind);
+        assertNotEquals(RayHit.Kind.TARGET, Hitscan.cast(MAP, drones, above, down, RANGE).kind);
+        RayHit plumb = Hitscan.cast(MAP, drones, above, new Vector3(0f, -1f, 0f), RANGE);
+        assertEquals(RayHit.Kind.TARGET, plumb.kind);
+        assertEquals(0.9f - drone.getHeight(), plumb.distance, EPSILON);
+    }
+
+    @Test
+    void rayThatLeavesAShortEnemysOutlineAboveItsTopStillMisses() {
+        Enemy drone = new Enemy(Enemy.Kind.DRONE, 4.5f, 1.5f, 0f);
+        List<Enemy> drones = Collections.singletonList(drone);
+        Vector3 eye = new Vector3(4.5f - drone.getRadius() - 0.25f, 0.82f, 1.5f);
+        // Five degrees down, the ray is still 0.76 up where it leaves the outline, and lands on the floor beyond.
+        double pitch = Math.toRadians(-5.0);
+        Vector3 shallow = new Vector3((float) Math.cos(pitch), (float) Math.sin(pitch), 0f);
+        assertEquals(RayHit.Kind.WALL, Hitscan.cast(MAP, drones, eye, shallow, RANGE).kind);
+        // A level ray above the top misses as before.
+        assertEquals(RayHit.Kind.WALL, Hitscan.cast(MAP, drones, eye, new Vector3(1f, 0f, 0f), RANGE).kind);
     }
 }

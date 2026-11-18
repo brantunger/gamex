@@ -231,6 +231,16 @@ public final class Player {
     }
 
     /**
+     * Puts an airborne player back on the floor at once, with no landing cue, and drops any queued jump. Used when the
+     * stage is cleared mid-jump, after which nothing advances the fall.
+     */
+    public void settleOnFloor() {
+        jumpHeight = 0f;
+        verticalVelocity = 0f;
+        jumpBufferTimer = 0f;
+    }
+
+    /**
      * Advances non-movement timers (hurt flash, dash cooldown, landing cushion, death camera settle).
      * @param dt the time step in seconds
      */
@@ -474,6 +484,7 @@ public final class Player {
     }
 
     private void advanceVertical(float dt, float dashDt) {
+        float bufferAtStart = jumpBufferTimer;
         if (jumpBufferTimer > 0f) {
             jumpBufferTimer = Math.max(0f, jumpBufferTimer - dt);
         }
@@ -494,6 +505,8 @@ public final class Player {
 
         float freeDt = dt - dashDt;
         if (freeDt > 0f) {
+            float fallHeight = jumpHeight;
+            float fallVelocity = verticalVelocity;
             jumpHeight += verticalVelocity * freeDt - 0.5f * GRAVITY * freeDt * freeDt;
             verticalVelocity -= GRAVITY * freeDt;
             if (jumpHeight >= MAX_JUMP_HEIGHT) {
@@ -504,7 +517,11 @@ public final class Player {
                 jumpHeight = 0f;
                 verticalVelocity = 0f;
                 landedTriggered = true;
-                if (jumpBufferTimer > 0f) {
+                // The buffer is measured to the moment of touchdown inside this step, not to the step's end, so the
+                // window is the same at every frame rate.
+                float touchdown = dashDt + (fallVelocity
+                    + (float) Math.sqrt(fallVelocity * fallVelocity + 2f * GRAVITY * fallHeight)) / GRAVITY;
+                if (bufferAtStart > 0f && bufferAtStart >= touchdown) {
                     launchJump();
                 } else {
                     landingDipTimer = LANDING_DIP_TIME;

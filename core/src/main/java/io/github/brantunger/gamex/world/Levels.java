@@ -82,7 +82,7 @@ public final class Levels {
             "%........e.%%%%%.........%",
             "%..o...%%..%%%%%...%.%...%",
             "%......%%..%%%%%.........%",
-            "%..........~~.s..........%",
+            "%..........~..s..........%",
             "%..........%%%%%r...O....%",
             "%.O......o.%%%%%.o.....o.%",
             "%.+........%%%%%.......a.%",
@@ -94,7 +94,7 @@ public final class Levels {
             true,
             map,
             "LIVE FIRE CALIBRATION COURSE ONLINE.",
-            "TEST SCATTERGUN, RAIL LANCE, JUMP, ENERGY DASH AND CHAIN BLASTS.",
+            "TEST SCATTERGUN, RAIL LANCE, JUMP, DASH AND CHAIN BLASTS.",
             "DESTROY ALL 11 TARGETS TO COMPLETE THE RUN.");
     }
 
@@ -115,7 +115,7 @@ public final class Levels {
             "%%%%.%%%%%%%%%%%%%%%%.%%%%%%",
             "%....s...e.%%%%%%..........%",
             "%..o.o.%%..%%%%%%...%..%...%",
-            "%...D..%%..%%%%%%..D.......%",
+            "%.D....%%..%%%%%%..D.......%",
             "%...........o.........T.s..%",
             "%......T...%%%%%%....O.....%",
             "%.O......o.%%%%%%.o..D...o.%",
@@ -128,8 +128,8 @@ public final class Levels {
             false,
             map,
             "AUTOMATED CONTAINMENT LOCKDOWN DETECTED IN SECTOR 01.",
-            "COLLECT THE COMBAT SCATTERGUN TO SHRED CLOSE-QUARTERS DRONES.",
-            "USE COOLANT CANISTERS AND DASH TO REACH THE EXTRACTION PAD.");
+            "GRAB THE COMBAT SCATTERGUN TO SHRED CLOSE-RANGE DRONES.",
+            "USE COOLANT CANISTERS AND DASH TO REACH EXTRACTION.");
     }
 
     /** @return Campaign Stage 02 ("02: COOLANT CORE"), introducing mobile Guard Bots across conduit lanes. */
@@ -138,9 +138,9 @@ public final class Levels {
             "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&",
             "&.>....o..&........&..a.....e&",
             "&.........&..G..o..&....T....&",
-            "&...&.&.......&.......&..&...&",
+            "&...&.&.......&.D.....&..&...&",
             "&......s..&........&.........&",
-            "&.a..D....&..o..D..&..o...G..&",
+            "&.a..D....&..o.....&..o...G..&",
             "&.+...O...&&&.&&&.&&&&&..&&&&&",
             "&&&&.&&&&&###.#########..#####",
             "#.........#.......#..........#",
@@ -164,8 +164,8 @@ public final class Levels {
             false,
             map,
             "HEAVY GUARD BOTS PATROL THE PRIMARY COOLANT CONDUITS.",
-            "STRAFE INCOMING BOLTS AND BAIT FIRE INTO VOLATILE CANISTERS.",
-            "BREACH THE REACTOR LANES AND REACH THE SOUTH EXTRACTION PAD.");
+            "STRAFE INCOMING BOLTS AND BAIT FIRE INTO CANISTERS.",
+            "BREACH THE REACTOR LANES TO THE SOUTH EXTRACTION PAD.");
     }
 
     /** @return Campaign Stage 03 ("03: SECURITY HUB"), unlocking the Rail Lance across multi-squad corridors. */
@@ -201,8 +201,8 @@ public final class Levels {
             false,
             map,
             "CENTRAL SECURITY HUB ALERT LEVEL MAXIMUM.",
-            "COLLECT THE RAIL LANCE AND PIERCE LINED-UP SQUADS DOWN THE CORRIDORS.",
-            "HOLD RMB FOR 1.8X TACTICAL ZOOM OPTIC AND BREACH TO EXTRACTION.");
+            "COLLECT THE RAIL LANCE AND PIERCE LINED-UP SQUADS.",
+            "HOLD RMB FOR THE 1.8X ZOOM OPTIC AND BREACH TO EXTRACTION.");
     }
 
     /** @return Campaign Stage 04 ("04: LOCKDOWN WING"), introducing bulkhead doors, Amber keycard, and console lockdown. */
@@ -235,7 +235,7 @@ public final class Levels {
             false,
             map,
             "BULKHEAD LOCKDOWNS SEAL THE LOWER RESEARCH SECTOR.",
-            "LOCATE THE AMBER KEYCARD AND OVERRIDE THE SECURITY CONSOLE.",
+            "FIND THE AMBER KEYCARD AND OVERRIDE THE SECURITY CONSOLE.",
             "WATCH FOR AMBUSH BAYS UNSEALED BY CONSOLE OVERRIDE.");
     }
 
@@ -271,8 +271,8 @@ public final class Levels {
             false,
             map,
             "FINAL OBJECTIVE: BREACH THE DEEP COMMAND VAULT.",
-            "CHAIN AMBER AND CYAN CLEARANCES TO REACH OVERWATCH CONTROL.",
-            "OVERRIDE VAULT LOCKDOWN AND REACH THE FINAL EXTRACTION PAD.");
+            "CHAIN AMBER AND CYAN CLEARANCES TO REACH OVERWATCH.",
+            "OVERRIDE VAULT LOCKDOWN AND REACH THE FINAL EXTRACTION.");
     }
 
     /** @return Campaign Stage 06 ("06: WARDEN CORE"), featuring Shock Grate trenches and the Warden Mech boss. */
@@ -303,9 +303,9 @@ public final class Levels {
             110f,
             false,
             map,
-            "CORE THREAT DETECTED: DESTROY THE WARDEN MECH TO UNSEAL EXTRACTION.",
-            "JUMP OR DASH ACROSS LIVE SHOCK GRATES (~) WITHOUT TAKING ARC DAMAGE.",
-            "DEFEAT THE WARDEN MECH (B) TO UNLOCK THE SEALED EXTRACTION BULKHEAD (M).");
+            "CORE THREAT: THE WARDEN MECH (B) SEALS EXTRACTION (M).",
+            "JUMP, THEN DASH IN MID-AIR, TO CROSS SHOCK GRATES (~).",
+            "DESTROY THE WARDEN TO UNLOCK THE EXTRACTION BULKHEAD.");
     }
 
     /** @return the ordered list of campaign stages available so far. */
