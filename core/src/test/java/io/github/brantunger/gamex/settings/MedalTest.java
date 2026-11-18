@@ -177,6 +177,22 @@ class MedalTest {
     }
 
     @Test
+    void negativeStoredMedalValueHoldsNoMedals() {
+        for (int stored : new int[] {-1, Integer.MIN_VALUE, Integer.MIN_VALUE | 2}) {
+            MapKeyValueStore store = new MapKeyValueStore();
+            store.putInteger("best." + STAGE + ".NORMAL.medals", stored);
+            SaveData save = new SaveData(store);
+            assertTrue(save.getMedals(STAGE, Difficulty.NORMAL).isEmpty(), "stored " + stored);
+
+            // The next clear earns its medals as new ones and saves only their bits.
+            SaveData.CompletionSummary summary = save.recordCompletion(STAGE, Difficulty.NORMAL, PAR,
+                new RunStats(70f, 8, 8, 12f, 0, 0, 4, 1), true);
+            assertEquals(EnumSet.of(Medal.SWEEP), summary.newMedals, "stored " + stored);
+            assertEquals(2, store.getInteger("best." + STAGE + ".NORMAL.medals", 0), "stored " + stored);
+        }
+    }
+
+    @Test
     void fastestDifficultyIsTheOneWithTheLowestStoredTime() {
         MapKeyValueStore store = new MapKeyValueStore();
         SaveData save = new SaveData(store);

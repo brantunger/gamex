@@ -21,6 +21,9 @@ public enum Medal {
     /** Lowest accuracy, in percent of shots that hit, that earns {@link #SHARPSHOOTER}. */
     public static final int SHARPSHOOTER_PERCENT = 60;
 
+    /** The bits of a saved value that belong to a medal. */
+    private static final int KNOWN_BITS = (1 << values().length) - 1;
+
     /** Display label for menus and the tally. */
     public final String label;
 
@@ -52,9 +55,14 @@ public enum Medal {
         return bits;
     }
 
-    /** @return the medals whose bits are set; bits that belong to no medal are ignored. */
+    /**
+     * @return the medals whose bits are set; bits that belong to no medal are ignored, and a negative value, which
+     *     no save writes, holds no medals.
+     */
     static Set<Medal> fromBits(int bits) {
         EnumSet<Medal> medals = EnumSet.noneOf(Medal.class);
+        if (bits < 0) return Collections.unmodifiableSet(medals);
+        bits &= KNOWN_BITS;
         for (Medal medal : values()) {
             if ((bits & (1 << medal.ordinal())) != 0) medals.add(medal);
         }

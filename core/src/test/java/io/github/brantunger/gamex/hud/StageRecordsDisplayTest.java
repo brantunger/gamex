@@ -276,4 +276,59 @@ class StageRecordsDisplayTest {
             assertTrue(right <= toastLeft, objective + " ends at " + right + ", the toast starts at " + toastLeft);
         }
     }
+
+    @Test
+    void everyObjectiveLineClearsTheBossBarAndTheToastsAtEveryAspectRatio() {
+        String[] objectives = {
+            GameSimulation.OBJECTIVE_AMBER_KEYCARD, GameSimulation.OBJECTIVE_CYAN_KEYCARD,
+            GameSimulation.OBJECTIVE_CONSOLE, GameSimulation.OBJECTIVE_WARDEN, GameSimulation.OBJECTIVE_EXIT,
+            GameSimulation.OBJECTIVE_ALL_TARGETS, GameSimulation.OBJECTIVE_ALL_HOSTILES,
+            GameSimulation.OBJECTIVE_ALL_TARGETS_AND_HOSTILES
+        };
+        // Window sizes at 4:3 (twice), 3:2, 16:10, 16:9 (twice) and 21:9, and whether the upper row has room.
+        int[][] windows = {
+            {800, 600, 0}, {1024, 768, 0}, {1080, 720, 0}, {1152, 720, 0}, {1280, 720, 1}, {1920, 1080, 1},
+            {1680, 720, 1}
+        };
+        for (int[] window : windows) {
+            float width = window[0];
+            float height = window[1];
+            float unit = height / 720f;
+            String size = window[0] + "x" + window[1];
+
+            // Left edges of the centred boxes, and the vertical span each one covers, as HudRenderer draws them.
+            float bossLeft = (width - HudRenderer.BOSS_BAR_WIDTH * unit) * 0.5f - HudRenderer.BOSS_PANEL_PAD_X * unit;
+            float bossBottom = height - (HudRenderer.BOSS_BAR_BOTTOM + HudRenderer.BOSS_PANEL_PAD_Y) * unit;
+            float toastBoxWidth = PixelFont.width("WARDEN DESTROYED - EXTRACTION UNSEALED",
+                HudRenderer.TOAST_PIXEL * unit) + 2f * HudRenderer.TOAST_PAD_X * unit;
+            float toastLeft = (width - toastBoxWidth) * 0.5f;
+            float toastHeight = PixelFont.height(HudRenderer.TOAST_PIXEL * unit) + 2f * HudRenderer.TOAST_PAD_Y * unit;
+            float toastBottom = height - HudRenderer.TOAST_BOTTOM * unit;
+            float lowToastBottom = height - HudRenderer.TOAST_BOTTOM_UNDER_BOSS * unit;
+            float reserved = width * 0.5f - HudRenderer.CENTRE_HALF_WIDTH * unit;
+            assertTrue(reserved <= bossLeft && reserved <= toastLeft, size + " keeps room for both centred boxes");
+
+            float bottom = HudRenderer.objectiveBottomY(width, height, unit);
+            float top = bottom + PixelFont.height(HudRenderer.OBJECTIVE_PIXEL * unit);
+            float statusBottom = height - HudRenderer.STATUS_TOP * unit
+                - PixelFont.height(HudRenderer.STATUS_PIXEL * unit);
+            boolean upperRow = bottom > lowToastBottom + toastHeight;
+            assertTrue(top < statusBottom, size + " objective line is below the status row");
+
+            for (String objective : objectives) {
+                float right = HudRenderer.STATUS_LEFT * unit
+                    + PixelFont.width(HudRenderer.OBJECTIVE_PREFIX + objective, HudRenderer.OBJECTIVE_PIXEL * unit);
+                String line = size + " " + objective + " ends at " + right;
+                assertTrue(right <= width - HudRenderer.STATUS_LEFT * unit, line + " in a window of " + width);
+                assertTrue(right <= HudRenderer.OBJECTIVE_RIGHT_LIMIT * unit, line + ", past the room it is given");
+                // Each box is either wholly above or below the line, or starts to the right of it.
+                assertTrue(top <= bossBottom || right <= bossLeft, line + ", the boss bar starts at " + bossLeft);
+                assertTrue(top <= toastBottom || bottom >= toastBottom + toastHeight || right <= toastLeft,
+                    line + ", the toast starts at " + toastLeft);
+                assertTrue(top <= lowToastBottom || bottom >= lowToastBottom + toastHeight || right <= toastLeft,
+                    line + ", the toast under the boss bar starts at " + toastLeft);
+            }
+            assertEquals(window[2] == 1, upperRow, size + " objective row");
+        }
+    }
 }

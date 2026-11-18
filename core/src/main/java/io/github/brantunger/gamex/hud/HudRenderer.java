@@ -41,6 +41,39 @@ public final class HudRenderer implements Disposable {
     static final float STATUS_LEFT = 28f;
     /** Font pixel size of the objective line, in HUD units. */
     static final float OBJECTIVE_PIXEL = 2.4f;
+    /** Gap between the top of the window and the top of the status row, in HUD units. */
+    static final float STATUS_TOP = 28f;
+    /** Font pixel size of the status row, in HUD units. */
+    static final float STATUS_PIXEL = 3f;
+    /** How far the objective line's upper row sits below the bottom of the status row, in HUD units. */
+    static final float OBJECTIVE_ROW_DROP = 24f;
+    /** Gap between the top of the window and the top of the objective line's lower row, in HUD units. */
+    static final float OBJECTIVE_LOW_TOP = 110f;
+    /** Right edge the objective line is given room up to, in HUD units; the longest line ends at 409.6. */
+    static final float OBJECTIVE_RIGHT_LIMIT = 410f;
+    /**
+     * Half the width kept free around the centre of the window for the boss bar's panel and the toast boxes, in HUD
+     * units; the widest toast box is 450.8 wide.
+     */
+    static final float CENTRE_HALF_WIDTH = 226f;
+    /** Width of the boss health bar, in HUD units. */
+    static final float BOSS_BAR_WIDTH = 380f;
+    /** Gap between the top of the window and the bottom of the boss health bar, in HUD units. */
+    static final float BOSS_BAR_BOTTOM = 56f;
+    /** Room the boss bar's panel leaves on each side of the bar, in HUD units. */
+    static final float BOSS_PANEL_PAD_X = 12f;
+    /** Room the boss bar's panel leaves below the bar, in HUD units. */
+    static final float BOSS_PANEL_PAD_Y = 8f;
+    /** Font pixel size of a toast, in HUD units. */
+    static final float TOAST_PIXEL = 2.8f;
+    /** Room a toast box leaves on each side of its text, in HUD units. */
+    static final float TOAST_PAD_X = 14f;
+    /** Room a toast box leaves above and below its text, in HUD units. */
+    static final float TOAST_PAD_Y = 8f;
+    /** Gap between the top of the window and the bottom of a toast box, in HUD units. */
+    static final float TOAST_BOTTOM = 64f;
+    /** Gap between the top of the window and the bottom of a toast box while the boss bar is shown, in HUD units. */
+    static final float TOAST_BOTTOM_UNDER_BOSS = 104f;
     /** Width of the Intermission Tally panel, in HUD units. */
     static final float TALLY_PANEL_WIDTH = 640f;
     /** Font pixel size of the tally's statistic lines, in HUD units. */
@@ -533,9 +566,25 @@ public final class HudRenderer implements Disposable {
         }
     }
 
+    /**
+     * Picks the row of the objective line. It sits under the status row while the longest line ends left of the
+     * room kept for the boss bar's panel and the toast boxes. On a narrower window it drops to a row below the
+     * toast that is shown under the boss bar, where nothing is drawn across the window.
+     * @param width the window width in pixels
+     * @param height the window height in pixels
+     * @param unit one HUD unit in pixels
+     * @return the bottom edge of the objective line in pixels
+     */
+    static float objectiveBottomY(float width, float height, float unit) {
+        if (OBJECTIVE_RIGHT_LIMIT * unit <= width * 0.5f - CENTRE_HALF_WIDTH * unit) {
+            return height - STATUS_TOP * unit - PixelFont.height(STATUS_PIXEL * unit) - OBJECTIVE_ROW_DROP * unit;
+        }
+        return height - OBJECTIVE_LOW_TOP * unit - PixelFont.height(OBJECTIVE_PIXEL * unit);
+    }
+
     private void drawStatus(GameSimulation simulation) {
-        float pixel = 3f * unit;
-        float topY = height - 28f * unit - PixelFont.height(pixel);
+        float pixel = STATUS_PIXEL * unit;
+        float topY = height - STATUS_TOP * unit - PixelFont.height(pixel);
         if (!simulation.enemies.isEmpty()) {
             int remaining = simulation.getEnemiesRemaining();
             if (remaining > 0) batch.setColor(1f, 0.52f, 0.46f, 0.95f);
@@ -551,7 +600,7 @@ public final class HudRenderer implements Disposable {
         String objective = simulation.getObjectiveText();
         if (objective != null) {
             float objectivePixel = OBJECTIVE_PIXEL * unit;
-            float objectiveY = topY - 24f * unit;
+            float objectiveY = objectiveBottomY(width, height, unit);
             batch.setColor(0.55f, 0.95f, 1f, 0.9f);
             // Drawn in two parts, so the line is not built anew each frame.
             PixelFont.draw(batch, textures.white, OBJECTIVE_PREFIX, STATUS_LEFT * unit, objectiveY, objectivePixel);
@@ -572,15 +621,16 @@ public final class HudRenderer implements Disposable {
         boolean overdrive = boss.isOverdrive();
         float frac = Math.max(0f, Math.min(1f, boss.getHealth() / boss.getKind().maxHealth));
 
-        float barW = 380f * unit;
+        float barW = BOSS_BAR_WIDTH * unit;
         float barH = 14f * unit;
         float left = (width - barW) * 0.5f;
-        float barBottom = height - 56f * unit;
+        float barBottom = height - BOSS_BAR_BOTTOM * unit;
         float labelPix = 2.3f * unit;
         float labelH = PixelFont.height(labelPix);
 
         batch.setColor(0.05f, 0.06f, 0.11f, 0.80f);
-        rect(left - 12f * unit, barBottom - 8f * unit, barW + 24f * unit, barH + labelH + 22f * unit);
+        rect(left - BOSS_PANEL_PAD_X * unit, barBottom - BOSS_PANEL_PAD_Y * unit,
+            barW + 2f * BOSS_PANEL_PAD_X * unit, barH + labelH + 22f * unit);
 
         String title = overdrive ? "WARDEN MECH // OVERDRIVE" : "WARDEN MECH";
         if (overdrive) batch.setColor(0.42f, 0.86f, 1.00f, 0.98f);
@@ -602,14 +652,14 @@ public final class HudRenderer implements Disposable {
         String msg = simulation.getToastMessage();
         if (msg == null) return;
         float alpha = simulation.getToastAlpha();
-        float pixel = 2.8f * unit;
+        float pixel = TOAST_PIXEL * unit;
         float textW = PixelFont.width(msg, pixel);
-        float padX = 14f * unit;
-        float padY = 8f * unit;
+        float padX = TOAST_PAD_X * unit;
+        float padY = TOAST_PAD_Y * unit;
         float boxW = textW + padX * 2f;
         float boxH = PixelFont.height(pixel) + padY * 2f;
         float cx = width * 0.5f;
-        float y = height - (simulation.getActiveBoss() != null ? 104f : 64f) * unit;
+        float y = height - (simulation.getActiveBoss() != null ? TOAST_BOTTOM_UNDER_BOSS : TOAST_BOTTOM) * unit;
         batch.setColor(0.06f, 0.08f, 0.14f, 0.78f * alpha);
         rect(cx - boxW * 0.5f, y, boxW, boxH);
         batch.setColor(0.55f, 1f, 0.82f, alpha);
