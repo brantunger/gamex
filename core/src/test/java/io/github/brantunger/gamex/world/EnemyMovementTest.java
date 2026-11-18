@@ -314,4 +314,25 @@ class EnemyMovementTest {
         assertTrue(firstHit > 0f, "guard never hit the player: " + where(guard));
         assertEquals(Enemy.Kind.GUARD.maxHealth, guard.getHealth(), 0f, "guard was zapped: " + where(guard));
     }
+
+    @Test
+    void guardOutOfSightGoesRoundACanisterWithoutSidesteppingOntoTheGrateBesideIt() {
+        // Dead ahead of the canister the first side tried is the south one, where the grate is.
+        GameSimulation sim = soloSim(GameMap.parse(
+            "#########",
+            "#.......#",
+            "#G...o..#",
+            "#....~#.#",
+            "#.....#>#",
+            "#########"), Enemy.Kind.GUARD, 1.5f, 2.5f);
+        Enemy guard = subject(sim);
+
+        // The whole window counts, not only the time up to the first shot.
+        float firstHit = run(sim, guard, 10f, false);
+
+        // A guard that never moved would also be unharmed, so it must also have come round and shot the player.
+        assertTrue(firstHit > 0f, "guard never hit the player: " + where(guard));
+        assertEquals(Enemy.Kind.GUARD.maxHealth, guard.getHealth(), 0f, "guard was zapped: " + where(guard));
+        assertFalse(sim.targets.get(0).isDestroyed(), "the canister must still be standing");
+    }
 }
