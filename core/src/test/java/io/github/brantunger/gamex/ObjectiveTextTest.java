@@ -57,6 +57,16 @@ class ObjectiveTextTest {
         sim.update(FRAME, new PlayerInput());
     }
 
+    /** Turns the player to {@code yaw} and holds the move key, forwards or backwards, for that many frames. */
+    private static void walk(GameSimulation sim, float yaw, float forward, int frames) {
+        sim.player.look(yaw - sim.player.getYaw(), 0f);
+        PlayerInput input = new PlayerInput();
+        input.moveForward = forward;
+        for (int i = 0; i < frames; i++) {
+            sim.update(FRAME, input);
+        }
+    }
+
     private static boolean anyDoorOpening(GameSimulation sim, Door.LockKind kind) {
         for (Door door : sim.doors) {
             if (door.getLockKind() == kind && door.isOpening()) return true;
@@ -177,5 +187,109 @@ class ObjectiveTextTest {
             assertSame(first, sim.getObjectiveText());
         }
         assertSame(GameSimulation.OBJECTIVE_AMBER_KEYCARD, first);
+    }
+
+    @Test
+    void leaningOnTheLockdownBulkheadOfLockdownWingStillAsksForTheConsole() {
+        GameSimulation sim = play(Levels.campaign().get(3));
+        collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
+        sim.player.position.set(19.5f, 15.5f);
+        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText());
+
+        // East into the lockdown bulkhead at column 20, row 15, until the slab stops the player.
+        walk(sim, 90f, 1f, 30);
+        assertTrue(sim.player.position.x > 20f, "the player's centre is in the bulkhead's cell");
+        assertFalse(anyDoorOpening(sim, Door.LockKind.LOCKDOWN));
+        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "leaning on the bulkhead");
+
+        walk(sim, 90f, -1f, 30);
+        assertTrue(sim.player.position.x < 19.5f, "stepped back");
+        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "after stepping back");
+    }
+
+    @Test
+    void leaningOnTheLockdownBulkheadOfCommandVaultStillAsksForTheCyanKeycard() {
+        GameSimulation sim = play(Levels.campaign().get(4));
+        collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
+        sim.player.position.set(11.5f, 13.5f);
+        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText());
+
+        // South into the lockdown bulkhead at column 11, row 14.
+        walk(sim, 180f, 1f, 30);
+        assertTrue(sim.player.position.y > 14f, "the player's centre is in the bulkhead's cell");
+        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText(), "leaning on the bulkhead");
+
+        walk(sim, 180f, -1f, 30);
+        assertTrue(sim.player.position.y < 13.5f, "stepped back");
+        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText(), "after stepping back");
+    }
+
+    @Test
+    void leaningOnTheWardensBulkheadStillAsksForTheWarden() {
+        GameSimulation sim = play(Levels.campaign().get(5));
+        collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
+        overrideConsole(sim);
+        sim.player.position.set(23.5f, 14.5f);
+        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText());
+
+        // South into the extraction bulkhead at column 23, row 15.
+        walk(sim, 180f, 1f, 30);
+        assertTrue(sim.player.position.y > 15f, "the player's centre is in the bulkhead's cell");
+        assertFalse(sim.enemies.stream().noneMatch(
+            enemy -> enemy.getKind() == Enemy.Kind.WARDEN && !enemy.isDestroyed()), "the Warden still stands");
+        assertFalse(anyDoorOpening(sim, Door.LockKind.BOSS));
+        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText(), "leaning on the bulkhead");
+
+        walk(sim, 180f, -1f, 30);
+        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText(), "after stepping back");
+    }
+
+    @Test
+    void leaningOnALockedBulkheadFromEitherSideKeepsTheFloodOnThatSide() {
+        GameMap corridor = GameMap.parse(
+            "#########",
+            "#>.S.L.X#",
+            "#########");
+        GameSimulation sim = new GameSimulation(corridor);
+        sim.player.position.set(4.5f, 1.5f);
+        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText());
+
+        walk(sim, 90f, 1f, 30);
+        assertTrue(sim.player.position.x > 5f, "the player's centre is in the bulkhead's cell");
+        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "leaning on the west face");
+        walk(sim, 90f, -1f, 30);
+        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "after stepping back");
+
+        // From the exit's side the same bulkhead is behind the player, so the exit is all that is left.
+        GameSimulation beyond = new GameSimulation(corridor);
+        beyond.player.position.set(6.5f, 1.5f);
+        walk(beyond, 270f, 1f, 30);
+        assertTrue(beyond.player.position.x < 6f, "the player's centre is in the bulkhead's cell");
+        assertEquals(GameSimulation.OBJECTIVE_EXIT, beyond.getObjectiveText(), "leaning on the east face");
+    }
+
+    @Test
+    void leaningOnALockedBulkheadDoesNotWorkTheObjectiveOutAgainEveryFrame() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#########",
+            "#>.S.L.X#",
+            "#########"));
+        sim.player.position.set(4.5f, 1.5f);
+        walk(sim, 90f, 1f, 30);
+        assertTrue(sim.player.position.x > 5f, "the player's centre is in the bulkhead's cell");
+        String leaning = sim.getObjectiveText();
+        int floods = sim.getObjectiveFloodCount();
+
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        for (int i = 0; i < 30; i++) {
+            sim.update(FRAME, input);
+            assertSame(leaning, sim.getObjectiveText());
+        }
+        assertEquals(floods, sim.getObjectiveFloodCount(), "no flood while the player keeps leaning");
+
+        walk(sim, 90f, -1f, 30);
+        assertSame(leaning, sim.getObjectiveText());
+        assertEquals(floods, sim.getObjectiveFloodCount(), "no flood on stepping back either");
     }
 }

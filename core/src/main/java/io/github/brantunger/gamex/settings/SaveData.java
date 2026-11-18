@@ -171,7 +171,7 @@ public final class SaveData {
 
     /**
      * Records a completed stage run and returns a comparison summary for the Intermission Tally screen. A stored
-     * best time that is not a finite number counts as no best, so the run replaces it.
+     * best time that is not a finite number above zero counts as no best, so the run replaces it.
      * @param stageId the stage's save identifier
      * @param difficulty the difficulty the run was played on
      * @param parSeconds the stage's par time in seconds
@@ -217,11 +217,11 @@ public final class SaveData {
 
     /**
      * @return stored best clear time in seconds for {@code stageId} on {@code difficulty}, or +Infinity if unplayed
-     *     or if the stored value is not a finite number
+     *     or if the stored value is not a finite number above zero
      */
     public float getBestTime(String stageId, Difficulty difficulty) {
         float time = store.getFloat("best." + stageId + "." + difficulty.name() + ".time", Float.POSITIVE_INFINITY);
-        return Float.isFinite(time) ? time : Float.POSITIVE_INFINITY;
+        return Float.isFinite(time) && time > 0f ? time : Float.POSITIVE_INFINITY;
     }
 
     /**

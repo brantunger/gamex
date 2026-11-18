@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.settings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Preferences;
@@ -197,6 +198,25 @@ class CorruptPrefsTest {
             SaveData save = new SaveData(store);
             assertEquals(Float.POSITIVE_INFINITY, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 0f,
                 "a stored " + stored + " reads as never cleared");
+
+            SaveData.CompletionSummary summary = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
+                40f, 50f, 8, 8, 0f);
+
+            assertTrue(summary.newBestTime, "a clear after a stored " + stored + " is a new best");
+            assertEquals(40f, summary.bestTime, 1e-4f, "best after a stored " + stored);
+            assertEquals(40f, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 1e-4f);
+        }
+    }
+
+    @Test
+    void storedBestTimeOfZeroOrBelowCountsAsNoBestAndTheNextClearReplacesIt() {
+        for (float stored : new float[] {-5f, 0f, -0f}) {
+            MapKeyValueStore store = new MapKeyValueStore();
+            store.putFloat("best.01_outer_breach.NORMAL.time", stored);
+            SaveData save = new SaveData(store);
+            assertEquals(Float.POSITIVE_INFINITY, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 0f,
+                "a stored " + stored + " reads as never cleared");
+            assertNull(save.getFastestDifficulty("01_outer_breach"), "a stored " + stored + " is no fastest clear");
 
             SaveData.CompletionSummary summary = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
                 40f, 50f, 8, 8, 0f);

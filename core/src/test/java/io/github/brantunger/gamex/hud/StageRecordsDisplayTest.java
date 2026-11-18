@@ -164,6 +164,20 @@ class StageRecordsDisplayTest {
     }
 
     @Test
+    void tallyRoundsDamageUpSoARunDeniedUntouchedNeverShowsZero() {
+        SaveData save = new SaveData(new MapKeyValueStore());
+        SaveData.CompletionSummary grazed = save.recordCompletion(STAGE, Difficulty.NORMAL, 50f,
+            new RunStats(60f, 8, 8, 0.3f, 0, 9, 10, 5), true);
+        assertFalse(grazed.medals.contains(Medal.UNTOUCHED), "0.3 damage is not untouched");
+        assertEquals("DAMAGE TAKEN: 1   PICKUPS: 0/9   ACCURACY: 50%", HudRenderer.tallyStatsLine(grazed));
+
+        SaveData.CompletionSummary clean = save.recordCompletion(STAGE, Difficulty.NORMAL, 50f,
+            new RunStats(60f, 8, 8, 0f, 0, 9, 10, 5), true);
+        assertTrue(clean.medals.contains(Medal.UNTOUCHED));
+        assertEquals("DAMAGE TAKEN: 0   PICKUPS: 0/9   ACCURACY: 50%", HudRenderer.tallyStatsLine(clean));
+    }
+
+    @Test
     void tallyListsThisRunsMedalsAndMarksTheNewOnes() {
         SaveData save = new SaveData(new MapKeyValueStore());
         SaveData.CompletionSummary none = save.recordCompletion(STAGE, Difficulty.NORMAL, 50f,

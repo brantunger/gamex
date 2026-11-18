@@ -179,12 +179,16 @@ public final class GameSimulation {
     private final Set<Pickup.Kind> heldKeycards = EnumSet.noneOf(Pickup.Kind.class);
     /** The bulkhead standing on each cell, row by row, or null where there is none. */
     private final Door[] doorAtCell;
-    /** The cells the player can walk to without a keycard, console or kill they do not have yet. */
+    /**
+     * The cells the player can walk to without a keycard, console or kill they do not have yet, and the cell of a
+     * bulkhead they lean on but cannot pass.
+     */
     private final boolean[] reachable;
     private final int[] reachQueue;
     /** The state {@link #reachable} and {@link #objectiveText} were worked out for; -1 before the first time. */
     private int objectiveState = -1;
     private String objectiveText;
+    private int objectiveFloodCount;
     private int shotsFired;
     private int shotsHit;
     private float time;
@@ -836,12 +840,17 @@ public final class GameSimulation {
         int state = objectiveStateNow();
         int playerCell = cellIndexAt(player.position.x, player.position.y);
         // Worked out again only when a keycard, console, Warden or bulkhead changed, or the player is somewhere
-        // the last flood did not reach.
+        // the last flood did not reach. The cell of a bulkhead the player leans on counts as reached.
         if (state != objectiveState || playerCell < 0 || !reachable[playerCell]) {
             objectiveState = state;
             objectiveText = computeObjectiveText(playerCell);
         }
         return objectiveText;
+    }
+
+    /** @return how many times the objective has been worked out afresh; a test reads it to pin the caching. */
+    int getObjectiveFloodCount() {
+        return objectiveFloodCount;
     }
 
     private int objectiveStateNow() {
@@ -918,8 +927,36 @@ public final class GameSimulation {
         }
     }
 
+    /**
+     * Picks the cell to flood from. A player pressed against a closed bulkhead has their centre inside its cell,
+     * because {@link Player#RADIUS} and {@link Door#HALF_THICKNESS} together are less than half a cell. Flooding
+     * from there would run out on both sides of a bulkhead the player cannot pass, so the flood starts from the
+     * cell on the player's side of the slab instead.
+     * @return the cell to start from, or -1 if there is none
+     */
+    private int floodStartCell(int playerCell) {
+        if (playerCell < 0) return -1;
+        Door door = doorAtCell[playerCell];
+        if (door == null || canPass(door)) return playerCell;
+        int col = door.getCol();
+        int row = door.getRow();
+        if (door.getOrientation() == Door.Orientation.SPAN_X) {
+            row += player.position.y < door.getZ() ? -1 : 1;
+        } else {
+            col += player.position.x < door.getX() ? -1 : 1;
+        }
+        if (map.isSolid(col, row)) return -1;
+        int start = row * map.getWidth() + col;
+        Door beside = doorAtCell[start];
+        return beside != null && !canPass(beside) ? -1 : start;
+    }
+
     private String computeObjectiveText(int playerCell) {
-        floodReachable(playerCell);
+        objectiveFloodCount++;
+        int startCell = floodStartCell(playerCell);
+        floodReachable(startCell);
+        // Leaning on a bulkhead must not flood again every frame, so its cell counts as reached too.
+        if (startCell != playerCell) reachable[playerCell] = true;
         if (isReachableAt(map.getExitX(), map.getExitZ())) return OBJECTIVE_EXIT;
         // First the steps the player can act on from where they can walk, then any step still open.
         for (int pass = 0; pass < 2; pass++) {
