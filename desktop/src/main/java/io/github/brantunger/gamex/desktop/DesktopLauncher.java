@@ -1,8 +1,13 @@
 package io.github.brantunger.gamex.desktop;
 
+import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Preferences;
 import io.github.brantunger.gamex.MainGame;
+import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.GdxPreferencesStore;
+import io.github.brantunger.gamex.settings.KeyValueStore;
 
 import java.util.Locale;
 
@@ -20,8 +25,17 @@ public class DesktopLauncher {
         if (childExitCode != StartupHelper.NOT_RESTARTED) System.exit(childExitCode);
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setTitle("gamex");
-        int[] size = windowSize(System.getenv("GAMEX_WINDOW"));
-        config.setWindowedMode(size[0], size[1]);
+        String windowEnv = System.getenv("GAMEX_WINDOW");
+        int[] size = windowSize(windowEnv);
+        Graphics.DisplayMode fullscreenMode = shouldStartFullscreen(
+            windowEnv, System.getenv("GAMEX_SCREENSHOT"), loadSavedSettingsStore())
+            ? Lwjgl3ApplicationConfiguration.getDisplayMode()
+            : null;
+        if (fullscreenMode != null) {
+            config.setFullscreenMode(fullscreenMode);
+        } else {
+            config.setWindowedMode(size[0], size[1]);
+        }
         // Let hardware VSync pace frames when enabled; disabling LWJGL3's software Sync.sync loop avoids
         // beat-frequency micro-stutter against glfwSwapBuffers and adapts across monitors.
         config.useVsync(true);
@@ -32,7 +46,21 @@ public class DesktopLauncher {
         config.setWindowIcon("gamex128.png", "gamex64.png", "gamex32.png", "gamex16.png");
         // A 24-bit depth buffer keeps marks on distant walls from flickering; anti-aliasing with 4 samples.
         config.setBackBufferConfig(8, 8, 8, 8, 24, 0, 4);
-        new Lwjgl3Application(new MainGame(), config);
+        new Lwjgl3Application(new MainGame(size[0], size[1]), config);
+    }
+
+    static boolean shouldStartFullscreen(String windowEnv, String screenshotEnv, KeyValueStore settingsStore) {
+        if (screenshotEnv != null && !screenshotEnv.isEmpty()) return false;
+        if (windowEnv != null && !windowEnv.trim().isEmpty()) return false;
+        return GameSettings.load(settingsStore).isFullscreen();
+    }
+
+    private static KeyValueStore loadSavedSettingsStore() {
+        try {
+            return new GdxPreferencesStore(new Lwjgl3Preferences(GameSettings.PREFERENCES_NAME, ".prefs/"));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**

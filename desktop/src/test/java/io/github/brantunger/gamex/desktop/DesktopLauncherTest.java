@@ -2,8 +2,11 @@ package io.github.brantunger.gamex.desktop;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
@@ -78,6 +81,25 @@ class DesktopLauncherTest {
             assertTrue(err.contains(input), "expected warning to name '" + input + "' but got: " + err);
             assertTrue(err.contains("using 1280x720"), err);
         }
+    }
+
+    @Test
+    void shouldStartFullscreenHonorsSavedSettingUnlessOverriddenByWindowOrScreenshotEnv() {
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, null));
+
+        MapKeyValueStore store = new MapKeyValueStore();
+        GameSettings settings = new GameSettings();
+        settings.setFullscreen(false);
+        settings.save(store);
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, store));
+
+        settings.setFullscreen(true);
+        settings.save(store);
+        assertTrue(DesktopLauncher.shouldStartFullscreen(null, null, store));
+        assertTrue(DesktopLauncher.shouldStartFullscreen("   ", "", store));
+
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, "out.png", store));
+        assertFalse(DesktopLauncher.shouldStartFullscreen("1600x900", null, store));
     }
 
     @Test
