@@ -4,7 +4,8 @@ package io.github.brantunger.gamex.weapon;
  * The charge-and-release logic of the blast. Holding the button builds a charge from 0 to 1; releasing it fires if
  * the charge has reached {@link #MIN_CHARGE}, and otherwise the charge fizzles at no cost. A bigger charge costs more
  * energy, and the charge stops growing at what the meter can pay for. Charging cannot start while the meter holds
- * less than the cost of the smallest blast. The meter refills only while the button is up or charging is refused.
+ * less than the cost of the smallest blast. The charger refills the meter while the button is up or charging is
+ * refused, and never while a charge builds; when another weapon is out, the game refills the meter itself.
  */
 public final class BlastCharger {
 
