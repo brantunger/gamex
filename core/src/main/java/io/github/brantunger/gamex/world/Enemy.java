@@ -100,10 +100,19 @@ public final class Enemy implements Damageable {
 
     private static final float WAKE_COOLDOWN = 0.25f;
     private static final float STRAFE_SWITCH_TIME = 1.8f;
+    /** Extra clearance a straight chase needs on each side of the body, so a clear corridor is a walkable one. */
+    private static final float CORRIDOR_MARGIN = 0.02f;
+    /** How far beyond contact a solid object ahead still counts as having stopped a step. */
+    private static final float SIDESTEP_PROBE = 0.05f;
+    /** How far beyond contact the body must get from an object it could not pass before it tries again. */
+    private static final float SIDESTEP_RETRY_DISTANCE = 1f;
+    /** A step that covers less than this share of its length counts as stalled. */
+    private static final float STALL_RATIO = 0.25f;
 
     private final Kind kind;
     private final Vector2 position = new Vector2();
     private final Vector2 steerDir = new Vector2();
+    private final Vector2 gaveUpDir = new Vector2();
     private final List<Damageable> otherBlockers = new ArrayList<>();
     private float yaw;
     private float health;
@@ -126,6 +135,12 @@ public final class Enemy implements Damageable {
     private float shootRecoil;
     private float strafeSign = 1f;
     private float strafeTimer = STRAFE_SWITCH_TIME;
+    private float sidestepSign = 1f;
+    private Damageable obstacle;
+    private float obstacleSide;
+    private int sidestepFlips;
+    private boolean sidestepping;
+    private boolean sidestepGaveUp;
     private float walkPhase;
     private float aimPitch;
 
@@ -479,7 +494,8 @@ public final class Enemy implements Damageable {
                 moveZ = rightZ * strafeSign + dirZ * rangeAdjust;
             }
             yaw = turnToward(yaw, yawToward(dx, dz), 420f * dt);
-        } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
+        } else if (pathfinder != null
+            && pathfinder.nextDirection(map, doors, true, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
             yaw = turnToward(yaw, yawToward(moveX, moveZ), 360f * dt);
@@ -502,10 +518,14 @@ public final class Enemy implements Damageable {
             if (step > 0f) {
                 float beforeX = position.x;
                 float beforeZ = position.y;
-                moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
+                if (hasLos) {
+                    moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
+                } else {
+                    stepRoundSolids(map, worldBlockers, doors, player, dirX, dirZ, step);
+                }
                 float moved = Vector2.dst(beforeX, beforeZ, position.x, position.y);
                 walkPhase += moved * 7.5f;
-                if (moved < step * 0.25f) {
+                if (moved < step * STALL_RATIO) {
                     strafeSign = -strafeSign;
                     strafeTimer = STRAFE_SWITCH_TIME;
                 }
@@ -619,8 +639,9 @@ public final class Enemy implements Damageable {
         if (hasLos && dist > 1e-4f) {
             yaw = turnToward(yaw, yawToward(dx, dz), 320f * phaseScale * dt);
             if (dist > 1.35f) {
-                moveX = dx / dist;
-                moveZ = dz / dist;
+                steerTowardVisiblePlayer(map, pathfinder, doors, dx, dz, dist);
+                moveX = steerDir.x;
+                moveZ = steerDir.y;
             }
         } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
@@ -632,7 +653,7 @@ public final class Enemy implements Damageable {
             float step = kind.moveSpeed * phaseScale * dt;
             float beforeX = position.x;
             float beforeZ = position.y;
-            moveSolid(map, worldBlockers, doors, player, moveX * step, moveZ * step, true);
+            stepRoundSolids(map, worldBlockers, doors, player, moveX, moveZ, step);
             walkPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * 5.5f;
         }
 
@@ -776,8 +797,9 @@ public final class Enemy implements Damageable {
         float moveX = 0f;
         float moveZ = 0f;
         if (hasLos && dist > 1e-4f) {
-            moveX = dx / dist;
-            moveZ = dz / dist;
+            steerTowardVisiblePlayer(map, pathfinder, doors, dx, dz, dist);
+            moveX = steerDir.x;
+            moveZ = steerDir.y;
         } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
@@ -785,7 +807,7 @@ public final class Enemy implements Damageable {
         if (Math.hypot(moveX, moveZ) > 1e-4f) {
             yaw = turnToward(yaw, yawToward(moveX, moveZ), 540f * dt);
             float step = kind.moveSpeed * dt;
-            moveSolid(map, worldBlockers, doors, player, moveX * step, moveZ * step, true);
+            stepRoundSolids(map, worldBlockers, doors, player, moveX, moveZ, step);
         }
     }
 
@@ -793,6 +815,128 @@ public final class Enemy implements Damageable {
         state = State.RECOVERING;
         stateDuration = DRONE_RECOVER_TIME / speedScale;
         stateTimer = stateDuration;
+    }
+
+    /**
+     * Sets {@code steerDir} for closing on a player in line of sight: straight at them while the whole body has a
+     * clear run, otherwise along the flow field, so a sightline that grazes a wall corner does not pin the body
+     * against that corner. Without a flow-field step (no pathfinder, or already in the player's cell) it is straight.
+     */
+    private void steerTowardVisiblePlayer(GameMap map, Pathfinder pathfinder, List<Door> doors, float dx, float dz,
+                                          float dist) {
+        float dirX = dx / dist;
+        float dirZ = dz / dist;
+        if (pathfinder != null && !hasClearRun(map, doors, dirX, dirZ, dist)
+            && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
+            return;
+        }
+        steerDir.set(dirX, dirZ);
+    }
+
+    /**
+     * @return whether the body can travel along the unit direction until it touches a player {@code dist} away
+     *     without meeting a wall or a blocking bulkhead door
+     */
+    private boolean hasClearRun(GameMap map, List<Door> doors, float dirX, float dirZ, float dist) {
+        float reach = dist - (Player.RADIUS + kind.radius);
+        float clearance = kind.radius + CORRIDOR_MARGIN;
+        // Circles one radius apart cover the swept body closely enough that no wall cell fits between them.
+        for (float along = kind.radius; along < reach; along += kind.radius) {
+            if (Collision.overlapsWall(map, doors, position.x + dirX * along, position.y + dirZ * along, clearance)) {
+                return false;
+            }
+        }
+        return reach <= 0f
+            || !Collision.overlapsWall(map, doors, position.x + dirX * reach, position.y + dirZ * reach, clearance);
+    }
+
+    /**
+     * Takes one pursuit step along the unit direction, walking round a solid object, such as a canister standing on
+     * the path, that stops it. A head-on push never slides round an object, so once a step stalls against one the
+     * body steps sideways instead until the object is no longer in its way. The side is kept until a sideways step
+     * is itself blocked, so the body does not jitter, and with both sides blocked it rests against the object.
+     */
+    private void stepRoundSolids(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors,
+                                 Player player, float dirX, float dirZ, float step) {
+        if (sidestepping) {
+            if (isInTheWay(obstacle, dirX, dirZ, SIDESTEP_RETRY_DISTANCE)) {
+                sidestep(map, worldBlockers, doors, player, dirX, dirZ, step);
+                return;
+            }
+            sidestepping = false;
+        }
+        float beforeX = position.x;
+        float beforeZ = position.y;
+        moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
+        if (Vector2.dst(beforeX, beforeZ, position.x, position.y) >= step * STALL_RATIO) return;
+        Damageable stopper = solidInTheWay(worldBlockers, dirX, dirZ);
+        if (stopper == null) return;
+        if (sidestepGaveUp && stopper == obstacle && dirX * gaveUpDir.x + dirZ * gaveUpDir.y > 0.7f
+            && isWithin(obstacle, SIDESTEP_RETRY_DISTANCE)) {
+            return;
+        }
+        obstacle = stopper;
+        sidestepping = true;
+        sidestepGaveUp = false;
+        sidestepFlips = 0;
+        // Leave by the side the body is already on; dead on the axis either side will do.
+        if (Math.abs(obstacleSide) > 1e-3f) {
+            sidestepSign = -Math.signum(obstacleSide);
+        }
+        sidestep(map, worldBlockers, doors, player, dirX, dirZ, step);
+    }
+
+    /** Moves one step square to the unit direction, turning to the other side when that step is blocked. */
+    private void sidestep(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors, Player player,
+                          float dirX, float dirZ, float step) {
+        float sideX = -dirZ * sidestepSign;
+        float sideZ = dirX * sidestepSign;
+        float fromX = position.x;
+        float fromZ = position.y;
+        float ahead = kind.radius + 0.25f;
+        // A grounded guard does not sidestep onto a shock grate.
+        boolean ontoHazard = kind == Kind.GUARD && !map.isHazardAt(fromX, fromZ)
+            && map.isHazardAt(fromX + sideX * ahead, fromZ + sideZ * ahead);
+        if (!ontoHazard) {
+            moveSolid(map, worldBlockers, doors, player, sideX * step, sideZ * step, true);
+        }
+        if (Vector2.dst(fromX, fromZ, position.x, position.y) >= step * STALL_RATIO) return;
+        sidestepSign = -sidestepSign;
+        sidestepFlips++;
+        if (sidestepFlips >= 2) {
+            sidestepping = false;
+            sidestepGaveUp = true;
+            gaveUpDir.set(dirX, dirZ);
+        }
+    }
+
+    /** @return the live solid object the body touches, or all but touches, that lies across its way, or null */
+    private Damageable solidInTheWay(List<? extends Damageable> worldBlockers, float dirX, float dirZ) {
+        List<Damageable> blockers = blockersExcludingSelf(worldBlockers);
+        for (int i = 0; i < blockers.size(); i++) {
+            Damageable solid = blockers.get(i);
+            if (isInTheWay(solid, dirX, dirZ, SIDESTEP_PROBE)) return solid;
+        }
+        return null;
+    }
+
+    /**
+     * Records in {@code obstacleSide} how far to the right of the unit direction the object's centre is.
+     * @return whether a live object within {@code slack} of contact lies ahead, across the body's way
+     */
+    private boolean isInTheWay(Damageable solid, float dirX, float dirZ, float slack) {
+        if (solid.isDestroyed() || !isWithin(solid, slack)) return false;
+        float relX = solid.getX() - position.x;
+        float relZ = solid.getZ() - position.y;
+        if (relX * dirX + relZ * dirZ <= 0f) return false;
+        obstacleSide = relZ * dirX - relX * dirZ;
+        return Math.abs(obstacleSide) < solid.getRadius() + kind.radius;
+    }
+
+    /** @return whether the body is within {@code slack} of touching the object */
+    private boolean isWithin(Damageable solid, float slack) {
+        float near = solid.getRadius() + kind.radius + slack;
+        return Vector2.dst2(position.x, position.y, solid.getX(), solid.getZ()) < near * near;
     }
 
     private void moveSolid(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors, Player player,
