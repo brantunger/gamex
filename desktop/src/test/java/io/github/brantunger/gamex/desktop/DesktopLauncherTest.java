@@ -103,6 +103,26 @@ class DesktopLauncherTest {
     }
 
     @Test
+    void windowIsForcedExactlyWhenGamexWindowIsSet() {
+        assertFalse(DesktopLauncher.isWindowForced(null));
+        assertFalse(DesktopLauncher.isWindowForced(""));
+        assertFalse(DesktopLauncher.isWindowForced("   "));
+        assertTrue(DesktopLauncher.isWindowForced("1600x900"));
+        assertTrue(DesktopLauncher.isWindowForced("fullscreen"),
+            "a malformed size still starts windowed, at the 1280x720 fallback");
+
+        MapKeyValueStore store = new MapKeyValueStore();
+        GameSettings settings = new GameSettings();
+        settings.setFullscreen(true);
+        settings.save(store);
+        for (String windowEnv : new String[] {null, "", "   ", "1600x900", "fullscreen"}) {
+            assertEquals(!DesktopLauncher.isWindowForced(windowEnv),
+                DesktopLauncher.shouldStartFullscreen(windowEnv, null, store),
+                "the launcher and the game agree for GAMEX_WINDOW='" + windowEnv + "'");
+        }
+    }
+
+    @Test
     void packagingIconsMatchTheWindowIconArt() throws IOException {
         BufferedImage gamex128 = ImageIO.read(resolveDesktopFile("src/main/resources/gamex128.png").toFile());
         BufferedImage logoPng = ImageIO.read(resolveDesktopFile("icons/logo.png").toFile());

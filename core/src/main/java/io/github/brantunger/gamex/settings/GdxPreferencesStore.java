@@ -2,7 +2,10 @@ package io.github.brantunger.gamex.settings;
 
 import com.badlogic.gdx.Preferences;
 
-/** Adapts libGDX {@link Preferences} to {@link KeyValueStore}. */
+/**
+ * Adapts libGDX {@link Preferences} to {@link KeyValueStore}. A stored number that does not parse, as in a
+ * hand-edited or damaged file, reads as the default.
+ */
 public final class GdxPreferencesStore implements KeyValueStore {
 
     private final Preferences prefs;
@@ -14,12 +17,20 @@ public final class GdxPreferencesStore implements KeyValueStore {
 
     @Override
     public float getFloat(String key, float defaultValue) {
-        return prefs.getFloat(key, defaultValue);
+        try {
+            return prefs.getFloat(key, defaultValue);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     @Override
     public int getInteger(String key, int defaultValue) {
-        return prefs.getInteger(key, defaultValue);
+        try {
+            return prefs.getInteger(key, defaultValue);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     @Override

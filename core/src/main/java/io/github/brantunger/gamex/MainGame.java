@@ -51,6 +51,8 @@ public class MainGame extends ApplicationAdapter {
     private int windowedHeight;
     private int lastResizeWidth;
     private int lastResizeHeight;
+    /** Whether the launcher forced a windowed start, which the saved fullscreen setting must not undo. */
+    private final boolean forceWindowed;
 
     /** Creates the game using the default windowed fallback size of 1280x720. */
     public MainGame() {
@@ -62,8 +64,20 @@ public class MainGame extends ApplicationAdapter {
      * windowed mode.
      */
     public MainGame(int initialWindowWidth, int initialWindowHeight) {
+        this(initialWindowWidth, initialWindowHeight, false);
+    }
+
+    /**
+     * Creates the game with an initial windowed fallback size and says whether the launcher forced a windowed start.
+     * @param initialWindowWidth the windowed fallback width in pixels
+     * @param initialWindowHeight the windowed fallback height in pixels
+     * @param forceWindowed true when the launcher forced a windowed start (for example {@code GAMEX_WINDOW}), so
+     *     that startup does not switch to fullscreen for a saved fullscreen setting; the setting itself is kept
+     */
+    public MainGame(int initialWindowWidth, int initialWindowHeight, boolean forceWindowed) {
         this.windowedWidth = Math.max(160, initialWindowWidth);
         this.windowedHeight = Math.max(120, initialWindowHeight);
+        this.forceWindowed = forceWindowed;
     }
 
     int getWindowedWidth() {
@@ -134,13 +148,7 @@ public class MainGame extends ApplicationAdapter {
             Levels.Stage initialStage = menuState.getActiveStage();
             simulation = new GameSimulation(initialStage.map, menuState.getActiveLoadout(),
                 initialStage.completeOnAllTargets);
-            if (!Gdx.graphics.isFullscreen()) {
-                windowedWidth = Math.max(160, Gdx.graphics.getWidth());
-                windowedHeight = Math.max(120, Gdx.graphics.getHeight());
-            }
-            if (settings.isFullscreen() != Gdx.graphics.isFullscreen()) {
-                applyDisplayMode();
-            }
+            applyStartupDisplayMode(settings);
         }
 
         textures = new ProceduralTextures();
@@ -243,11 +251,7 @@ public class MainGame extends ApplicationAdapter {
         }
         soundManager.update(simulation, menuState, settings);
 
-        MenuState.Screen renderScreen = menuState.getScreen();
-        if (renderScreen == MenuState.Screen.TITLE
-            || renderScreen == MenuState.Screen.STAGE_SELECT
-            || renderScreen == MenuState.Screen.DIFFICULTY_SELECT
-            || renderScreen == MenuState.Screen.BRIEFING) {
+        if (showsBackdrop(menuState)) {
             if (simulation.map != menuState.getActiveStage().map) {
                 Levels.Stage stage = menuState.getActiveStage();
                 simulation = new GameSimulation(stage.map, menuState.getActiveLoadout(), stage.completeOnAllTargets);
@@ -258,6 +262,25 @@ public class MainGame extends ApplicationAdapter {
             viewmodelRenderer.render(simulation, settings);
         }
         hudRenderer.render(simulation, menuState);
+    }
+
+    /**
+     * @param menuState the menu state
+     * @return whether the slow-panning stage backdrop is drawn instead of the first-person view: on the Title, Stage
+     *     Select, Difficulty Select and Briefing screens, and on Settings when it was opened from the Title
+     */
+    static boolean showsBackdrop(MenuState menuState) {
+        switch (menuState.getScreen()) {
+            case TITLE:
+            case STAGE_SELECT:
+            case DIFFICULTY_SELECT:
+            case BRIEFING:
+                return true;
+            case SETTINGS:
+                return menuState.getSettingsReturnScreen() == MenuState.Screen.TITLE;
+            default:
+                return false;
+        }
     }
 
     private void executeCommand(MenuState.Command command) {
@@ -272,7 +295,7 @@ public class MainGame extends ApplicationAdapter {
             }
             case APPLY_DISPLAY:
                 settings.save(settingsStore);
-                applyDisplayMode();
+                applyDisplayMode(settings.isFullscreen());
                 break;
             case QUIT:
                 settings.save(settingsStore);
@@ -313,8 +336,24 @@ public class MainGame extends ApplicationAdapter {
         }
     }
 
-    private void applyDisplayMode() {
-        if (settings.isFullscreen()) {
+    /**
+     * Matches the window to the loaded fullscreen setting at startup, after noting the windowed size to go back to.
+     * Does not switch when the launcher forced a windowed start; the saved setting is left as it is.
+     * @param loaded the settings read from the store
+     */
+    void applyStartupDisplayMode(GameSettings loaded) {
+        if (!Gdx.graphics.isFullscreen()) {
+            windowedWidth = Math.max(160, Gdx.graphics.getWidth());
+            windowedHeight = Math.max(120, Gdx.graphics.getHeight());
+        }
+        if (forceWindowed) return;
+        if (loaded.isFullscreen() != Gdx.graphics.isFullscreen()) {
+            applyDisplayMode(loaded.isFullscreen());
+        }
+    }
+
+    private void applyDisplayMode(boolean fullscreen) {
+        if (fullscreen) {
             Graphics.DisplayMode mode = Gdx.graphics.getDisplayMode();
             if (mode != null) Gdx.graphics.setFullscreenMode(mode);
         } else {
@@ -332,10 +371,11 @@ public class MainGame extends ApplicationAdapter {
         if (settings != null && settingsStore != null && demoRun == null) {
             settings.save(settingsStore);
         }
+        // create() may have failed part-way, so any of these can still be null.
         if (soundManager != null) soundManager.dispose();
-        worldRenderer.dispose();
-        viewmodelRenderer.dispose();
-        hudRenderer.dispose();
-        textures.dispose();
+        if (worldRenderer != null) worldRenderer.dispose();
+        if (viewmodelRenderer != null) viewmodelRenderer.dispose();
+        if (hudRenderer != null) hudRenderer.dispose();
+        if (textures != null) textures.dispose();
     }
 }

@@ -62,8 +62,11 @@ public final class PlayerLoadout {
     public PlayerLoadout(float health, float armor, Difficulty difficulty,
                          boolean hasScattergun, int shells, boolean hasRailLance, int slugs,
                          WeaponSlot activeWeapon) {
-        this.health = Math.max(1f, Math.min(Player.MAX_HEALTH, health));
-        this.armor = Math.max(0f, Math.min(Player.MAX_ARMOR, armor));
+        // A NaN or infinity, as from a damaged save, would pass the clamps; it becomes full health and no armor.
+        float finiteHealth = Float.isFinite(health) ? health : Player.MAX_HEALTH;
+        float finiteArmor = Float.isFinite(armor) ? armor : 0f;
+        this.health = Math.max(1f, Math.min(Player.MAX_HEALTH, finiteHealth));
+        this.armor = Math.max(0f, Math.min(Player.MAX_ARMOR, finiteArmor));
         this.difficulty = difficulty == null ? Difficulty.NORMAL : difficulty;
         this.hasScattergun = hasScattergun;
         this.shells = Math.max(0, Math.min(Scattergun.MAX_SHELLS, shells));

@@ -99,8 +99,11 @@ def configureFatJar = { Jar task, String suffix ->
     attributes 'Main-Class': application.mainClass, 'Enable-Native-Access': 'ALL-UNNAMED', 'Multi-Release': 'true', 'Add-Exports': 'java.base/jdk.internal.misc'
   }
 // this last step may help on some OSes that need extra instruction to make runnable JARs.
+// The Provider is read here, outside the action, because the configuration cache does not allow an action
+// to call script methods such as file() while it runs.
+  def archiveFile = task.archiveFile
   task.doLast {
-    file(task.archiveFile).setExecutable(true, false)
+    archiveFile.get().asFile.setExecutable(true, false)
   }
 }
 
@@ -184,16 +187,15 @@ tasks.register('dist') {
   dependsOn 'jar'
 }
 
+// The application plugin copies both the jar task's output and every runtimeClasspath JAR into lib/ of the
+// distZip and distTar archives. The jar task here already builds a fat JAR holding all of those dependencies,
+// and the start scripts below only put that fat JAR on the classpath, so the loose dependency JARs are left out.
+// The files are compared when the archive is built, so nothing is resolved while this script is configured.
+def distRuntimeClasspath = configurations.runtimeClasspath
 distributions {
   main {
     contents {
-      into('libs') {
-        project.configurations.runtimeClasspath.files.findAll { file ->
-          file.getName() != project.tasks.jar.outputs.files.singleFile.name
-        }.each { file ->
-          exclude file.name
-        }
-      }
+      exclude { distRuntimeClasspath.contains(it.file) }
     }
   }
 }

@@ -46,13 +46,21 @@ public class DesktopLauncher {
         config.setWindowIcon("gamex128.png", "gamex64.png", "gamex32.png", "gamex16.png");
         // A 24-bit depth buffer keeps marks on distant walls from flickering; anti-aliasing with 4 samples.
         config.setBackBufferConfig(8, 8, 8, 8, 24, 0, 4);
-        new Lwjgl3Application(new MainGame(size[0], size[1]), config);
+        new Lwjgl3Application(new MainGame(size[0], size[1], isWindowForced(windowEnv)), config);
     }
 
     static boolean shouldStartFullscreen(String windowEnv, String screenshotEnv, KeyValueStore settingsStore) {
         if (screenshotEnv != null && !screenshotEnv.isEmpty()) return false;
-        if (windowEnv != null && !windowEnv.trim().isEmpty()) return false;
+        if (isWindowForced(windowEnv)) return false;
         return GameSettings.load(settingsStore).isFullscreen();
+    }
+
+    /**
+     * @param windowEnv the value of the {@code GAMEX_WINDOW} environment variable, or null
+     * @return whether it asks for a windowed start, which a saved fullscreen setting must not undo
+     */
+    static boolean isWindowForced(String windowEnv) {
+        return windowEnv != null && !windowEnv.trim().isEmpty();
     }
 
     private static KeyValueStore loadSavedSettingsStore() {

@@ -1,5 +1,6 @@
 package io.github.brantunger.gamex.player;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -275,5 +276,42 @@ class PlayerTest {
             player.move(longHall, 1f, 0f, 1f / 60f);
         }
         assertFalse(player.isAirborne());
+    }
+
+    /**
+     * Jumps on the spot in steps of {@code dt} and presses jump again at the start of the given step.
+     * @return whether that second press launched a jump on touchdown
+     */
+    private static boolean bufferedPressFiresOnTouchdown(float dt, int pressStep) {
+        Player player = new Player(3.5f, 3.5f, 0f);
+        assertTrue(player.tryJump());
+        player.consumeJumpTriggered();
+        for (int step = 0; step < 200; step++) {
+            if (step == pressStep) assertFalse(player.tryJump(), "still airborne at step " + step);
+            player.move(ROOM, 0f, 0f, dt);
+            if (player.consumeLandedTriggered()) return player.consumeJumpTriggered();
+        }
+        throw new AssertionError("never landed");
+    }
+
+    @Test
+    void jumpBufferWindowIsTheSameAtLowFrameRates() {
+        // The jump lasts 2 * 2.68 / 11.2 = 0.4786 s. A press 0.4 s in is 0.0786 s early, inside the 0.10 s window.
+        assertAll(
+            () -> assertTrue(bufferedPressFiresOnTouchdown(1f / 60f, 24), "0.0786 s early at 60 fps"),
+            () -> assertTrue(bufferedPressFiresOnTouchdown(1f / 30f, 12), "0.0786 s early at 30 fps"),
+            () -> assertTrue(bufferedPressFiresOnTouchdown(0.05f, 8), "0.0786 s early at 20 fps"),
+            // A press 0.3833 s in is 0.0952 s early: six whole 60 fps steps pass before the one that lands.
+            () -> assertTrue(bufferedPressFiresOnTouchdown(1f / 60f, 23), "0.0952 s early at 60 fps"));
+    }
+
+    @Test
+    void jumpPressedMoreThanTheBufferTimeBeforeTouchdownIsDropped() {
+        assertFalse(bufferedPressFiresOnTouchdown(1f / 60f, 21), "0.1286 s early at 60 fps");
+        assertFalse(bufferedPressFiresOnTouchdown(1f / 30f, 11), "0.1119 s early at 30 fps");
+        assertFalse(bufferedPressFiresOnTouchdown(0.05f, 7), "0.1286 s early at 20 fps");
+        // In 0.03 s steps a press 0.36 s in is 0.1186 s early, though the timer still has 0.01 s left when the
+        // step that lands begins.
+        assertFalse(bufferedPressFiresOnTouchdown(0.03f, 12), "0.1186 s early at 33 fps");
     }
 }

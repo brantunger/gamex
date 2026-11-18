@@ -23,7 +23,7 @@ import java.util.zip.Deflater;
  *  piercing Rail Lance beam. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer
  *  Breach, {@code title} shows the Title screen over Outer Breach, {@code lockdown} opens a bulkhead door in Stage 04,
  *  {@code stages} shows the unlocked 6-stage Select Stage screen, {@code warden} stages the Stage 06 Warden Mech
- *  boss encounter across live Shock Grates, and {@code jump} vaults airborne over the Training Range Shock Grates.</li>
+ *  boss encounter across live Shock Grates, and {@code jump} vaults airborne over the Training Range Shock Grate.</li>
  *  <li>{@code GAMEX_VIEWMODEL_ORBIT}: set to {@code yaw} or {@code yaw,pitch} in degrees to draw only the pistol and
  *  hand, on a plain background, seen from outside: 0 is from behind, 90 the left side, 180 the front, and a pitch
  *  of 90 is from above.</li>
@@ -46,6 +46,8 @@ public final class DemoRun {
     /** The turn, in degrees, that points the player at the canister in the spawn hall. */
     private static final float TARGET_TURN = 71.57f;
     private static final int TARGET_FIRE_FROM_FRAME = 30;
+    /** The frame on which the walk from x = 9.8 is a quarter of a cell short of the Training Range's Shock Grate. */
+    private static final int JUMP_FROM_FRAME = 19;
 
     private final String path;
     private final int captureFrame;
@@ -74,6 +76,15 @@ public final class DemoRun {
             }
         }
         return new DemoRun(path, captureFrame, System.getenv("GAMEX_DEMO"));
+    }
+
+    /**
+     * Builds a run that plays a script without reading {@code GAMEX_SCREENSHOT}, so a test can step its input.
+     * @param script the script name, as {@code GAMEX_DEMO} would give it
+     * @return the run, which saves {@link #DEFAULT_FRAME} to no path
+     */
+    static DemoRun forScript(String script) {
+        return new DemoRun("", DEFAULT_FRAME, script);
     }
 
     /**
@@ -142,7 +153,7 @@ public final class DemoRun {
             if (frame >= 5 && frame <= 14) out.moveForward = 0.5f;
         } else if ("jump".equals(script)) {
             out.moveForward = 1f;
-            out.jump = frame >= 8 && frame <= 12;
+            out.jump = frame >= JUMP_FROM_FRAME && frame < JUMP_FROM_FRAME + 5;
         }
     }
 

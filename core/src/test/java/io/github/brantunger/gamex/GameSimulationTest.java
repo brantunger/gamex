@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
@@ -25,6 +26,7 @@ import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.Target;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 class GameSimulationTest {
@@ -1208,5 +1210,259 @@ class GameSimulationTest {
         input.jump = false;
         assertTrue(sim.player.isAirborne());
         assertEquals(1f, sim.getZoom(), 1e-4f, "Rail Lance 1.8x zoom remains active mid-jump");
+    }
+
+    private static GameSimulation emptyCorridorHolding(WeaponSlot weapon) {
+        return new GameSimulation(
+            GameMap.parse("##########", "#>.......#", "##########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 8, true, 5, weapon),
+            false);
+    }
+
+    @Test
+    void energyRefillsWithTheScattergunOut() {
+        assertEquals(24f, energyAfterOneIdleSecondFromTen(WeaponSlot.SCATTERGUN), 1e-3f);
+    }
+
+    @Test
+    void energyRefillsWithTheRailLanceOut() {
+        assertEquals(24f, energyAfterOneIdleSecondFromTen(WeaponSlot.RAIL_LANCE), 1e-3f);
+    }
+
+    private static float energyAfterOneIdleSecondFromTen(WeaponSlot weapon) {
+        GameSimulation sim = emptyCorridorHolding(weapon);
+        sim.energy.setEnergy(10f);
+        PlayerInput input = new PlayerInput();
+        for (int i = 0; i < 60; i++) sim.update(FRAME, input);
+        return sim.energy.getEnergy();
+    }
+
+    @Test
+    void energyRefillsWhileSwappingWeapons() {
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        sim.energy.setEnergy(10f);
+        PlayerInput input = new PlayerInput();
+        input.weaponSlot = 2;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 5; i++) sim.update(FRAME, input);
+        assertTrue(sim.getSwapProgress() > 0f, "still swapping");
+        assertEquals(10f + 14f * 6f / 60f, sim.energy.getEnergy(), 1e-3f);
+    }
+
+    @Test
+    void pistolIdleEnergyRefillIsNotDoubledAndPausesWhileAChargeBuilds() {
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        sim.energy.setEnergy(30f);
+        PlayerInput input = new PlayerInput();
+        for (int i = 0; i < 60; i++) sim.update(FRAME, input);
+        assertEquals(44f, sim.energy.getEnergy(), 1e-3f, "one second of refill holding the pistol");
+
+        input.charge = true;
+        for (int i = 0; i < 30; i++) sim.update(FRAME, input);
+        assertTrue(sim.charger.isCharging());
+        assertEquals(44f, sim.energy.getEnergy(), 1e-3f, "no refill while the charge builds");
+    }
+
+    /**
+     * Holds fire and asks for the Rail Lance, optionally one frame after asking for the Scattergun.
+     * @return the frames from the Rail Lance's key press up to and including the one that fires it
+     */
+    private static int framesUntilTheRailLanceFires(boolean scattergunFirst) {
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        PlayerInput input = new PlayerInput();
+        if (scattergunFirst) {
+            input.weaponSlot = 2;
+            sim.update(FRAME, input);
+        }
+        input.fire = true;
+        input.weaponSlot = 3;
+        for (int frames = 1; frames < 100; frames++) {
+            sim.update(FRAME, input);
+            input.weaponSlot = 0;
+            if (sim.getSlugs() < 5) return frames;
+            if (frames < 5) {
+                assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon(), "still dipping the pistol on frame " + frames);
+            }
+        }
+        throw new AssertionError("the Rail Lance never fired");
+    }
+
+    @Test
+    void askingForAThirdWeaponMidSwapRestartsTheDipInsteadOfSkippingIt() {
+        assertEquals(framesUntilTheRailLanceFires(false), framesUntilTheRailLanceFires(true));
+    }
+
+    @Test
+    void swapKeepsTrackOfTheWeaponItLeftAcrossAReversal() {
+        // Pistol to Scattergun, back to the pistol four frames in, then on to the Rail Lance: a third weapon, so a
+        // full dip of the pistol, as long as a direct switch.
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        PlayerInput input = new PlayerInput();
+        input.weaponSlot = 2;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 3; i++) sim.update(FRAME, input);
+        input.weaponSlot = 1;
+        sim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+        assertTrue(sim.getSwapProgress() > 0f, "still raising the pistol");
+        input.fire = true;
+        input.weaponSlot = 3;
+        int frames = 0;
+        while (sim.getSlugs() == 5 && frames < 100) {
+            sim.update(FRAME, input);
+            input.weaponSlot = 0;
+            frames++;
+            if (frames < 5) assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon(), "dipping on frame " + frames);
+        }
+        assertEquals(framesUntilTheRailLanceFires(false), frames);
+
+        // Pistol to Scattergun, back to the pistol, then the Scattergun again: a second reversal, which carries on
+        // from the depth the dip has reached instead of starting over.
+        sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        input = new PlayerInput();
+        input.weaponSlot = 2;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 3; i++) sim.update(FRAME, input);
+        input.weaponSlot = 1;
+        sim.update(FRAME, input);
+        float progressBefore = sim.getSwapProgress();
+        input.weaponSlot = 2;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getTargetWeapon());
+        assertTrue(sim.getSwapProgress() > progressBefore, "dips on from " + progressBefore);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+        sim.update(FRAME, input);
+        sim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon(), "reached the bottom of the dip");
+    }
+
+    @Test
+    void reachingTheExitOnTheFrameThePlayerDiesDoesNotClearTheStage() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse("######", "#>.~X#", "######"),
+            new PlayerLoadout(5f, 0f, Difficulty.NORMAL),
+            false);
+        // On the grate and within reach of the exit pad: the first grate tick is lethal.
+        sim.player.position.set(3.95f, 1.5f);
+        PlayerInput input = new PlayerInput();
+        sim.update(FRAME, input);
+        assertTrue(sim.player.isDead());
+        assertFalse(sim.isLevelCleared(), "a dead player does not clear the stage");
+        for (int i = 0; i < 30; i++) sim.update(FRAME, input);
+        assertFalse(sim.isLevelCleared());
+    }
+
+    @Test
+    void exitReachedMidJumpSettlesThePlayerOnTheFloor() {
+        GameSimulation sim = new GameSimulation(GameMap.parse("########", "#>....X#", "########"));
+        sim.player.position.set(5.2f, 1.5f);
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        input.jump = true;
+        float heightBefore = 0f;
+        for (int i = 0; i < 20 && !sim.isLevelCleared(); i++) {
+            heightBefore = sim.player.getJumpHeight();
+            sim.update(FRAME, input);
+        }
+        assertTrue(sim.isLevelCleared());
+        assertTrue(heightBefore > 0.1f, "was mid-jump the frame before, at " + heightBefore);
+        assertEquals(0f, sim.player.getJumpHeight(), 0f);
+        assertEquals(0f, sim.player.getVerticalVelocity(), 0f);
+        assertFalse(sim.player.isAirborne());
+        assertEquals(Player.EYE_HEIGHT, sim.player.eye(new Vector3()).y, 1e-5f);
+    }
+
+    @Test
+    void lastTargetBrokenMidJumpSettlesThePlayerOnTheFloor() {
+        GameSimulation sim = new GameSimulation(GameMap.parse("##########", "#>......o#", "##########"),
+            PlayerLoadout.fresh(), true);
+        PlayerInput input = new PlayerInput();
+        input.jump = true;
+        for (int i = 0; i < 8; i++) sim.update(FRAME, input);
+        assertTrue(sim.player.getJumpHeight() > 0.1f);
+        sim.targets.get(0).damage(9999f);
+        sim.update(FRAME, input);
+        assertTrue(sim.isLevelCleared());
+        assertEquals(0f, sim.player.getJumpHeight(), 0f);
+        assertFalse(sim.player.isAirborne());
+    }
+
+    @Test
+    void plainJumpClearsTheTrainingRangeShockGrate() {
+        Levels.Stage range = Levels.trainingRange();
+        float west = Float.MAX_VALUE;
+        for (GameMap.HazardCell cell : range.map.getHazardCells()) west = Math.min(west, cell.col);
+        GameSimulation sim = new GameSimulation(range.map, PlayerLoadout.fresh(), false);
+        sim.player.position.set(west - 0.7f, range.map.getHazardCells().get(0).row + 0.5f);
+        sim.player.look(90f - sim.player.getYaw(), 0f);
+
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        boolean crossedTheGrate = false;
+        for (int i = 0; i < 90; i++) {
+            // One press, a quarter of a cell short of the grate; no dash.
+            input.jump = sim.player.position.x >= west - 0.25f;
+            sim.update(FRAME, input);
+            crossedTheGrate |= range.map.isHazardAt(sim.player.position.x, sim.player.position.y);
+        }
+        assertTrue(crossedTheGrate);
+        assertFalse(range.map.isHazardAt(sim.player.position.x, sim.player.position.y));
+        assertTrue(sim.player.position.x > west + 1f, "walked on east to " + sim.player.position.x);
+        assertEquals(0f, sim.getDamageTaken(), 0f);
+        assertEquals(100f, sim.energy.getEnergy(), 0f, "no dash was needed");
+    }
+
+    /**
+     * Walks east over a two-cell grate, as the campaign stages have, jumping a quarter of a cell short of it.
+     * @return the damage taken on the way
+     */
+    private static float damageCrossingATwoCellGrate(boolean dashAtTheTop) {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "############",
+            "#.>.~~.....#",
+            "############"));
+        sim.player.position.set(3.3f, 1.5f);
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        boolean jumped = false;
+        for (int i = 0; i < 90; i++) {
+            input.jump = sim.player.position.x >= 3.75f;
+            jumped |= input.jump;
+            input.dash = dashAtTheTop && jumped && sim.player.getVerticalVelocity() <= 0f;
+            sim.update(FRAME, input);
+        }
+        assertTrue(sim.player.position.x > 6f, "walked on east to " + sim.player.position.x);
+        return sim.getDamageTaken();
+    }
+
+    @Test
+    void twoCellShockGrateNeedsAJumpWithAMidAirDash() {
+        assertTrue(damageCrossingATwoCellGrate(false) > 0f, "a plain jump comes down on the grate");
+        assertEquals(0f, damageCrossingATwoCellGrate(true), 0f);
+    }
+
+    @Test
+    void idlePlayerAtSpawnIsLeftAloneOnEveryCampaignStage() {
+        List<String> problems = new ArrayList<>();
+        for (Levels.Stage stage : Levels.campaign()) {
+            GameSimulation sim = new GameSimulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL),
+                stage.completeOnAllTargets);
+            PlayerInput input = new PlayerInput();
+            sim.update(FRAME, input);
+            for (Enemy enemy : sim.enemies) {
+                if (enemy.getState() == Enemy.State.DORMANT) continue;
+                problems.add(stage.id + ": the " + enemy.getKind() + " at " + enemy.getX() + "," + enemy.getZ()
+                    + " sees the spawn point");
+            }
+            for (int i = 0; i < 600; i++) sim.update(FRAME, input);
+            if (sim.getDamageTaken() > 0f) {
+                problems.add(stage.id + ": " + sim.getDamageTaken() + " damage in 10 s of standing at the spawn point");
+            }
+        }
+        assertTrue(problems.isEmpty(), String.join("; ", problems));
     }
 }

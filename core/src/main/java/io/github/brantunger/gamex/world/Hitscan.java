@@ -237,18 +237,35 @@ public final class Hitscan {
     }
 
     /**
-     * Intersects the ray with the side of the target's upright cylinder. A ray starting inside the cylinder hits it
-     * at distance 0, with the normal pointing back along the ray.
+     * Intersects the ray with the target's upright cylinder: its side, or its flat top for a ray that comes down onto
+     * it from above. A ray starting inside the cylinder hits it at distance 0, with the normal pointing back along the
+     * ray.
      */
     private static void castTarget(Damageable target, Vector3 origin, Vector3 direction, float maxDistance,
                                    RayHit hit) {
         if (target.isDestroyed()) return;
         float offsetX = origin.x - target.getX();
         float offsetZ = origin.z - target.getZ();
+        float radius2 = target.getRadius() * target.getRadius();
+        if (origin.y > target.getHeight() && direction.y < 0f) {
+            // From above, the ray can only enter through the top: where it crosses the side it is still too high.
+            float topDistance = (target.getHeight() - origin.y) / direction.y;
+            float topX = offsetX + direction.x * topDistance;
+            float topZ = offsetZ + direction.z * topDistance;
+            if (topX * topX + topZ * topZ <= radius2) {
+                if (topDistance > maxDistance || topDistance >= hit.distance) return;
+                hit.kind = RayHit.Kind.TARGET;
+                hit.distance = topDistance;
+                hit.door = null;
+                hit.target = target;
+                hit.normal.set(0f, 1f, 0f);
+                return;
+            }
+        }
         float a = direction.x * direction.x + direction.z * direction.z;
         if (a < 1e-8f) return;
         float b = offsetX * direction.x + offsetZ * direction.z;
-        float c = offsetX * offsetX + offsetZ * offsetZ - target.getRadius() * target.getRadius();
+        float c = offsetX * offsetX + offsetZ * offsetZ - radius2;
         float discriminant = b * b - a * c;
         if (discriminant < 0f) return;
         // A ray that starts inside the cylinder hits it at once.

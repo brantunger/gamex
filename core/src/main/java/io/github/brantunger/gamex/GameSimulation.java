@@ -179,6 +179,8 @@ public final class GameSimulation {
     private WeaponSlot pendingWeapon;
     private WeaponSlot previousWeapon;
     private boolean swapping;
+    /** The weapon the swap in progress is moving away from; asking for it again reverses the swap. */
+    private WeaponSlot swapOrigin;
     private float swapElapsed;
 
     private final Pickup.Arsenal pickupArsenal = new Pickup.Arsenal() {
@@ -355,7 +357,7 @@ public final class GameSimulation {
         if (interactPressedEdge) {
             handleInteract();
         }
-        checkExitReached();
+        boolean exitReached = isExitReached();
 
         player.eye(eye);
         player.direction(direction);
@@ -364,12 +366,13 @@ public final class GameSimulation {
         snapshotDamageableHealth();
         float kickScale = 0f;
         float firedCharge = 0f;
-        if (levelCleared || swapping) {
+        if (exitReached || swapping) {
             pistol.update(dt, false);
             scattergun.updateIdle(dt);
             railLance.updateIdle(dt);
             charger.cancel();
             prevChargeRefused = false;
+            energy.regenerate(dt);
         } else if (activeWeapon == WeaponSlot.PISTOL) {
             scattergun.updateIdle(dt);
             railLance.updateIdle(dt);
@@ -378,6 +381,7 @@ public final class GameSimulation {
                 firePistol();
                 kickScale = 1f;
             }
+            // The charger refills the meter itself, except while a charge is building.
             firedCharge = charger.update(dt, !player.isDashing() && input.charge);
             boolean refusedNow = charger.isRefused();
             if (refusedNow && !prevChargeRefused) {
@@ -390,6 +394,7 @@ public final class GameSimulation {
             railLance.updateIdle(dt);
             charger.cancel();
             prevChargeRefused = false;
+            energy.regenerate(dt);
             boolean wantPrimary = input.fire;
             boolean wantAlt = input.charge;
             if (shells <= 0 && scattergun.isReady() && (wantPrimary || wantAlt)) {
@@ -409,6 +414,7 @@ public final class GameSimulation {
             scattergun.updateIdle(dt);
             charger.cancel();
             prevChargeRefused = false;
+            energy.regenerate(dt);
             if (slugs <= 0 && railLance.isReady() && input.fire) {
                 railLance.updateIdle(dt);
                 emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
@@ -522,10 +528,15 @@ public final class GameSimulation {
             }
         }
 
-        if (!player.isDead() && completeOnAllTargets
+        boolean allDestroyed = completeOnAllTargets
             && (!targets.isEmpty() || !enemies.isEmpty())
-            && getTargetsRemaining() == 0 && getEnemiesRemaining() == 0) {
+            && getTargetsRemaining() == 0 && getEnemiesRemaining() == 0;
+        // Decided once the step's damage is dealt: a player killed on the frame that meets the objective has not
+        // cleared the stage.
+        if ((exitReached || allDestroyed) && !player.isDead()) {
             levelCleared = true;
+            // Nothing moves the player once the stage is cleared, so a jump in progress ends here.
+            player.settleOnFloor();
         }
 
         updateTargetsAndEffects(dt);
@@ -807,9 +818,16 @@ public final class GameSimulation {
         pendingWeapon = target;
         if (!swapping) {
             swapping = true;
+            swapOrigin = activeWeapon;
             swapElapsed = 0f;
-        } else {
+        } else if (target == swapOrigin) {
+            // Reversing: the timer is mirrored, so the viewmodel turns back from the depth it has reached.
+            swapOrigin = currentTarget;
             swapElapsed = Math.max(0f, SWAP_DURATION - swapElapsed);
+        } else {
+            // A third weapon: the dip starts over, so it is never raised sooner than by a direct switch.
+            swapOrigin = activeWeapon;
+            swapElapsed = 0f;
         }
         if (playSound) {
             emitPlayerSound(SoundEvent.Type.WEAPON_SWITCH, 1f);
@@ -1014,12 +1032,10 @@ public final class GameSimulation {
         }
     }
 
-    private void checkExitReached() {
-        if (!map.hasExit() || player.isDead()) return;
+    private boolean isExitReached() {
+        if (!map.hasExit() || player.isDead()) return false;
         float reach = Player.RADIUS + GameMap.EXIT_RADIUS;
-        if (Vector2.dst2(player.position.x, player.position.y, map.getExitX(), map.getExitZ()) < reach * reach) {
-            levelCleared = true;
-        }
+        return Vector2.dst2(player.position.x, player.position.y, map.getExitX(), map.getExitZ()) < reach * reach;
     }
 
     private void computeMuzzleOrigin(float hitDistance, float rightScale, float clearanceRadius, Vector3 out) {

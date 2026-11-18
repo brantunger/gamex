@@ -3,7 +3,7 @@ title: TRAINING RANGE
 par: 45
 complete_on_all_targets: true
 briefing: LIVE FIRE CALIBRATION COURSE ONLINE.
-briefing: TEST SCATTERGUN, RAIL LANCE, JUMP, ENERGY DASH AND CHAIN BLASTS.
+briefing: TEST SCATTERGUN, RAIL LANCE, JUMP, DASH AND CHAIN BLASTS.
 briefing: DESTROY ALL 11 TARGETS TO COMPLETE THE RUN.
 
 #############&&&&&&&&&&&&&
@@ -21,7 +21,7 @@ briefing: DESTROY ALL 11 TARGETS TO COMPLETE THE RUN.
 %........e.%%%%%.........%
 %..o...%%..%%%%%...%.%...%
 %......%%..%%%%%.........%
-%..........~~.s..........%
+%..........~..s..........%
 %..........%%%%%r...O....%
 %.O......o.%%%%%.o.....o.%
 %.+........%%%%%.......a.%

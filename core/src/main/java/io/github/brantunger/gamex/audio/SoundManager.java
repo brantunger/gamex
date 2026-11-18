@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * Loads {@link Sound} assets from {@code assets/sounds/} via libGDX internal file handles and drives 3D spatialized
  * combat audio, centered player/menu audio, and the pitched blast-charge loop. Degrades cleanly to silent mode when
- * muted or when no audio device exists.
+ * muted or when no audio device exists; a sound file that fails to load silences only its own cue.
  */
 public final class SoundManager implements Disposable {
 
@@ -43,20 +43,24 @@ public final class SoundManager implements Disposable {
         this.muted = muted;
         Sound loadedCharge = null;
         if (!muted && Gdx.audio != null && Gdx.files != null) {
-            try {
-                for (SoundEvent.Type type : SoundEvent.Type.values()) {
-                    sounds.put(type, Gdx.audio.newSound(Gdx.files.internal(assetPath(type))));
-                }
-                loadedCharge = Gdx.audio.newSound(Gdx.files.internal(CHARGE_HUM_PATH));
-                available = true;
-            } catch (RuntimeException e) {
-                System.err.println("Audio initialization failed; continuing muted: " + e.getMessage());
-                disposeHandles(loadedCharge);
-                loadedCharge = null;
-                available = false;
+            for (SoundEvent.Type type : SoundEvent.Type.values()) {
+                Sound sound = loadSound(assetPath(type));
+                if (sound != null) sounds.put(type, sound);
             }
+            loadedCharge = loadSound(CHARGE_HUM_PATH);
+            available = !sounds.isEmpty() || loadedCharge != null;
         }
         this.chargeHum = loadedCharge;
+    }
+
+    /** @return the sound at internal asset {@code path}, or null if it is missing or cannot be decoded. */
+    private static Sound loadSound(String path) {
+        try {
+            return Gdx.audio.newSound(Gdx.files.internal(path));
+        } catch (RuntimeException e) {
+            System.err.println("Sound " + path + " failed to load; continuing without it: " + e.getMessage());
+            return null;
+        }
     }
 
     /** @return the {@code .wav} file name inside {@link #SOUNDS_DIR} for {@code type}. */
@@ -102,7 +106,7 @@ public final class SoundManager implements Disposable {
             }
         }
 
-        boolean shouldLoop = canPlay && menuState != null && menuState.isPlaying()
+        boolean shouldLoop = canPlay && chargeHum != null && menuState != null && menuState.isPlaying()
             && simulation != null && simulation.isBlastChargingAudioActive();
         if (!shouldLoop) {
             stopLoops();
