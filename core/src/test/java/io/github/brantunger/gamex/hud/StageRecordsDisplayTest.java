@@ -8,12 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
@@ -164,7 +166,7 @@ class StageRecordsDisplayTest {
     }
 
     @Test
-    void tallyRoundsDamageUpSoARunDeniedUntouchedNeverShowsZero() {
+    void tallyShowsAtLeastOneDamageSoARunDeniedUntouchedNeverShowsZero() {
         SaveData save = new SaveData(new MapKeyValueStore());
         SaveData.CompletionSummary grazed = save.recordCompletion(STAGE, Difficulty.NORMAL, 50f,
             new RunStats(60f, 8, 8, 0.3f, 0, 9, 10, 5), true);
@@ -175,6 +177,32 @@ class StageRecordsDisplayTest {
             new RunStats(60f, 8, 8, 0f, 0, 9, 10, 5), true);
         assertTrue(clean.medals.contains(Medal.UNTOUCHED));
         assertEquals("DAMAGE TAKEN: 0   PICKUPS: 0/9   ACCURACY: 50%", HudRenderer.tallyStatsLine(clean));
+    }
+
+    @Test
+    void tallyDoesNotAddOneForFloatNoiseAboveAWholeDamage() {
+        SaveData save = new SaveData(new MapKeyValueStore());
+        // Five hits of 5.6 on Easy with armor sum to 28.000015, not 28.
+        SaveData.CompletionSummary noisy = save.recordCompletion(STAGE, Difficulty.EASY, 50f,
+            new RunStats(60f, 8, 8, 28.000015f, 0, 9, 10, 5), true);
+        assertEquals("DAMAGE TAKEN: 28   PICKUPS: 0/9   ACCURACY: 50%", HudRenderer.tallyStatsLine(noisy));
+    }
+
+    @Test
+    void tallyShowsTheDamageOfFiveShockGrateHitsOnEasyWithArmor() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#####",
+            "#>.~#",
+            "#####"), new PlayerLoadout(100f, 30f, Difficulty.EASY), false);
+        PlayerInput input = new PlayerInput();
+        input.moveForward = 1f;
+        float fiveHits = 5 * GameSimulation.HAZARD_DAMAGE * Difficulty.EASY.damageTakenScale;
+        for (int i = 0; i < 600 && sim.getDamageTaken() < fiveHits - 0.5f; i++) sim.update(1f / 60f, input);
+        assertEquals(fiveHits, sim.getDamageTaken(), 1e-3f, "five hits of 5.6");
+
+        SaveData.CompletionSummary summary = new SaveData(new MapKeyValueStore()).recordCompletion(STAGE,
+            Difficulty.EASY, 50f, new RunStats(60f, 8, 8, sim.getDamageTaken(), 0, 9, 10, 5), true);
+        assertEquals("DAMAGE TAKEN: 28   PICKUPS: 0/9   ACCURACY: 50%", HudRenderer.tallyStatsLine(summary));
     }
 
     @Test
