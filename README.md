@@ -9,8 +9,9 @@ tactical zoom optic, a free physical jump, and a horizontal energy dash. Battle 
 keycards, override Security Consoles, collect 3D health, armor, energy, weapon, shell and slug pickups, and clear the 6-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
-Range**. Surface and effect textures are synthesised in code at start-up, while every weapon, combat and menu sound is
-loaded from a 16-bit mono PCM `.wav` file in `assets/sounds/` and every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
+Range**. Surface and effect textures are synthesised in code at start-up, while every map and campaign stage is loaded from
+`assets/levels/`, every weapon, combat and menu sound is loaded from a 16-bit mono PCM `.wav` file in `assets/sounds/`, and
+every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
 pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
 
 ## How to run
@@ -209,7 +210,7 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
     a window.
   - `audio`: headless sound-event cues (`SoundEvent`) and internal `.wav` asset loading with 3D distance/pan OpenAL
     playback (`SoundManager`).
-  - `world`: the level grid, its layouts and the stage definitions (`Levels`), collision with walls, targets and enemies,
+  - `world`: the level grid (`GameMap`), `.map` and `campaign.txt` level/stage asset loading (`Levels`), collision with walls, targets and enemies,
     hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
     (`Pickup`), world object models (`WorldModels`) and effects.
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
@@ -234,6 +235,7 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `RailLanceSculpt`, `HandSculpt`, `GenerateAllModels`,
   `SoundSynth`, `GenerateAllSounds`, and the interactive LWJGL3 previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads at start-up:
+  - `levels/*.map`, `levels/campaign.txt`: plain-text map layouts, stage metadata/briefings, and ordered campaign manifest.
   - `sounds/*.wav`: 16-bit mono PCM `.wav` files for every weapon, combat, world, pickup and menu cue plus the seamless `charge-hum.wav` blast-charge loop.
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`, `models/viewmodel-raillance.obj`: the meshes of the first-person pistol (body and slide), shortened double-barrel drum combat scattergun (body and lever forend), and rail lance (body and magnetic bolt).
@@ -250,7 +252,7 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
-graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`, `WorldModelsTest` and `SoundManagerTest` read `.obj` models and `.wav` sounds from `assets/models` and `assets/sounds` and
+graphics context. `HandModelTest`, `PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`, `WorldModelsTest`, `SoundManagerTest` and `LevelsTest` read `.obj` models, `.wav` sounds and `.map` levels from `assets/models`, `assets/sounds` and `assets/levels` and
 track asset changes in `core/build.gradle`; `:tools:test` (`GeneratedModelsTest` and `GeneratedSoundsTest`) invokes `GenerateAllModels` and `GenerateAllSounds` directly
 to verify byte-for-byte reproduction of every shipped `.obj` and `.wav` asset and indexed vertex deduplication. They cover:
 
@@ -259,7 +261,7 @@ to verify byte-for-byte reproduction of every shipped `.obj` and `.wav` asset an
   hurting the player, a dash dropping a charge and collecting pickups, enemy alerting/damage/kills, headless sound
   events (weapon, target, enemy, pickup, charge-audio and edge-triggered `LOW ENERGY`), and a stage ending when its
   last target breaks.
-- `world`: layout parsing (including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
+- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
 - `player`: view angles and movement, armor absorbing damage, death, and the dash (its cost, distance, cooldown
