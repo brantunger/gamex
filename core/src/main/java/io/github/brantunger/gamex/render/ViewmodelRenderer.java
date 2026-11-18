@@ -22,6 +22,7 @@ import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
+import io.github.brantunger.gamex.weapon.RailLanceModel;
 import io.github.brantunger.gamex.weapon.ScattergunModel;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
@@ -117,6 +118,8 @@ public final class ViewmodelRenderer implements Disposable {
     private final Mesh slide;
     private final Mesh scatterBody;
     private final Mesh scatterPump;
+    private final Mesh railBody;
+    private final Mesh railBolt;
     /** The sculpted hand and forearm, which move with the body of the active weapon. */
     private final Mesh hand;
     private final CameraGroupStrategy groupStrategy;
@@ -130,6 +133,8 @@ public final class ViewmodelRenderer implements Disposable {
     private final Matrix3 normalMatrix = new Matrix3();
     private final ObjModel.SocketSpec muzzleSocket;
     private final ObjModel.SocketSpec scatterMuzzleSocket;
+    private final ObjModel.SocketSpec railMuzzleSocket;
+    private final float[] railAccentScratch = new float[4];
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
     private final Vector3 up = new Vector3();
@@ -162,6 +167,11 @@ public final class ViewmodelRenderer implements Disposable {
         scatterMuzzleSocket = scatterObj.getSocket("muzzle");
         scatterBody = ModelMesh.buildIndexed(scatter.bodyMesh);
         scatterPump = ModelMesh.buildIndexed(scatter.pumpMesh);
+        ObjModel railObj = ModelMesh.loadModel(RailLanceModel.ASSET_PATH, "rail lance");
+        RailLanceModel rail = RailLanceModel.from(railObj);
+        railMuzzleSocket = railObj.getSocket("muzzle");
+        railBody = ModelMesh.buildIndexed(rail.bodyMesh);
+        railBolt = ModelMesh.buildIndexed(rail.boltMesh);
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
         hand = ModelMesh.loadIndexedMesh(HandModel.ASSET_PATH, "hand", HandModel::packIndexed);
 
@@ -198,23 +208,64 @@ public final class ViewmodelRenderer implements Disposable {
         float bobX = bobEnabled ? animation.getBobX() : 0f;
         float bobY = bobEnabled ? animation.getBobY() : 0f;
 
-        // Place the active weapon: at rest lower right, shifted by bob, kick, swap dip and grip pivot sway.
+        WeaponSlot activeWeapon = simulation.getActiveWeapon();
+        float zoom = activeWeapon == WeaponSlot.RAIL_LANCE ? simulation.getZoom() : 0f;
+        float ads = zoom * zoom * (3f - 2f * zoom);
+        float swayScale = 1f - 0.72f * ads;
+
+        float baseX = MathUtils.lerp(restX, 0f, ads) + bobX * swayScale;
+        float baseY = MathUtils.lerp(REST_Y, -0.076f, ads) + bobY * swayScale
+            + recoil * KICK_UP * (1f - 0.25f * ads) - swapDip * 0.14f;
+        float baseZ = MathUtils.lerp(REST_Z, -0.500f, ads) + recoil * KICK_BACK + swapDip * 0.045f;
+        float baseYaw = MathUtils.lerp(REST_YAW, 0f, ads) - animation.getSwayYaw() * swayScale;
+        float basePitch = MathUtils.lerp(REST_PITCH, -0.6f, ads)
+            + recoil * KICK_PITCH * (1f - 0.35f * ads) + animation.getSwayPitch() * swayScale - swapDip * 20f;
+        float baseRoll = MathUtils.lerp(REST_ROLL, 0f, ads);
+
+        // Place the active weapon: at rest lower right (or centered low-ADS when zoomed), shifted by bob, kick, swap and sway.
         gunTransform.idt()
-            .translate(restX + bobX, REST_Y + bobY + recoil * KICK_UP - swapDip * 0.14f,
-                REST_Z + recoil * KICK_BACK + swapDip * 0.045f)
+            .translate(baseX, baseY, baseZ)
             .translate(0f, PistolModel.GRIP_PIVOT_Y, PistolModel.GRIP_PIVOT_Z)
             // A positive turn about y swings the muzzle left, so a lag to the left (negative sway) adds to it.
-            .rotate(Vector3.Y, REST_YAW - animation.getSwayYaw())
-            .rotate(Vector3.X, REST_PITCH + recoil * KICK_PITCH + animation.getSwayPitch() - swapDip * 20f)
-            .rotate(Vector3.Z, REST_ROLL)
+            .rotate(Vector3.Y, baseYaw)
+            .rotate(Vector3.X, basePitch)
+            .rotate(Vector3.Z, baseRoll)
             .translate(0f, -PistolModel.GRIP_PIVOT_Y, -PistolModel.GRIP_PIVOT_Z);
 
-        boolean usingScattergun = simulation.getActiveWeapon() == WeaponSlot.SCATTERGUN;
-        Mesh weaponBody = usingScattergun ? scatterBody : body;
-        Mesh weaponMoving = usingScattergun ? scatterPump : slide;
-        float movingZ = usingScattergun
-            ? simulation.scattergun.getPump() * ScattergunModel.PUMP_TRAVEL
-            : animation.getSlide() * SLIDE_TRAVEL;
+        Mesh weaponBody;
+        Mesh weaponMoving;
+        float movingZ;
+        ObjModel.SocketSpec activeSocket;
+        float defaultMx;
+        float defaultMy;
+        float defaultMz;
+        float[] accent = null;
+        if (activeWeapon == WeaponSlot.SCATTERGUN) {
+            weaponBody = scatterBody;
+            weaponMoving = scatterPump;
+            movingZ = simulation.scattergun.getPump() * ScattergunModel.PUMP_TRAVEL;
+            activeSocket = scatterMuzzleSocket;
+            defaultMx = ScattergunModel.MUZZLE_X;
+            defaultMy = ScattergunModel.MUZZLE_Y;
+            defaultMz = ScattergunModel.MUZZLE_Z;
+        } else if (activeWeapon == WeaponSlot.RAIL_LANCE) {
+            weaponBody = railBody;
+            weaponMoving = railBolt;
+            movingZ = simulation.railLance.getBolt() * RailLanceModel.BOLT_TRAVEL;
+            activeSocket = railMuzzleSocket;
+            defaultMx = RailLanceModel.MUZZLE_X;
+            defaultMy = RailLanceModel.MUZZLE_Y;
+            defaultMz = RailLanceModel.MUZZLE_Z;
+            accent = railAccent(simulation);
+        } else {
+            weaponBody = body;
+            weaponMoving = slide;
+            movingZ = animation.getSlide() * SLIDE_TRAVEL;
+            activeSocket = muzzleSocket;
+            defaultMx = PistolModel.MUZZLE_X;
+            defaultMy = PistolModel.MUZZLE_Y;
+            defaultMz = PistolModel.MUZZLE_Z;
+        }
         slideTransform.set(gunTransform).translate(0f, 0f, movingZ);
 
         // The rotation from view space to world space, built from the player's view axes.
@@ -233,24 +284,28 @@ public final class ViewmodelRenderer implements Disposable {
         viewToWorld.val[Matrix4.M22] = -forward.z;
 
         BlastCharger charger = simulation.charger;
-        float charge = !usingScattergun && charger.isCharging() ? charger.getCharge() : 0f;
+        float charge = activeWeapon == WeaponSlot.PISTOL && charger.isCharging() ? charger.getCharge() : 0f;
         boolean flashing = simulation.isMuzzleFlashVisible();
-        drawModel(weaponBody, weaponMoving, flashing ? 1.5f : 1f, charge);
+        drawModel(weaponBody, weaponMoving, flashing ? 1.5f : 1f, charge, accent);
 
         // The flash and the charge glow sit just ahead of the muzzle, wherever the animation has put it.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        ObjModel.SocketSpec activeSocket = usingScattergun ? scatterMuzzleSocket : muzzleSocket;
-        float defaultMx = usingScattergun ? ScattergunModel.MUZZLE_X : PistolModel.MUZZLE_X;
-        float defaultMy = usingScattergun ? ScattergunModel.MUZZLE_Y : PistolModel.MUZZLE_Y;
-        float defaultMz = usingScattergun ? ScattergunModel.MUZZLE_Z : PistolModel.MUZZLE_Z;
         float mx = activeSocket != null ? activeSocket.x : defaultMx;
         float my = activeSocket != null ? activeSocket.y : defaultMy;
         float mz = activeSocket != null ? activeSocket.z : defaultMz;
         muzzle.set(mx, my, mz - 0.014f).mul(gunTransform);
         if (flashing) {
-            float size = usingScattergun
-                ? (simulation.scattergun.isLastShotDoubleBlast() ? 0.175f : 0.135f)
-                : 0.085f;
+            float size;
+            if (activeWeapon == WeaponSlot.SCATTERGUN) {
+                size = simulation.scattergun.isLastShotDoubleBlast() ? 0.175f : 0.135f;
+                flash.setColor(1f, 1f, 1f, 1f);
+            } else if (activeWeapon == WeaponSlot.RAIL_LANCE) {
+                size = 0.155f;
+                flash.setColor(0.32f, 0.96f, 1f, 1f);
+            } else {
+                size = 0.085f;
+                flash.setColor(1f, 1f, 1f, 1f);
+            }
             flash.setDimensions(size, size);
             flash.setPosition(muzzle);
             // The flash spins from frame to frame for the moment it shows.
@@ -289,20 +344,36 @@ public final class ViewmodelRenderer implements Disposable {
     public void renderAlone(WeaponSlot weapon, float yaw, float pitch) {
         ScreenUtils.clear(0.42f, 0.44f, 0.47f, 1f, true);
         boolean scatter = weapon == WeaponSlot.SCATTERGUN;
+        boolean rail = weapon == WeaponSlot.RAIL_LANCE;
+        float dist = rail ? ORBIT_DISTANCE + 0.18f : (scatter ? ORBIT_DISTANCE + 0.08f : ORBIT_DISTANCE);
+        float zShift = rail ? 0.02f : (scatter ? -0.01f : -ORBIT_CENTRE_Z);
         gunTransform.idt()
-            .translate(0f, 0f, scatter ? -(ORBIT_DISTANCE + 0.16f) : -ORBIT_DISTANCE)
+            .translate(0f, 0f, -dist)
             .rotate(Vector3.X, pitch)
             .rotate(Vector3.Y, yaw)
-            .translate(-ORBIT_CENTRE_X, -ORBIT_CENTRE_Y, scatter ? 0.02f : -ORBIT_CENTRE_Z);
+            .translate(-ORBIT_CENTRE_X, -ORBIT_CENTRE_Y, zShift);
         slideTransform.set(gunTransform);
         viewToWorld.idt();
-        drawModel(scatter ? scatterBody : body, scatter ? scatterPump : slide, 1f, 0f);
+        Mesh weaponBody = rail ? railBody : (scatter ? scatterBody : body);
+        Mesh weaponMoving = rail ? railBolt : (scatter ? scatterPump : slide);
+        drawModel(weaponBody, weaponMoving, 1f, 0f, rail ? RailLanceModel.ACCENT_READY : null);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
-    /** Draws weapon body, hand, and moving slide/pump with the transforms set up by the caller. */
-    private void drawModel(Mesh weaponBody, Mesh movingPart, float light, float charge) {
+    private float[] railAccent(GameSimulation simulation) {
+        if (simulation.getSlugs() <= 0) return RailLanceModel.ACCENT_EMPTY;
+        float charge = simulation.railLance.getChargeProgress();
+        if (charge >= 0.999f) return RailLanceModel.ACCENT_READY;
+        for (int i = 0; i < 4; i++) {
+            railAccentScratch[i] = MathUtils.lerp(RailLanceModel.ACCENT_RECHARGING[i],
+                RailLanceModel.ACCENT_READY[i], charge);
+        }
+        return railAccentScratch;
+    }
+
+    /** Draws weapon body, hand, and moving slide/pump/bolt with the transforms set up by the caller. */
+    private void drawModel(Mesh weaponBody, Mesh movingPart, float light, float charge, float[] accent) {
         // A fresh depth buffer: the gun is drawn over the world whatever is close in front of the player.
         Gdx.gl.glDepthMask(true);
         Gdx.gl.glClear(GL20.GL_DEPTH_BUFFER_BIT);
@@ -315,7 +386,8 @@ public final class ViewmodelRenderer implements Disposable {
         shader.bind();
         shader.setUniformMatrix("u_projTrans", camera.combined);
         shader.setUniformMatrix("u_viewToWorld", viewToWorld);
-        shader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
+        if (accent == null) shader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
+        else shader.setUniformf("u_accentColour", accent[0], accent[1], accent[2], accent[3]);
         shader.setUniformf("u_light", light);
         shader.setUniformf("u_charge", charge);
         shader.setUniformMatrix("u_model", gunTransform);
@@ -335,6 +407,8 @@ public final class ViewmodelRenderer implements Disposable {
         slide.dispose();
         scatterBody.dispose();
         scatterPump.dispose();
+        railBody.dispose();
+        railBolt.dispose();
         hand.dispose();
         shader.dispose();
         decalBatch.dispose();

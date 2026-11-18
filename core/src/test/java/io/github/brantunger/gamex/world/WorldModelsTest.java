@@ -47,10 +47,13 @@ class WorldModelsTest {
     private static final ObjModel SECURITY_CONSOLE = load(WorldModels.SECURITY_CONSOLE_PATH);
     private static final ObjModel SCATTERGUN_PICKUP = load(WorldModels.SCATTERGUN_PICKUP_PATH);
     private static final ObjModel SHELLS_PICKUP = load(WorldModels.SHELLS_PICKUP_PATH);
+    private static final ObjModel RAIL_LANCE_PICKUP = load(WorldModels.RAIL_LANCE_PICKUP_PATH);
+    private static final ObjModel RAIL_SLUGS_PICKUP = load(WorldModels.RAIL_SLUGS_PICKUP_PATH);
+    private static final ObjModel RAIL_BEAM = load(WorldModels.RAIL_BEAM_PATH);
     private static final ObjModel[] ALL_MODELS = {
         CANISTER, RING_BOARD, BLAST_ORB, MEDKIT, ARMOR, ENERGY_CELL,
         TURRET, DRONE, GUARD, WARDEN, ENEMY_BOLT, DOOR_BULKHEAD, HAZARD_GRATE, KEYCARD, SECURITY_CONSOLE,
-        SCATTERGUN_PICKUP, SHELLS_PICKUP
+        SCATTERGUN_PICKUP, SHELLS_PICKUP, RAIL_LANCE_PICKUP, RAIL_SLUGS_PICKUP, RAIL_BEAM
     };
 
     private static ObjModel load(String assetPath) {
@@ -193,7 +196,10 @@ class WorldModelsTest {
 
     @Test
     void pickupModelsStandOnTheFloorAndFitWithinPickupRadius() {
-        ObjModel[] pickups = {MEDKIT, ARMOR, ENERGY_CELL, KEYCARD, SCATTERGUN_PICKUP, SHELLS_PICKUP};
+        ObjModel[] pickups = {
+            MEDKIT, ARMOR, ENERGY_CELL, KEYCARD, SCATTERGUN_PICKUP, SHELLS_PICKUP,
+            RAIL_LANCE_PICKUP, RAIL_SLUGS_PICKUP
+        };
         for (ObjModel pickup : pickups) {
             float minY = Float.POSITIVE_INFINITY;
             float maxY = Float.NEGATIVE_INFINITY;
@@ -325,6 +331,10 @@ class WorldModelsTest {
         assertFalse(WARDEN.isAccentMaterial("warden_armor"));
         assertTrue(KEYCARD.isAccentMaterial("keycard_body"));
         assertTrue(SECURITY_CONSOLE.isAccentMaterial("console_screen"));
+        assertTrue(RAIL_LANCE_PICKUP.isAccentMaterial("rail_core"));
+        assertTrue(RAIL_SLUGS_PICKUP.isAccentMaterial("rail_core"));
+        assertTrue(RAIL_BEAM.isAccentMaterial("rail_beam"));
+        assertFalse(RAIL_BEAM.isAccentMaterial("rail_beam_core"));
 
         float[] hazardVerts = WorldModels.vertices(HAZARD_GRATE);
         for (int t = 0; t < HAZARD_GRATE.getTriangleCount(); t++) {

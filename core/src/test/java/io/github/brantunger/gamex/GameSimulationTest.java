@@ -13,6 +13,7 @@ import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.Pistol;
+import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Door;
@@ -962,5 +963,179 @@ class GameSimulationTest {
         List<SoundEvent> events = sim.drainSoundEvents();
         assertEquals(1, countSound(events, SoundEvent.Type.BOSS_DESTROYED));
         assertEquals(1, countSound(events, SoundEvent.Type.DOOR_OPEN));
+    }
+
+    @Test
+    void railLancePickupsThreeWeaponSwitchingWithDirectKeysScrollAndLastUsedQ() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "############",
+            "#>WRrrrrrrr#",
+            "############"));
+        PlayerInput input = new PlayerInput();
+        assertFalse(sim.hasRailLance());
+        assertEquals(0, sim.getSlugs());
+
+        // Walk east over W (+Scattergun -> slot 2) then R (+Rail Lance -> slot 3) and r packs up to 15/15 cap.
+        input.moveForward = 1f;
+        for (int i = 0; i < 160; i++) sim.update(FRAME, input);
+        input.moveForward = 0f;
+        assertTrue(sim.hasScattergun());
+        assertTrue(sim.hasRailLance());
+        assertEquals(RailLance.MAX_SLUGS, sim.getSlugs());
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getTargetWeapon());
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
+        assertFalse(sim.pickups.get(6).isCollected(), "slug pack stays on floor when at 15/15 cap");
+        assertTrue(countSound(sim.drainSoundEvents(), SoundEvent.Type.PICKUP_SLUGS) >= 3);
+
+        // Press Q -> swaps to previous weapon (Scattergun); press 1 -> Pistol; press Q -> back to Scattergun!
+        input.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
+
+        input.weaponSlot = 1;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+
+        input.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
+
+        // Directional scroll cycling: NEXT (2 -> 3 -> 1) and PREV (1 -> 3 -> 2).
+        input.weaponSlot = PlayerInput.WEAPON_CYCLE_NEXT;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getTargetWeapon());
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
+
+        input.weaponSlot = PlayerInput.WEAPON_CYCLE_NEXT;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertEquals(WeaponSlot.PISTOL, sim.getTargetWeapon());
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+
+        input.weaponSlot = PlayerInput.WEAPON_CYCLE_PREV;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getTargetWeapon());
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
+
+        // Direct key 2 then 3.
+        input.weaponSlot = 2;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
+
+        input.weaponSlot = 3;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
+    }
+
+    @Test
+    void railLancePiercesTargetsSpawnsBeamAndScalesWardenBossPlating() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse(
+                "#############",
+                "#.>.D.o.G...#",
+                "#############"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 6, true, 4, WeaponSlot.RAIL_LANCE),
+            false);
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+
+        assertTrue(sim.enemies.get(0).isDestroyed(), "Drone pierced and destroyed");
+        assertTrue(sim.targets.get(0).isDestroyed(), "Canister pierced and detonated");
+        assertTrue(sim.enemies.get(1).isDestroyed(), "Guard behind canister pierced and destroyed");
+        assertEquals(3, sim.getSlugs());
+        assertEquals(1, sim.railBeams.size());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.RAIL_FIRE));
+
+        for (int i = 0; i < 24; i++) sim.update(FRAME, input);
+        assertTrue(sim.railBeams.isEmpty(), "Rail beam trail decays and removes after DURATION");
+
+        // Warden Mech boss plating reduces 120 base Rail Lance damage to 90 (75%).
+        GameSimulation bossSim = new GameSimulation(
+            GameMap.parse(
+                "###########",
+                "#.>...B...#",
+                "###########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 2, WeaponSlot.RAIL_LANCE),
+            false);
+        bossSim.update(FRAME, new PlayerInput());
+        PlayerInput fire = new PlayerInput();
+        fire.fire = true;
+        bossSim.update(FRAME, fire);
+        assertEquals(Enemy.Kind.WARDEN.maxHealth - RailLance.WARDEN_DAMAGE,
+            bossSim.enemies.get(0).getHealth(), 1e-3f);
+    }
+
+    @Test
+    void railLanceZoomScalesLookSensitivityDropsOnDashAndEmptyTriggerSmartSwaps() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse("#########", "#.>...o.#", "#########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 4, true, 1, WeaponSlot.SCATTERGUN),
+            false);
+        PlayerInput input = new PlayerInput();
+
+        // Switch from Scattergun -> Rail Lance so previousWeapon is SCATTERGUN.
+        input.weaponSlot = 3;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
+
+        // Hold RMB to reach full 1.8x zoom, verify zoom audio and look sensitivity scaling.
+        input.charge = true;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(1f, sim.getZoom(), 1e-4f);
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.RAIL_ZOOM_IN));
+
+        float yawBefore = sim.player.getYaw();
+        input.yawDelta = 18f;
+        sim.update(FRAME, input);
+        input.yawDelta = 0f;
+        float delta = (sim.player.getYaw() - yawBefore + 540f) % 360f - 180f;
+        assertEquals(18f / RailLance.ZOOM_FACTOR, delta, 1e-3f);
+
+        // Energy Dash immediately cancels optic zoom and suppresses re-zoom while RMB remains held.
+        input.dash = true;
+        sim.update(FRAME, input);
+        input.dash = false;
+        assertEquals(0f, sim.getZoom(), 1e-5f);
+        for (int i = 0; i < 6; i++) sim.update(FRAME, input);
+        assertEquals(0f, sim.getZoom(), 1e-5f);
+        input.charge = false;
+        sim.update(FRAME, input);
+
+        // Spend final slug, wait recharge, then pull LMB at 0 slugs -> smart-swaps back to loaded Scattergun.
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+        assertEquals(0, sim.getSlugs());
+        for (int i = 0; i < 68; i++) sim.update(FRAME, input);
+        assertTrue(sim.railLance.isReady());
+
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+        assertEquals("OUT OF SLUGS", sim.getToastMessage());
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getTargetWeapon());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
     }
 }

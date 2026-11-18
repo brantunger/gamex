@@ -49,24 +49,37 @@ class GameSettingsAndSaveTest {
         SaveData save = new SaveData(store);
 
         assertFalse(save.hasSavedRun());
-        save.saveCampaignRun(1, new PlayerLoadout(82f, 40f, Difficulty.HARD, true, 14, WeaponSlot.SCATTERGUN));
+        save.saveCampaignRun(1, new PlayerLoadout(82f, 40f, Difficulty.HARD, true, 14, true, 9, WeaponSlot.RAIL_LANCE));
         assertTrue(save.hasSavedRun());
         assertEquals(82f, save.getSavedLoadout().health, 1e-4f);
         assertEquals(40f, save.getSavedLoadout().armor, 1e-4f);
         assertEquals(Difficulty.HARD, save.getSavedLoadout().difficulty);
         assertTrue(save.getSavedLoadout().hasScattergun);
         assertEquals(14, save.getSavedLoadout().shells);
-        assertEquals(WeaponSlot.SCATTERGUN, save.getSavedLoadout().activeWeapon);
+        assertTrue(save.getSavedLoadout().hasRailLance);
+        assertEquals(9, save.getSavedLoadout().slugs);
+        assertEquals(WeaponSlot.RAIL_LANCE, save.getSavedLoadout().activeWeapon);
 
         PlayerLoadout s1 = PlayerLoadout.forStage(0, Difficulty.NORMAL);
         assertFalse(s1.hasScattergun);
         assertEquals(0, s1.shells);
+        assertFalse(s1.hasRailLance);
+        assertEquals(0, s1.slugs);
         assertEquals(WeaponSlot.PISTOL, s1.activeWeapon);
 
         PlayerLoadout s2 = PlayerLoadout.forStage(1, Difficulty.NORMAL);
         assertTrue(s2.hasScattergun);
         assertEquals(8, s2.shells);
+        assertFalse(s2.hasRailLance);
         assertEquals(WeaponSlot.SCATTERGUN, s2.activeWeapon);
+
+        PlayerLoadout s4 = PlayerLoadout.forStage(3, Difficulty.NORMAL);
+        assertTrue(s4.hasScattergun);
+        assertEquals(8, s4.shells);
+        assertTrue(s4.hasRailLance);
+        assertEquals(5, s4.slugs);
+        assertEquals(WeaponSlot.SCATTERGUN, s4.activeWeapon,
+            "Stages 04-06 start with Scattergun in hand and Rail Lance unlocked in Slot 3");
 
         SaveData.CompletionSummary first = save.recordCompletion("01_outer_breach", Difficulty.HARD,
             52f, 40f, 8, 10, 25f);

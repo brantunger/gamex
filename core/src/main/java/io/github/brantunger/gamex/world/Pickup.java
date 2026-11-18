@@ -3,24 +3,33 @@ package io.github.brantunger.gamex.world;
 import com.badlogic.gdx.math.Vector2;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
+import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import java.util.Set;
 
 /**
- * An item hovering above the floor that restores health, armor, energy, keycards or shotgun arsenal when the player
- * walks over it. If the corresponding meter is already full, the pickup is left in place for later.
+ * An item hovering above the floor that restores health, armor, energy, keycards or arsenal weapons/ammo when the
+ * player walks over it. If the corresponding meter is already full, the pickup is left in place for later.
  */
 public final class Pickup {
 
     /** Collision radius on the XZ plane. */
     public static final float RADIUS = 0.22f;
 
-    /** Callback receiving unlocked weapon and finite shell pool changes on pickup collection. */
+    /** Callback receiving unlocked weapon and finite ammo pool changes on pickup collection. */
     public interface Arsenal {
         boolean hasScattergun();
         int getShells();
         void grantScattergun(int addedShells);
         void addShells(int addedShells);
+        default boolean hasRailLance() {
+            return false;
+        }
+        default int getSlugs() {
+            return 0;
+        }
+        default void grantRailLance(int addedSlugs) {}
+        default void addSlugs(int addedSlugs) {}
     }
 
     /** The kinds of floor pickup. */
@@ -38,7 +47,11 @@ public final class Pickup {
         /** Grants the Combat Scattergun plus starter shells. */
         SCATTERGUN(Scattergun.PICKUP_WEAPON_SHELLS, "SCATTERGUN"),
         /** Restores shells for the Combat Scattergun. */
-        SHELLS(Scattergun.PICKUP_BOX_SHELLS, "SHELLS");
+        SHELLS(Scattergun.PICKUP_BOX_SHELLS, "SHELLS"),
+        /** Grants the Slot 3 Rail Lance plus starter slugs. */
+        RAIL_LANCE(RailLance.PICKUP_WEAPON_SLUGS, "RAIL LANCE"),
+        /** Restores slugs for the Rail Lance. */
+        RAIL_SLUGS(RailLance.PICKUP_PACK_SLUGS, "SLUGS");
 
         /** Baseline restoration amount on Normal difficulty. */
         public final float baseAmount;
@@ -57,7 +70,7 @@ public final class Pickup {
 
         /** @return whether this pickup unlocks or supplies a finite-ammunition weapon. */
         public boolean isArsenal() {
-            return this == SCATTERGUN || this == SHELLS;
+            return this == SCATTERGUN || this == SHELLS || this == RAIL_LANCE || this == RAIL_SLUGS;
         }
     }
 
@@ -165,19 +178,34 @@ public final class Pickup {
 
     private String tryCollectArsenal(float pickupScale, Arsenal arsenal) {
         if (arsenal == null) return null;
-        int space = Math.max(0, Scattergun.MAX_SHELLS - arsenal.getShells());
         int scaled = Math.max(1, Math.round(kind.baseAmount * pickupScale));
-        int gain = Math.min(space, scaled);
-        if (kind == Kind.SCATTERGUN) {
-            boolean hadWeapon = arsenal.hasScattergun();
-            if (hadWeapon && gain <= 0) return null;
-            arsenal.grantScattergun(gain);
+        if (kind == Kind.SCATTERGUN || kind == Kind.SHELLS) {
+            int space = Math.max(0, Scattergun.MAX_SHELLS - arsenal.getShells());
+            int gain = Math.min(space, scaled);
+            if (kind == Kind.SCATTERGUN) {
+                boolean hadWeapon = arsenal.hasScattergun();
+                if (hadWeapon && gain <= 0) return null;
+                arsenal.grantScattergun(gain);
+                collected = true;
+                return hadWeapon ? "+" + gain + " SHELLS" : "+ SCATTERGUN";
+            }
+            if (gain <= 0) return null;
+            arsenal.addShells(gain);
             collected = true;
-            return hadWeapon ? "+" + gain + " SHELLS" : "+ SCATTERGUN";
+            return "+" + gain + " SHELLS";
+        }
+        int space = Math.max(0, RailLance.MAX_SLUGS - arsenal.getSlugs());
+        int gain = Math.min(space, scaled);
+        if (kind == Kind.RAIL_LANCE) {
+            boolean hadWeapon = arsenal.hasRailLance();
+            if (hadWeapon && gain <= 0) return null;
+            arsenal.grantRailLance(gain);
+            collected = true;
+            return hadWeapon ? "+" + gain + " SLUGS" : "+ RAIL LANCE";
         }
         if (gain <= 0) return null;
-        arsenal.addShells(gain);
+        arsenal.addSlugs(gain);
         collected = true;
-        return "+" + gain + " SHELLS";
+        return "+" + gain + " SLUGS";
     }
 }

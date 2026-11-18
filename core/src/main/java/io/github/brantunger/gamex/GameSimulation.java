@@ -12,6 +12,7 @@ import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.weapon.Explosion;
 import io.github.brantunger.gamex.weapon.Pistol;
+import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
@@ -41,6 +42,35 @@ import java.util.Set;
  * input.
  */
 public final class GameSimulation {
+
+    /** A short-lived 3D rail beam wake rendered from weapon muzzle to terminal impact. */
+    public static final class RailBeam {
+        /** Total fade-out duration of a rail beam trail in seconds. */
+        public static final float DURATION = 0.35f;
+
+        public final Vector3 start = new Vector3();
+        public final Vector3 end = new Vector3();
+        private float age;
+
+        RailBeam(Vector3 start, Vector3 end) {
+            this.start.set(start);
+            this.end.set(end);
+        }
+
+        void update(float dt) {
+            age += dt;
+        }
+
+        /** @return normalized decay progress from 0 (just fired) to 1 (finished). */
+        public float getProgress() {
+            return Math.min(1f, age / DURATION);
+        }
+
+        /** @return whether this beam has faded and can be removed. */
+        public boolean isFinished() {
+            return age >= DURATION;
+        }
+    }
 
     /** Longest time step simulated at once, in seconds; a longer frame is cut down to this. */
     public static final float MAX_DT = 0.05f;
@@ -92,16 +122,20 @@ public final class GameSimulation {
     public final Pistol pistol = new Pistol();
     /** The combat scattergun. */
     public final Scattergun scattergun = new Scattergun();
+    /** The Slot 3 Rail Lance. */
+    public final RailLance railLance = new RailLance();
     /** The energy that pays for blasts and dashes. */
     public final EnergyMeter energy = new EnergyMeter();
     /** The blast's charge state. */
     public final BlastCharger charger = new BlastCharger(energy);
-    /** The motion of the first-person pistol: recoil, bob and sway. */
+    /** The motion of the first-person weapon viewmodel: recoil, bob and sway. */
     public final ViewmodelAnimation viewmodel = new ViewmodelAnimation();
     /** The blasts in flight. */
     public final List<BlastProjectile> projectiles = new ArrayList<>();
     /** Enemy plasma bolts in flight. */
     public final List<EnemyProjectile> enemyProjectiles = new ArrayList<>();
+    /** Active fading 3D rail beam wakes. */
+    public final List<RailBeam> railBeams = new ArrayList<>();
     /** The visual effects that are still running. */
     public final List<Effect> effects = new ArrayList<>();
 
@@ -136,8 +170,11 @@ public final class GameSimulation {
     private boolean prevInteractInput;
     private boolean hasScattergun;
     private int shells;
+    private boolean hasRailLance;
+    private int slugs;
     private WeaponSlot activeWeapon;
     private WeaponSlot pendingWeapon;
+    private WeaponSlot previousWeapon;
     private boolean swapping;
     private float swapElapsed;
 
@@ -166,6 +203,31 @@ public final class GameSimulation {
         public void addShells(int addedShells) {
             shells = Math.min(Scattergun.MAX_SHELLS, shells + Math.max(0, addedShells));
         }
+
+        @Override
+        public boolean hasRailLance() {
+            return hasRailLance;
+        }
+
+        @Override
+        public int getSlugs() {
+            return slugs;
+        }
+
+        @Override
+        public void grantRailLance(int addedSlugs) {
+            boolean firstUnlock = !hasRailLance;
+            hasRailLance = true;
+            slugs = Math.min(RailLance.MAX_SLUGS, slugs + Math.max(0, addedSlugs));
+            if (firstUnlock) {
+                requestWeaponSwitch(WeaponSlot.RAIL_LANCE, false);
+            }
+        }
+
+        @Override
+        public void addSlugs(int addedSlugs) {
+            slugs = Math.min(RailLance.MAX_SLUGS, slugs + Math.max(0, addedSlugs));
+        }
     };
 
     /** @param map the level to play on Normal difficulty */
@@ -184,8 +246,11 @@ public final class GameSimulation {
         this.completeOnAllTargets = completeOnAllTargets;
         this.hasScattergun = this.entryLoadout.hasScattergun;
         this.shells = this.entryLoadout.shells;
+        this.hasRailLance = this.entryLoadout.hasRailLance;
+        this.slugs = this.entryLoadout.slugs;
         this.activeWeapon = this.entryLoadout.activeWeapon;
         this.pendingWeapon = this.activeWeapon;
+        this.previousWeapon = initialPreviousWeapon(this.activeWeapon, this.hasScattergun, this.hasRailLance);
         this.player = new Player(map.getSpawnX(), map.getSpawnZ(), map.getSpawnYaw(),
             this.entryLoadout.health, this.entryLoadout.armor);
         for (GameMap.TargetSpawn spawn : map.getTargetSpawns()) {
@@ -229,8 +294,10 @@ public final class GameSimulation {
 
         if (levelCleared || player.isDead()) {
             charger.cancel();
+            railLance.cancelZoom();
             pistol.update(dt, false);
             scattergun.updateIdle(dt);
+            railLance.updateIdle(dt);
             prevDashInput = false;
             prevChargeRefused = false;
             prevInteractInput = false;
@@ -243,7 +310,8 @@ public final class GameSimulation {
         time += dt;
         float beforeYaw = player.getYaw();
         float beforePitch = player.getPitch();
-        player.look(input.yawDelta, input.pitchDelta);
+        float lookScale = activeWeapon == WeaponSlot.RAIL_LANCE ? railLance.getZoomFovScale() : 1f;
+        player.look(input.yawDelta * lookScale, input.pitchDelta * lookScale);
 
         handleWeaponSwitchInput(input.weaponSlot);
         advanceWeaponSwap(dt);
@@ -251,6 +319,7 @@ public final class GameSimulation {
         boolean dashPressedEdge = input.dash && !prevDashInput;
         if (input.dash) {
             charger.cancel();
+            railLance.cancelZoom();
             boolean canAffordDash = energy.canSpend(Player.DASH_COST);
             if (player.tryDash(input.moveForward, input.moveStrafe, energy)) {
                 emitPlayerSound(SoundEvent.Type.PLAYER_DASH, 1f);
@@ -281,10 +350,12 @@ public final class GameSimulation {
         if (levelCleared || swapping) {
             pistol.update(dt, false);
             scattergun.updateIdle(dt);
+            railLance.updateIdle(dt);
             charger.cancel();
             prevChargeRefused = false;
         } else if (activeWeapon == WeaponSlot.PISTOL) {
             scattergun.updateIdle(dt);
+            railLance.updateIdle(dt);
             boolean fired = pistol.update(dt, input.fire);
             if (fired) {
                 firePistol();
@@ -297,8 +368,9 @@ public final class GameSimulation {
             }
             prevChargeRefused = refusedNow;
             if (firedCharge > 0f) kickScale = 1f;
-        } else {
+        } else if (activeWeapon == WeaponSlot.SCATTERGUN) {
             pistol.update(dt, false);
+            railLance.updateIdle(dt);
             charger.cancel();
             prevChargeRefused = false;
             boolean wantPrimary = input.fire;
@@ -307,12 +379,35 @@ public final class GameSimulation {
                 scattergun.updateIdle(dt);
                 emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
                 showToast("OUT OF SHELLS");
-                requestWeaponSwitch(WeaponSlot.PISTOL, false);
+                requestWeaponSwitch(bestLoadedFallbackWeapon(WeaponSlot.SCATTERGUN), false);
             } else {
                 Scattergun.Shot shot = scattergun.update(dt, wantPrimary, wantAlt, shells);
                 if (shot != Scattergun.Shot.NONE) {
                     fireScattergun(shot);
                     kickScale = shot == Scattergun.Shot.DOUBLE_BLAST ? 2.4f : 1.6f;
+                }
+            }
+        } else {
+            pistol.update(dt, false);
+            scattergun.updateIdle(dt);
+            charger.cancel();
+            prevChargeRefused = false;
+            if (slugs <= 0 && railLance.isReady() && input.fire) {
+                railLance.updateIdle(dt);
+                emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
+                showToast("OUT OF SLUGS");
+                requestWeaponSwitch(bestLoadedFallbackWeapon(WeaponSlot.RAIL_LANCE), false);
+            } else {
+                boolean firedRail = railLance.update(dt, input.fire, !player.isDashing() && input.charge, slugs);
+                if (railLance.consumeZoomInTriggered()) {
+                    emitPlayerSound(SoundEvent.Type.RAIL_ZOOM_IN, 0.85f);
+                }
+                if (railLance.consumeZoomOutTriggered()) {
+                    emitPlayerSound(SoundEvent.Type.RAIL_ZOOM_OUT, 0.75f);
+                }
+                if (firedRail) {
+                    fireRailLance();
+                    kickScale = 2.6f;
                 }
             }
         }
@@ -488,6 +583,21 @@ public final class GameSimulation {
         return shells;
     }
 
+    /** @return whether the player has unlocked the Slot 3 Rail Lance. */
+    public boolean hasRailLance() {
+        return hasRailLance;
+    }
+
+    /** @return slugs remaining in the finite Rail Lance slug pool. */
+    public int getSlugs() {
+        return slugs;
+    }
+
+    /** @return normalized Rail Lance tactical optic zoom in [0, 1] while active and not swapping. */
+    public float getZoom() {
+        return activeWeapon == WeaponSlot.RAIL_LANCE && !swapping ? railLance.getZoom() : 0f;
+    }
+
     /** @return weapon currently visible and firing (changes at the midpoint of a swap dip). */
     public WeaponSlot getActiveWeapon() {
         return activeWeapon;
@@ -505,22 +615,32 @@ public final class GameSimulation {
         return (float) Math.sin(Math.PI * u);
     }
 
-    /** @return whether either weapon currently has a visible muzzle flash for dynamic world lighting. */
+    /** @return whether the active weapon currently has a visible muzzle flash for dynamic world lighting. */
     public boolean isMuzzleFlashVisible() {
-        return activeWeapon == WeaponSlot.SCATTERGUN ? scattergun.isFlashVisible() : pistol.isFlashVisible();
+        switch (activeWeapon) {
+            case SCATTERGUN:
+                return scattergun.isFlashVisible();
+            case RAIL_LANCE:
+                return railLance.isFlashVisible();
+            case PISTOL:
+            default:
+                return pistol.isFlashVisible();
+        }
     }
 
-    /** @return carry-over loadout snapshot at stage exit (preserving unlocked Scattergun and remaining shells). */
+    /** @return carry-over loadout snapshot at stage exit (preserving unlocked weapons and remaining ammo). */
     public PlayerLoadout captureCarryOverLoadout() {
-        return PlayerLoadout.fromPlayer(player, entryLoadout.difficulty, hasScattergun, shells, getTargetWeapon());
+        return PlayerLoadout.fromPlayer(player, entryLoadout.difficulty,
+            hasScattergun, shells, hasRailLance, slugs, getTargetWeapon());
     }
 
     /**
-     * Call when the game is paused. A blast that is charging is dropped at no cost, so that letting go of the button
-     * during the pause does not fire it on return.
+     * Call when the game is paused. Drops any charging blast or tactical optic zoom cleanly so releasing mouse
+     * buttons during pause does not trigger on resume.
      */
     public void pause() {
         charger.cancel();
+        railLance.cancelZoom();
         prevDashInput = false;
         prevChargeRefused = false;
         prevInteractInput = false;
@@ -629,17 +749,26 @@ public final class GameSimulation {
     }
 
     private void handleWeaponSwitchInput(int requestedSlot) {
-        if (requestedSlot == 0) return;
+        if (requestedSlot == PlayerInput.WEAPON_NONE) return;
         WeaponSlot current = getTargetWeapon();
         WeaponSlot target;
-        if (requestedSlot < 0) {
-            if (!hasScattergun) return;
-            target = current.other();
-        } else if (requestedSlot == WeaponSlot.SCATTERGUN.slotNumber) {
-            if (!hasScattergun) return;
-            target = WeaponSlot.SCATTERGUN;
+        if (requestedSlot == PlayerInput.WEAPON_QUICK_SWAP) {
+            if (previousWeapon != null && previousWeapon != current
+                && previousWeapon.isOwned(hasScattergun, hasRailLance)) {
+                target = previousWeapon;
+            } else {
+                target = current.cycle(1, hasScattergun, hasRailLance);
+            }
+        } else if (requestedSlot == PlayerInput.WEAPON_CYCLE_NEXT) {
+            target = current.cycle(1, hasScattergun, hasRailLance);
+        } else if (requestedSlot == PlayerInput.WEAPON_CYCLE_PREV) {
+            target = current.cycle(-1, hasScattergun, hasRailLance);
         } else if (requestedSlot == WeaponSlot.PISTOL.slotNumber) {
             target = WeaponSlot.PISTOL;
+        } else if (requestedSlot == WeaponSlot.SCATTERGUN.slotNumber) {
+            target = WeaponSlot.SCATTERGUN;
+        } else if (requestedSlot == WeaponSlot.RAIL_LANCE.slotNumber) {
+            target = WeaponSlot.RAIL_LANCE;
         } else {
             return;
         }
@@ -647,10 +776,14 @@ public final class GameSimulation {
     }
 
     private void requestWeaponSwitch(WeaponSlot target, boolean playSound) {
-        if (target == null || (target == WeaponSlot.SCATTERGUN && !hasScattergun)) return;
+        if (target == null || !target.isOwned(hasScattergun, hasRailLance)) return;
         WeaponSlot currentTarget = getTargetWeapon();
         if (target == currentTarget) return;
+        if (activeWeapon != target) {
+            previousWeapon = activeWeapon;
+        }
         charger.cancel();
+        railLance.cancelZoom();
         prevChargeRefused = false;
         pendingWeapon = target;
         if (!swapping) {
@@ -662,6 +795,33 @@ public final class GameSimulation {
         if (playSound) {
             emitPlayerSound(SoundEvent.Type.WEAPON_SWITCH, 1f);
         }
+    }
+
+    private WeaponSlot bestLoadedFallbackWeapon(WeaponSlot emptySlot) {
+        if (previousWeapon != null && previousWeapon != emptySlot && isWeaponLoaded(previousWeapon)) {
+            return previousWeapon;
+        }
+        if (emptySlot != WeaponSlot.SCATTERGUN && isWeaponLoaded(WeaponSlot.SCATTERGUN)) {
+            return WeaponSlot.SCATTERGUN;
+        }
+        if (emptySlot != WeaponSlot.RAIL_LANCE && isWeaponLoaded(WeaponSlot.RAIL_LANCE)) {
+            return WeaponSlot.RAIL_LANCE;
+        }
+        return WeaponSlot.PISTOL;
+    }
+
+    private boolean isWeaponLoaded(WeaponSlot slot) {
+        if (slot == null || !slot.isOwned(hasScattergun, hasRailLance)) return false;
+        if (slot == WeaponSlot.SCATTERGUN) return shells > 0;
+        if (slot == WeaponSlot.RAIL_LANCE) return slugs > 0;
+        return true;
+    }
+
+    private static WeaponSlot initialPreviousWeapon(WeaponSlot active, boolean hasScattergun, boolean hasRailLance) {
+        if (active != WeaponSlot.PISTOL) return WeaponSlot.PISTOL;
+        if (hasRailLance) return WeaponSlot.RAIL_LANCE;
+        if (hasScattergun) return WeaponSlot.SCATTERGUN;
+        return WeaponSlot.PISTOL;
     }
 
     private void advanceWeaponSwap(float dt) {
@@ -823,9 +983,12 @@ public final class GameSimulation {
             case CYAN_KEYCARD:
                 return SoundEvent.Type.PICKUP_KEYCARD;
             case SCATTERGUN:
+            case RAIL_LANCE:
                 return SoundEvent.Type.PICKUP_WEAPON;
             case SHELLS:
                 return SoundEvent.Type.PICKUP_SHELLS;
+            case RAIL_SLUGS:
+                return SoundEvent.Type.PICKUP_SLUGS;
             case ENERGY_CELL:
             default:
                 return SoundEvent.Type.PICKUP_ENERGY;
@@ -840,6 +1003,29 @@ public final class GameSimulation {
         }
     }
 
+    private void computeMuzzleOrigin(float hitDistance, float rightScale, float clearanceRadius, Vector3 out) {
+        viewRight.set(direction).crs(Vector3.Y);
+        if (viewRight.len2() < 1e-6f) viewRight.set(1f, 0f, 0f);
+        else viewRight.nor();
+        viewUp.set(viewRight).crs(direction).nor();
+
+        float clearance = Float.isFinite(hitDistance) ? Math.max(0f, (hitDistance - 0.20f) / 0.55f) : 1f;
+        float t = Math.min(1f, clearance);
+        out.set(eye)
+            .mulAdd(direction, BLAST_SPAWN_FORWARD * t)
+            .mulAdd(viewRight, BLAST_SPAWN_RIGHT * rightScale * t)
+            .mulAdd(viewUp, -BLAST_SPAWN_DOWN * t);
+        float minY = clearanceRadius + 0.01f;
+        float maxY = GameMap.WALL_HEIGHT - clearanceRadius - 0.01f;
+        out.y = Math.max(minY, Math.min(maxY, out.y));
+
+        spawnCheckPos.set(out.x, out.z);
+        if (Collision.overlapsWall(map, doors, out.x, out.z, clearanceRadius)
+            || Collision.overlapsSolid(allDamageables, spawnCheckPos, clearanceRadius)) {
+            out.set(eye.x, Math.max(minY, eye.y - 0.05f), eye.z);
+        }
+    }
+
     private void spawnBlast(float charge) {
         RayHit aim = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
         if (aim.isHit()) {
@@ -848,26 +1034,8 @@ public final class GameSimulation {
             aimPoint.set(eye).mulAdd(direction, Pistol.RANGE);
         }
 
-        viewRight.set(direction).crs(Vector3.Y);
-        if (viewRight.len2() < 1e-6f) viewRight.set(1f, 0f, 0f);
-        else viewRight.nor();
-        viewUp.set(viewRight).crs(direction).nor();
-
-        float clearance = aim.isHit() ? Math.max(0f, (aim.distance - 0.20f) / 0.55f) : 1f;
-        float t = Math.min(1f, clearance);
-        blastOrigin.set(eye)
-            .mulAdd(direction, BLAST_SPAWN_FORWARD * t)
-            .mulAdd(viewRight, BLAST_SPAWN_RIGHT * t)
-            .mulAdd(viewUp, -BLAST_SPAWN_DOWN * t);
-        float minY = BlastProjectile.RADIUS + 0.01f;
-        float maxY = GameMap.WALL_HEIGHT - BlastProjectile.RADIUS - 0.01f;
-        blastOrigin.y = Math.max(minY, Math.min(maxY, blastOrigin.y));
-
-        spawnCheckPos.set(blastOrigin.x, blastOrigin.z);
-        if (Collision.overlapsWall(map, doors, blastOrigin.x, blastOrigin.z, BlastProjectile.RADIUS + 0.01f)
-            || Collision.overlapsSolid(allDamageables, spawnCheckPos, BlastProjectile.RADIUS + 0.01f)) {
-            blastOrigin.set(eye.x, Math.max(minY, eye.y - 0.05f), eye.z);
-        }
+        computeMuzzleOrigin(aim.isHit() ? aim.distance : Float.POSITIVE_INFINITY, 1f,
+            BlastProjectile.RADIUS + 0.01f, blastOrigin);
 
         blastDir.set(aimPoint).sub(blastOrigin);
         if (blastDir.len2() < 1e-6f) blastDir.set(direction);
@@ -889,6 +1057,40 @@ public final class GameSimulation {
         }
         effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
         triggerHitMarker(hit.target.isDestroyed());
+    }
+
+    private void fireRailLance() {
+        slugs = Math.max(0, slugs - 1);
+        emitPlayerSound(SoundEvent.Type.RAIL_FIRE, 1f);
+        alertNoise(player.position.x, player.position.y, 15.0f, 7.5f);
+
+        Hitscan.PiercingResult result = Hitscan.castPiercing(map, allDamageables, doors, eye, direction,
+            RailLance.RANGE);
+        boolean anyHit = false;
+        boolean anyKilled = false;
+        for (int i = 0; i < result.targetHits.size(); i++) {
+            RayHit hit = result.targetHits.get(i);
+            float dmg = (hit.target instanceof Enemy && ((Enemy) hit.target).getKind() == Enemy.Kind.WARDEN)
+                ? RailLance.WARDEN_DAMAGE
+                : RailLance.DAMAGE;
+            hit.target.damage(dmg);
+            anyHit = true;
+            if (hit.target.isDestroyed()) anyKilled = true;
+            if (hit.target instanceof Enemy) {
+                alertNoise(hit.target.getX(), hit.target.getZ(), 7.0f, 4.0f);
+            }
+            Vector3 sparkPos = new Vector3(hit.point).mulAdd(hit.normal, MARK_OFFSET);
+            effects.add(new Effect(Effect.Type.SPARK, sparkPos, hit.normal, 0.24f));
+        }
+        if (anyHit) triggerHitMarker(anyKilled);
+
+        if (result.terminalHit.isHit()) {
+            result.terminalHit.point.mulAdd(result.terminalHit.normal, MARK_OFFSET);
+            applyNonDamageableImpact(result.terminalHit, true, true);
+        }
+
+        computeMuzzleOrigin(result.stopDistance, 1f - railLance.getZoom(), 0.03f, blastOrigin);
+        railBeams.add(new RailBeam(blastOrigin, result.endPoint));
     }
 
     private void fireScattergun(Scattergun.Shot shot) {
@@ -1131,6 +1333,11 @@ public final class GameSimulation {
             Effect effect = effects.get(i);
             effect.update(dt);
             if (effect.isFinished()) effects.remove(i);
+        }
+        for (int i = railBeams.size() - 1; i >= 0; i--) {
+            RailBeam beam = railBeams.get(i);
+            beam.update(dt);
+            if (beam.isFinished()) railBeams.remove(i);
         }
     }
 }

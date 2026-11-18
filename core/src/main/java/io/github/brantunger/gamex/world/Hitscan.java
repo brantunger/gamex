@@ -2,11 +2,34 @@ package io.github.brantunger.gamex.world;
 
 import com.badlogic.gdx.math.Vector3;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /** Instant-hit ray casting against the map and the things standing in it. */
 public final class Hitscan {
+
+    /**
+     * Ordered hits from a piercing ray cast through live targets/enemies up to the first solid surface
+     * (wall, floor, ceiling, closed bulkhead door, or indestructible security console).
+     */
+    public static final class PiercingResult {
+        /** Live non-console damageable hits sorted front-to-back by ascending distance. */
+        public final List<RayHit> targetHits;
+        /** Terminal solid surface hit (or {@link RayHit.Kind#NONE} if unobstructed to max range). */
+        public final RayHit terminalHit;
+        /** Distance from ray origin to the terminal stop point. */
+        public final float stopDistance;
+        /** World-space terminal point where the piercing ray stops. */
+        public final Vector3 endPoint;
+
+        PiercingResult(List<RayHit> targetHits, RayHit terminalHit, float stopDistance, Vector3 endPoint) {
+            this.targetHits = Collections.unmodifiableList(targetHits);
+            this.terminalHit = terminalHit;
+            this.stopDistance = stopDistance;
+            this.endPoint = endPoint;
+        }
+    }
 
     private Hitscan() {}
 
@@ -52,6 +75,59 @@ public final class Hitscan {
         }
         if (hit.isHit()) hit.point.set(direction).scl(hit.distance).add(origin);
         return hit;
+    }
+
+    /**
+     * Casts a piercing rail ray through every live target and enemy strictly closer than the first solid blocker
+     * (wall, floor, ceiling, closed bulkhead door, or indestructible {@link SecurityConsole}).
+     * @param map the map
+     * @param targets damageable objects and consoles in the level
+     * @param doors bulkhead doors in the level
+     * @param origin ray start inside an open cell
+     * @param direction unit ray direction
+     * @param maxDistance maximum beam range
+     * @return ordered target hits and terminal blocker info
+     */
+    public static PiercingResult castPiercing(GameMap map, List<? extends Damageable> targets, List<Door> doors,
+                                              Vector3 origin, Vector3 direction, float maxDistance) {
+        RayHit terminal = new RayHit();
+        castGrid(map, origin, direction, maxDistance, terminal);
+        castFloorAndCeiling(origin, direction, maxDistance, terminal);
+        if (doors != null && !doors.isEmpty()) {
+            float[] doorNormal = new float[3];
+            for (int i = 0; i < doors.size(); i++) {
+                castDoor(doors.get(i), origin, direction, maxDistance, terminal, doorNormal);
+            }
+        }
+        if (targets != null) {
+            for (int i = 0; i < targets.size(); i++) {
+                Damageable candidate = targets.get(i);
+                if (candidate instanceof SecurityConsole) {
+                    castTarget(candidate, origin, direction, maxDistance, terminal);
+                }
+            }
+        }
+        float stopDistance = terminal.isHit() ? terminal.distance : maxDistance;
+        if (terminal.isHit()) {
+            terminal.point.set(direction).scl(terminal.distance).add(origin);
+        }
+        Vector3 endPoint = new Vector3(direction).scl(stopDistance).add(origin);
+
+        List<RayHit> hits = new ArrayList<>();
+        if (targets != null) {
+            for (int i = 0; i < targets.size(); i++) {
+                Damageable target = targets.get(i);
+                if (target.isDestroyed() || target instanceof SecurityConsole) continue;
+                RayHit hit = new RayHit();
+                castTarget(target, origin, direction, stopDistance, hit);
+                if (hit.isHit() && hit.distance < stopDistance) {
+                    hit.point.set(direction).scl(hit.distance).add(origin);
+                    hits.add(hit);
+                }
+            }
+        }
+        hits.sort((a, b) -> Float.compare(a.distance, b.distance));
+        return new PiercingResult(hits, terminal, stopDistance, endPoint);
     }
 
     /**

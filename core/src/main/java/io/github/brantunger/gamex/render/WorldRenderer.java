@@ -28,6 +28,7 @@ import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
+import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
@@ -170,6 +171,9 @@ public final class WorldRenderer implements Disposable {
     private final Mesh energyCellMesh;
     private final Mesh scattergunPickupMesh;
     private final Mesh shellsPickupMesh;
+    private final Mesh railLancePickupMesh;
+    private final Mesh railSlugsPickupMesh;
+    private final Mesh railBeamMesh;
     private final Mesh turretBaseMesh;
     private final Mesh turretHeadMesh;
     private final Mesh turretBarrelsMesh;
@@ -251,6 +255,12 @@ public final class WorldRenderer implements Disposable {
         scattergunPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup",
             WorldModels::packIndexed);
         shellsPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.SHELLS_PICKUP_PATH, "shells pickup",
+            WorldModels::packIndexed);
+        railLancePickupMesh = ModelMesh.loadIndexedMesh(WorldModels.RAIL_LANCE_PICKUP_PATH, "rail lance pickup",
+            WorldModels::packIndexed);
+        railSlugsPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.RAIL_SLUGS_PICKUP_PATH, "rail slugs pickup",
+            WorldModels::packIndexed);
+        railBeamMesh = ModelMesh.loadIndexedMesh(WorldModels.RAIL_BEAM_PATH, "rail beam",
             WorldModels::packIndexed);
 
         ObjModel turretObj = ModelMesh.loadModel(WorldModels.TURRET_PATH, "turret");
@@ -363,7 +373,9 @@ public final class WorldRenderer implements Disposable {
     public void render(GameSimulation simulation, GameSettings settings) {
         setMap(simulation.map);
         Player player = simulation.player;
-        camera.fieldOfView = settings.getFov();
+        float zoom = simulation.getZoom();
+        float zoomScale = zoom > 0f ? 1f / (1f + (RailLance.ZOOM_FACTOR - 1f) * zoom) : 1f;
+        camera.fieldOfView = settings.getFov() * zoomScale;
         player.eye(camera.position);
         if (settings.isViewBob() && !player.isDead()) {
             camera.position.y += MathUtils.sin(player.getBobPhase()) * BOB_HEIGHT;
@@ -384,6 +396,7 @@ public final class WorldRenderer implements Disposable {
         addConsoleGlows(simulation);
         addProjectiles(simulation);
         addEnemyTelegraphsAndBolts(simulation);
+        addRailBeamDecals(simulation);
         addEffects(simulation);
         decalBatch.flush();
 
@@ -604,6 +617,34 @@ public final class WorldRenderer implements Disposable {
             setAccent(console.isActivated() ? WorldModels.ACCENT_CONSOLE_ACTIVE : WorldModels.ACCENT_CONSOLE_LOCKED);
             drawModelMesh(consoleMesh, modelTransform);
         }
+
+        if (!simulation.railBeams.isEmpty()) {
+            modelShader.setUniformf("u_hitFlash", 0f);
+            for (GameSimulation.RailBeam beam : simulation.railBeams) {
+                scratch.set(beam.end).sub(beam.start);
+                float length = scratch.len();
+                if (length < 1e-4f) continue;
+                scratch.scl(1f / length);
+                float horiz = (float) Math.hypot(scratch.x, scratch.z);
+                float pitchDeg = MathUtils.atan2(scratch.y, horiz) * MathUtils.radiansToDegrees;
+                float yawDeg = horiz > 1e-5f
+                    ? MathUtils.atan2(-scratch.x, -scratch.z) * MathUtils.radiansToDegrees
+                    : 0f;
+                float p = beam.getProgress();
+                float fade = 1f - p;
+                float thickness = Math.max(0.10f, 1.05f - p * 0.95f);
+                modelTransform.idt()
+                    .translate(beam.start)
+                    .rotate(Vector3.Y, yawDeg)
+                    .rotate(Vector3.X, pitchDeg)
+                    .scale(thickness, thickness, length);
+                modelShader.setUniformf("u_light", 1.12f + 0.28f * fade);
+                modelShader.setUniformf("u_accentColour",
+                    0.08f + 0.22f * fade, 0.78f + 0.18f * fade, 1.00f, 1.00f);
+                drawModelMesh(railBeamMesh, modelTransform);
+            }
+            setAccent(null);
+        }
     }
 
     private void drawModelMesh(Mesh mesh, Matrix4 transform) {
@@ -720,6 +761,9 @@ public final class WorldRenderer implements Disposable {
                 return WorldModels.ACCENT_KEYCARD_AMBER;
             case CYAN_KEYCARD:
                 return WorldModels.ACCENT_KEYCARD_CYAN;
+            case RAIL_LANCE:
+            case RAIL_SLUGS:
+                return WorldModels.ACCENT_RAIL_READY;
             default:
                 return null;
         }
@@ -738,6 +782,10 @@ public final class WorldRenderer implements Disposable {
                 return scattergunPickupMesh;
             case SHELLS:
                 return shellsPickupMesh;
+            case RAIL_LANCE:
+                return railLancePickupMesh;
+            case RAIL_SLUGS:
+                return railSlugsPickupMesh;
             case ENERGY_CELL:
             default:
                 return energyCellMesh;
@@ -784,6 +832,12 @@ public final class WorldRenderer implements Disposable {
                     break;
                 case SHELLS:
                     halo.setColor(0.95f, 0.34f, 0.24f, 0.48f);
+                    break;
+                case RAIL_LANCE:
+                    halo.setColor(0.22f, 0.94f, 1.00f, 0.56f);
+                    break;
+                case RAIL_SLUGS:
+                    halo.setColor(0.18f, 0.80f, 1.00f, 0.48f);
                     break;
                 case ENERGY_CELL:
                 default:
@@ -875,6 +929,32 @@ public final class WorldRenderer implements Disposable {
         }
     }
 
+    private void addRailBeamDecals(GameSimulation simulation) {
+        for (GameSimulation.RailBeam beam : simulation.railBeams) {
+            scratch.set(beam.end).sub(beam.start);
+            float len = scratch.len();
+            if (len < 0.1f) continue;
+            scratch.scl(1f / len);
+            float p = beam.getProgress();
+            float fade = 1f - p;
+            float step = Math.max(0.85f, len / 30f);
+            float size = (0.16f + 0.08f * fade) * (1f + 0.25f * p);
+            for (float s = 0.35f; s < len - 0.10f; s += step) {
+                float px = beam.start.x + scratch.x * s;
+                float py = beam.start.y + scratch.y * s;
+                float pz = beam.start.z + scratch.z * s;
+                float dist = (float) Math.hypot(px - camera.position.x,
+                    Math.hypot(py - camera.position.y, pz - camera.position.z));
+                float fog = MathUtils.clamp((dist - FOG_START) / (FOG_END - FOG_START), 0f, 1f);
+                Decal ring = nextDecal(orb, size, size, true);
+                ring.setPosition(px, py, pz);
+                ring.lookAt(camera.position, camera.up);
+                ring.setColor(0.24f, 0.94f, 1.00f, (1f - fog) * fade * 0.78f);
+                decalBatch.add(ring);
+            }
+        }
+    }
+
     private void addEffects(GameSimulation simulation) {
         for (Effect effect : simulation.effects) {
             float progress = effect.getProgress();
@@ -949,6 +1029,9 @@ public final class WorldRenderer implements Disposable {
         energyCellMesh.dispose();
         scattergunPickupMesh.dispose();
         shellsPickupMesh.dispose();
+        railLancePickupMesh.dispose();
+        railSlugsPickupMesh.dispose();
+        railBeamMesh.dispose();
         turretBaseMesh.dispose();
         turretHeadMesh.dispose();
         turretBarrelsMesh.dispose();

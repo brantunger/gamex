@@ -223,6 +223,18 @@ class GameMapTest {
                 assertTrue(hasWeapon, stage.id + " should contain a Scattergun pickup");
             }
             assertTrue(hasShells, stage.id + " should contain at least one Shell Box pickup");
+
+            boolean hasRailWeapon = map.getPickupSpawns().stream().anyMatch(p -> p.kind == Pickup.Kind.RAIL_LANCE);
+            boolean hasRailSlugs = map.getPickupSpawns().stream().anyMatch(p -> p.kind == Pickup.Kind.RAIL_SLUGS);
+            if ("range".equals(stage.id) || "03_security_hub".equals(stage.id)
+                || "06_warden_core".equals(stage.id)) {
+                assertTrue(hasRailWeapon, stage.id + " should contain a Rail Lance pickup");
+            }
+            if ("range".equals(stage.id) || "03_security_hub".equals(stage.id)
+                || "04_lockdown_wing".equals(stage.id) || "05_command_vault".equals(stage.id)
+                || "06_warden_core".equals(stage.id)) {
+                assertTrue(hasRailSlugs, stage.id + " should contain at least one Slug Pack pickup");
+            }
         }
     }
 
@@ -291,14 +303,16 @@ class GameMapTest {
     }
 
     @Test
-    void parsesScattergunAndShellBoxPickups() {
+    void parsesScattergunAndRailLancePickups() {
         GameMap map = GameMap.parse(
-            "#######",
-            "#>Ws..#",
-            "#######");
-        assertEquals(2, map.getPickupSpawns().size());
+            "#########",
+            "#>WsRr..#",
+            "#########");
+        assertEquals(4, map.getPickupSpawns().size());
         assertEquals(Pickup.Kind.SCATTERGUN, map.getPickupSpawns().get(0).kind);
         assertEquals(Pickup.Kind.SHELLS, map.getPickupSpawns().get(1).kind);
+        assertEquals(Pickup.Kind.RAIL_LANCE, map.getPickupSpawns().get(2).kind);
+        assertEquals(Pickup.Kind.RAIL_SLUGS, map.getPickupSpawns().get(3).kind);
     }
 
     @Test

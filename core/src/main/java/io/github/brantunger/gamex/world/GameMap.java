@@ -10,13 +10,13 @@ import java.util.List;
  * so the layout reads like a top-down view with north (negative z) at the top.
  *
  * <p>Layout characters: {@code .} is open floor, {@code #}, {@code %} and {@code &} are the three wall types,
- * {@code =}, {@code A}, {@code C} and {@code L} are unlocked, amber-key, cyan-key and lockdown bulkhead doors,
- * {@code k} and {@code c} are amber and cyan keycard pickups, {@code W} and {@code s} are the Combat Scattergun and
- * shell box pickups, {@code S} is a security console pedestal,
- * {@code o} and {@code O} are open floor with a canister or a ring board on it, {@code D}, {@code T} and {@code G}
- * are rusher drone, sentry turret and guard bot spawns, {@code +}, {@code a} and {@code e}
- * are medkit, armor and energy cell pickups, {@code X} is an optional level exit pad, and one of {@code ^ > v <} is
- * the player spawn, facing north, east, south or west.
+ * {@code =}, {@code A}, {@code C}, {@code L} and {@code M} are unlocked, amber-key, cyan-key, lockdown and boss
+ * bulkhead doors, {@code k} and {@code c} are amber and cyan keycard pickups, {@code W} and {@code s} are the Combat
+ * Scattergun and shell box pickups, {@code R} and {@code r} are the Rail Lance and slug pack pickups, {@code S} is a
+ * security console pedestal, {@code ~} is an always-live shock floor grate, {@code o} and {@code O} are open floor
+ * with a canister or a ring board on it, {@code D}, {@code T}, {@code G} and {@code B} are rusher drone, sentry turret,
+ * guard bot and Warden Mech spawns, {@code +}, {@code a} and {@code e} are medkit, armor and energy cell pickups,
+ * {@code X} is an optional level exit pad, and one of {@code ^ > v <} is the player spawn, facing north, east, south or west.
  */
 public final class GameMap {
 
@@ -233,6 +233,10 @@ public final class GameMap {
                     pickups.add(new PickupSpawn(Pickup.Kind.SCATTERGUN, centreX, centreZ));
                 } else if (c == 's') {
                     pickups.add(new PickupSpawn(Pickup.Kind.SHELLS, centreX, centreZ));
+                } else if (c == 'R') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.RAIL_LANCE, centreX, centreZ));
+                } else if (c == 'r') {
+                    pickups.add(new PickupSpawn(Pickup.Kind.RAIL_SLUGS, centreX, centreZ));
                 } else if (c == 'S') {
                     consoles.add(new ConsoleSpawn(centreX, centreZ));
                 } else if (c == 'D') {

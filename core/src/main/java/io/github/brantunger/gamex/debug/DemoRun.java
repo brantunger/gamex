@@ -19,7 +19,8 @@ import java.util.zip.Deflater;
  *  towards a pillar, holds the blast button, releases it, and fires the pistol. Set to {@code targets} to turn
  *  towards the nearest canister and keep firing the pistol at it. Set to {@code breach} to turn, dash and then fire
  *  the pistol. Set to {@code scattergun} to deploy in the Training Range holding the Combat Scattergun and fire at
- *  range targets. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer
+ *  range targets. Set to {@code raillance} to engage 1.8x tactical zoom down the Security Hub corridor and fire a
+ *  piercing Rail Lance beam. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer
  *  Breach, {@code title} shows the Title screen over Outer Breach, {@code lockdown} opens a bulkhead door in Stage 04,
  *  {@code stages} shows the unlocked 6-stage Select Stage screen, and {@code warden} stages the Stage 06 Warden Mech
  *  boss encounter across live Shock Grates.</li>
@@ -133,6 +134,9 @@ public final class DemoRun {
         } else if ("scattergun".equals(script)) {
             if (frame <= 18) out.moveForward = 1f;
             if (frame == 24) out.fire = true;
+        } else if ("raillance".equals(script)) {
+            out.charge = frame >= 6 && frame <= 38;
+            out.fire = frame == 24;
         } else if ("warden".equals(script)) {
             if (frame == 1 || frame == 3) out.fire = true;
             if (frame >= 5 && frame <= 14) out.moveForward = 0.5f;

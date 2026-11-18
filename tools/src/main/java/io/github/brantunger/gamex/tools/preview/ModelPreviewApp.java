@@ -32,6 +32,7 @@ import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
+import io.github.brantunger.gamex.weapon.RailLanceModel;
 import io.github.brantunger.gamex.weapon.ScattergunModel;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Enemy;
@@ -303,7 +304,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
         ObjModel scatterObj = readObj(dir.resolve("viewmodel-scattergun.obj"), "scattergun");
         ScattergunModel scatter = ScattergunModel.from(scatterObj);
-        Entry vmScatter = new Entry("viewmodel-scattergun (scattergun+hand)", scatterObj, 0f, -0.05f, -0.02f, 0.72f,
+        Entry vmScatter = new Entry("viewmodel-scattergun (scattergun+hand)", scatterObj, 0f, -0.05f, 0.01f, 0.62f,
             0f, 0f);
         vmScatter.partMeshes.put("body", ModelMesh.buildIndexed(scatter.bodyMesh));
         vmScatter.partMeshes.put("pump", ModelMesh.buildIndexed(scatter.pumpMesh));
@@ -315,6 +316,21 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             + handIndexed.vertexCount();
         vmScatter.rawVertices = vmScatter.totalTriangles * 3;
         entries.add(vmScatter);
+
+        ObjModel railObj = readObj(dir.resolve("viewmodel-raillance.obj"), "raillance");
+        RailLanceModel rail = RailLanceModel.from(railObj);
+        Entry vmRail = new Entry("viewmodel-raillance (raillance+hand)", railObj, 0f, -0.05f, -0.03f, 0.76f,
+            0f, 0f);
+        vmRail.partMeshes.put("body", ModelMesh.buildIndexed(rail.bodyMesh));
+        vmRail.partMeshes.put("bolt", ModelMesh.buildIndexed(rail.boltMesh));
+        vmRail.partMeshes.put("hand", ModelMesh.buildIndexed(handIndexed));
+        vmRail.rig = new ModelRig(railObj);
+        vmRail.totalTriangles = rail.bodyMesh.triangleCount() + rail.boltMesh.triangleCount()
+            + handIndexed.triangleCount();
+        vmRail.uniqueVertices = rail.bodyMesh.vertexCount() + rail.boltMesh.vertexCount()
+            + handIndexed.vertexCount();
+        vmRail.rawVertices = vmRail.totalTriangles * 3;
+        entries.add(vmRail);
 
         addWorldEntry(dir, "enemy-warden.obj", 0f, Enemy.Kind.WARDEN.height * 0.5f, 0f, 1.55f,
             Enemy.Kind.WARDEN.radius, Enemy.Kind.WARDEN.height,
@@ -332,6 +348,8 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             SecurityConsole.RADIUS, SecurityConsole.HEIGHT);
         addWorldEntry(dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
         addWorldEntry(dir, "pickup-shells.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.27f);
+        addWorldEntry(dir, "pickup-raillance.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.31f);
+        addWorldEntry(dir, "pickup-slugs.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.28f);
         addWorldEntry(dir, "pickup-keycard.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
         addWorldEntry(dir, "pickup-medkit.obj", 0f, 0.14f, 0f, 0.72f, Pickup.RADIUS, 0.28f);
         addWorldEntry(dir, "pickup-armor.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
@@ -340,6 +358,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         addWorldEntry(dir, "ring-board.obj", 0f, 0.40f, 0f, 1.25f,
             Target.Kind.RING_BOARD.radius, Target.Kind.RING_BOARD.height);
         addWorldEntry(dir, "blast-orb.obj", 0f, 0f, 0f, 0.55f, BlastProjectile.RADIUS, 0f);
+        addWorldEntry(dir, "rail-beam.obj", 0f, 0f, -0.5f, 1.25f, 0f, 0f);
         addWorldEntry(dir, "enemy-bolt.obj", 0f, 0f, 0f, 0.45f, EnemyProjectile.RADIUS, 0f);
     }
 
@@ -429,6 +448,20 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         } else if (entry.label.equals("hazard-grate.obj")) {
             accent = WorldModels.ACCENT_HAZARD_LIVE;
             accentLabel = "LIVE";
+        } else if (entry.label.equals("pickup-raillance.obj") || entry.label.equals("pickup-slugs.obj")) {
+            accent = WorldModels.ACCENT_RAIL_READY;
+            accentLabel = "READY";
+        } else if (entry.label.equals("rail-beam.obj")) {
+            accent = WorldModels.ACCENT_RAIL_BEAM;
+            accentLabel = "BEAM";
+        } else if (entry.label.startsWith("viewmodel-raillance")) {
+            boolean recharging = Math.floorMod(accentIndex, 2) == 1;
+            accent = recharging ? RailLanceModel.ACCENT_RECHARGING : RailLanceModel.ACCENT_READY;
+            accentLabel = recharging ? "RECHARGING" : "READY";
+            if (animate) {
+                float boltKick = Math.max(0f, MathUtils.sin(time * 2.8f)) * RailLanceModel.BOLT_TRAVEL;
+                animRotations.put("bolt", new Matrix4().setToTranslation(0f, 0f, boltKick));
+            }
         } else if (entry.label.equals("enemy-warden.obj")) {
             boolean overdrive = Math.floorMod(accentIndex, 2) == 1;
             accent = overdrive ? WorldModels.ACCENT_WARDEN_OVERDRIVE : WorldModels.ACCENT_WARDEN_PHASE1;

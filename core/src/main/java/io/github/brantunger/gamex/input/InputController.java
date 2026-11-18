@@ -62,7 +62,7 @@ public final class InputController extends InputAdapter {
     @Override
     public boolean scrolled(float amountX, float amountY) {
         if (captured && Math.abs(amountY) > 0f) {
-            pendingScrollSwap = -1;
+            pendingScrollSwap = amountY > 0f ? PlayerInput.WEAPON_CYCLE_NEXT : PlayerInput.WEAPON_CYCLE_PREV;
             return true;
         }
         return false;
@@ -109,7 +109,8 @@ public final class InputController extends InputAdapter {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) out.weaponSlot = 1;
         else if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) out.weaponSlot = 2;
-        else if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) out.weaponSlot = -1;
+        else if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) out.weaponSlot = 3;
+        else if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) out.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
         else if (pendingScrollSwap != 0) out.weaponSlot = pendingScrollSwap;
         pendingScrollSwap = 0;
 
