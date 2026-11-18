@@ -31,6 +31,7 @@ import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
@@ -102,6 +103,23 @@ public final class GameSimulation {
     private static final float BLAST_SPAWN_DOWN = 0.05f;
     private static final int MAX_QUEUED_SOUNDS = 256;
 
+    /** Objective while an Amber bulkhead bars the way and its keycard is not held. */
+    public static final String OBJECTIVE_AMBER_KEYCARD = "FIND THE AMBER KEYCARD";
+    /** Objective while a Cyan bulkhead bars the way and its keycard is not held. */
+    public static final String OBJECTIVE_CYAN_KEYCARD = "FIND THE CYAN KEYCARD";
+    /** Objective while a lockdown bulkhead bars the way and no security console is overridden. */
+    public static final String OBJECTIVE_CONSOLE = "OVERRIDE THE SECURITY CONSOLE";
+    /** Objective while a living Warden Mech seals the way. */
+    public static final String OBJECTIVE_WARDEN = "DESTROY THE WARDEN MECH";
+    /** Objective once nothing bars the way to the exit pad. */
+    public static final String OBJECTIVE_EXIT = "REACH EXIT PAD";
+    /** Objective of a stage without an exit that clears once every target is destroyed. */
+    public static final String OBJECTIVE_ALL_TARGETS = "DESTROY ALL TARGETS";
+    /** Objective of a stage without an exit that clears once every hostile is destroyed. */
+    public static final String OBJECTIVE_ALL_HOSTILES = "DESTROY ALL HOSTILES";
+    /** Objective of a stage without an exit that clears once every target and hostile is destroyed. */
+    public static final String OBJECTIVE_ALL_TARGETS_AND_HOSTILES = "DESTROY TARGETS AND HOSTILES";
+
     /** The level. */
     public final GameMap map;
     /** Loadout and difficulty snapshot from when the player entered this level. */
@@ -159,6 +177,20 @@ public final class GameSimulation {
     private final float[] enemyHealthBefore;
     private final List<SoundEvent> soundEvents = new ArrayList<>();
     private final Set<Pickup.Kind> heldKeycards = EnumSet.noneOf(Pickup.Kind.class);
+    /** The bulkhead standing on each cell, row by row, or null where there is none. */
+    private final Door[] doorAtCell;
+    /**
+     * The cells the player can walk to without a keycard, console or kill they do not have yet, and the cell of a
+     * bulkhead they lean on but cannot pass.
+     */
+    private final boolean[] reachable;
+    private final int[] reachQueue;
+    /** The state {@link #reachable} and {@link #objectiveText} were worked out for; -1 before the first time. */
+    private int objectiveState = -1;
+    private String objectiveText;
+    private int objectiveFloodCount;
+    private int shotsFired;
+    private int shotsHit;
     private float time;
     private float damageTaken;
     private float playerHazardTimer;
@@ -284,6 +316,14 @@ public final class GameSimulation {
         enemyHazardTimers = new float[enemies.size()];
         targetHealthBefore = new float[targets.size()];
         enemyHealthBefore = new float[enemies.size()];
+        int cellCount = map.getWidth() * map.getHeight();
+        doorAtCell = new Door[cellCount];
+        for (int i = 0; i < doors.size(); i++) {
+            Door door = doors.get(i);
+            doorAtCell[door.getRow() * map.getWidth() + door.getCol()] = door;
+        }
+        reachable = new boolean[cellCount];
+        reachQueue = new int[cellCount];
     }
 
     /**
@@ -455,6 +495,8 @@ public final class GameSimulation {
                 projectile.position.z, 0.75f + 0.35f * projectile.getCharge());
             alertNoise(projectile.position.x, projectile.position.z, 11.0f, 5.5f);
             if (totalDamageableHealth() < healthBefore) {
+                // The blast was counted as a shot on release; whether it hit is only known here.
+                shotsHit++;
                 triggerHitMarker(getTargetsRemaining() + getEnemiesRemaining() < aliveBefore);
             }
         }
@@ -764,6 +806,207 @@ public final class GameSimulation {
             if (pickups.get(i).isCollected()) collected++;
         }
         return collected;
+    }
+
+    /**
+     * @return the trigger pulls so far: every pistol shot, charged blast, Scattergun blast (one shell or two) and
+     *     Rail Lance beam counts once
+     */
+    public int getShotsFired() {
+        return shotsFired;
+    }
+
+    /**
+     * @return the trigger pulls that damaged at least one hostile, target or canister. A charged blast counts once
+     *     it explodes, so one still in flight has not hit yet.
+     */
+    public int getShotsHit() {
+        return shotsHit;
+    }
+
+    /**
+     * Names the next step towards clearing the stage, for the HUD. On a stage with an exit pad it is whatever the
+     * player still lacks to walk there: a keycard for a locked bulkhead, a console override for a lockdown, the
+     * Warden's destruction for a sealed one. Among those, the one the player can reach now comes first.
+     * @return one of the {@code OBJECTIVE_} constants, or null on a stage with neither an exit nor a clear on all
+     *     targets
+     */
+    public String getObjectiveText() {
+        if (!map.hasExit()) {
+            if (!completeOnAllTargets) return null;
+            if (enemies.isEmpty()) return OBJECTIVE_ALL_TARGETS;
+            return targets.isEmpty() ? OBJECTIVE_ALL_HOSTILES : OBJECTIVE_ALL_TARGETS_AND_HOSTILES;
+        }
+        int state = objectiveStateNow();
+        int playerCell = cellIndexAt(player.position.x, player.position.y);
+        // Worked out again only when a keycard, console, Warden or bulkhead changed, or the player is somewhere
+        // the last flood did not reach. The cell of a bulkhead the player leans on counts as reached.
+        if (state != objectiveState || playerCell < 0 || !reachable[playerCell]) {
+            objectiveState = state;
+            objectiveText = computeObjectiveText(playerCell);
+        }
+        return objectiveText;
+    }
+
+    /** @return how many times the objective has been worked out afresh; a test reads it to pin the caching. */
+    int getObjectiveFloodCount() {
+        return objectiveFloodCount;
+    }
+
+    private int objectiveStateNow() {
+        int state = 0;
+        if (hasKeycard(Pickup.Kind.AMBER_KEYCARD)) state |= 1;
+        if (hasKeycard(Pickup.Kind.CYAN_KEYCARD)) state |= 2;
+        if (isAnyConsoleActivated()) state |= 4;
+        if (hasAliveWarden()) state |= 8;
+        int opened = 0;
+        for (int i = 0; i < doors.size(); i++) {
+            if (doors.get(i).isOpening()) opened++;
+        }
+        return state | (opened << 4);
+    }
+
+    private boolean isAnyConsoleActivated() {
+        for (int i = 0; i < consoles.size(); i++) {
+            if (consoles.get(i).isActivated()) return true;
+        }
+        return false;
+    }
+
+    private int cellIndexAt(float worldX, float worldZ) {
+        int col = (int) Math.floor(worldX);
+        int row = (int) Math.floor(worldZ);
+        if (col < 0 || row < 0 || col >= map.getWidth() || row >= map.getHeight()) return -1;
+        return row * map.getWidth() + col;
+    }
+
+    private boolean isReachableAt(float worldX, float worldZ) {
+        int cell = cellIndexAt(worldX, worldZ);
+        return cell >= 0 && reachable[cell];
+    }
+
+    /** @return whether the player can pass the door now or by pressing the interact key. */
+    private boolean canPass(Door door) {
+        if (door.isOpening()) return true;
+        switch (door.getLockKind()) {
+            case NONE:
+                return true;
+            case AMBER_KEY:
+                return hasKeycard(Pickup.Kind.AMBER_KEYCARD);
+            case CYAN_KEY:
+                return hasKeycard(Pickup.Kind.CYAN_KEYCARD);
+            default:
+                return false;
+        }
+    }
+
+    /** Marks in {@link #reachable} every cell the player can walk to from {@code startCell}. */
+    private void floodReachable(int startCell) {
+        Arrays.fill(reachable, false);
+        if (startCell < 0) return;
+        int width = map.getWidth();
+        int head = 0;
+        int tail = 0;
+        reachable[startCell] = true;
+        reachQueue[tail++] = startCell;
+        while (head < tail) {
+            int cell = reachQueue[head++];
+            int col = cell % width;
+            int row = cell / width;
+            for (int side = 0; side < 4; side++) {
+                int nextCol = col + (side == 0 ? 1 : side == 1 ? -1 : 0);
+                int nextRow = row + (side == 2 ? 1 : side == 3 ? -1 : 0);
+                if (map.isSolid(nextCol, nextRow)) continue;
+                int next = nextRow * width + nextCol;
+                if (reachable[next]) continue;
+                Door door = doorAtCell[next];
+                if (door != null && !canPass(door)) continue;
+                reachable[next] = true;
+                reachQueue[tail++] = next;
+            }
+        }
+    }
+
+    /**
+     * Picks the cell to flood from. A player pressed against a closed bulkhead has their centre inside its cell,
+     * because {@link Player#RADIUS} and {@link Door#HALF_THICKNESS} together are less than half a cell. Flooding
+     * from there would run out on both sides of a bulkhead the player cannot pass, so the flood starts from the
+     * cell on the player's side of the slab instead.
+     * @return the cell to start from, or -1 if there is none
+     */
+    private int floodStartCell(int playerCell) {
+        if (playerCell < 0) return -1;
+        Door door = doorAtCell[playerCell];
+        if (door == null || canPass(door)) return playerCell;
+        int col = door.getCol();
+        int row = door.getRow();
+        if (door.getOrientation() == Door.Orientation.SPAN_X) {
+            row += player.position.y < door.getZ() ? -1 : 1;
+        } else {
+            col += player.position.x < door.getX() ? -1 : 1;
+        }
+        if (map.isSolid(col, row)) return -1;
+        int start = row * map.getWidth() + col;
+        Door beside = doorAtCell[start];
+        return beside != null && !canPass(beside) ? -1 : start;
+    }
+
+    private String computeObjectiveText(int playerCell) {
+        objectiveFloodCount++;
+        int startCell = floodStartCell(playerCell);
+        floodReachable(startCell);
+        // Leaning on a bulkhead must not flood again every frame, so its cell counts as reached too.
+        if (startCell != playerCell) reachable[playerCell] = true;
+        if (isReachableAt(map.getExitX(), map.getExitZ())) return OBJECTIVE_EXIT;
+        // First the steps the player can act on from where they can walk, then any step still open.
+        for (int pass = 0; pass < 2; pass++) {
+            boolean mustReach = pass == 0;
+            if (hasClosedDoor(Door.LockKind.AMBER_KEY) && isKeycardWaiting(Pickup.Kind.AMBER_KEYCARD, mustReach)) {
+                return OBJECTIVE_AMBER_KEYCARD;
+            }
+            if (hasClosedDoor(Door.LockKind.CYAN_KEY) && isKeycardWaiting(Pickup.Kind.CYAN_KEYCARD, mustReach)) {
+                return OBJECTIVE_CYAN_KEYCARD;
+            }
+            if (hasClosedDoor(Door.LockKind.LOCKDOWN) && isConsoleWaiting(mustReach)) return OBJECTIVE_CONSOLE;
+            if (hasClosedDoor(Door.LockKind.BOSS) && isWardenWaiting(mustReach)) return OBJECTIVE_WARDEN;
+        }
+        return OBJECTIVE_EXIT;
+    }
+
+    private boolean hasClosedDoor(Door.LockKind kind) {
+        for (int i = 0; i < doors.size(); i++) {
+            Door door = doors.get(i);
+            if (door.getLockKind() == kind && !door.isOpening()) return true;
+        }
+        return false;
+    }
+
+    private boolean isKeycardWaiting(Pickup.Kind kind, boolean mustReach) {
+        if (hasKeycard(kind)) return false;
+        for (int i = 0; i < pickups.size(); i++) {
+            Pickup pickup = pickups.get(i);
+            if (pickup.getKind() != kind || pickup.isCollected()) continue;
+            if (!mustReach || isReachableAt(pickup.getX(), pickup.getZ())) return true;
+        }
+        return false;
+    }
+
+    private boolean isConsoleWaiting(boolean mustReach) {
+        if (isAnyConsoleActivated()) return false;
+        for (int i = 0; i < consoles.size(); i++) {
+            SecurityConsole console = consoles.get(i);
+            if (!mustReach || isReachableAt(console.getX(), console.getZ())) return true;
+        }
+        return false;
+    }
+
+    private boolean isWardenWaiting(boolean mustReach) {
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy enemy = enemies.get(i);
+            if (enemy.isDestroyed() || enemy.getKind() != Enemy.Kind.WARDEN) continue;
+            if (!mustReach || isReachableAt(enemy.getX(), enemy.getZ())) return true;
+        }
+        return false;
     }
 
     private void collectPickups() {
@@ -1076,10 +1319,12 @@ public final class GameSimulation {
         if (blastDir.len2() < 1e-6f) blastDir.set(direction);
         else blastDir.nor();
         projectiles.add(new BlastProjectile(blastOrigin, blastDir, charge));
+        shotsFired++;
         emitPlayerSound(SoundEvent.Type.BLAST_RELEASE, 0.7f + 0.3f * charge);
     }
 
     private void firePistol() {
+        shotsFired++;
         emitPlayerSound(SoundEvent.Type.PISTOL_SHOT, 1f);
         alertNoise(player.position.x, player.position.y, 9.0f, 4.5f);
         RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
@@ -1087,6 +1332,7 @@ public final class GameSimulation {
         hit.point.mulAdd(hit.normal, MARK_OFFSET);
         if (applyNonDamageableImpact(hit, true, true)) return;
         hit.target.damage(Pistol.DAMAGE);
+        shotsHit++;
         if (hit.target instanceof Enemy) {
             alertNoise(hit.target.getX(), hit.target.getZ(), 5.0f, 3.0f);
         }
@@ -1095,6 +1341,7 @@ public final class GameSimulation {
     }
 
     private void fireRailLance() {
+        shotsFired++;
         slugs = Math.max(0, slugs - 1);
         emitPlayerSound(SoundEvent.Type.RAIL_FIRE, 1f);
         alertNoise(player.position.x, player.position.y, 15.0f, 7.5f);
@@ -1117,7 +1364,11 @@ public final class GameSimulation {
             Vector3 sparkPos = new Vector3(hit.point).mulAdd(hit.normal, MARK_OFFSET);
             effects.add(new Effect(Effect.Type.SPARK, sparkPos, hit.normal, 0.24f));
         }
-        if (anyHit) triggerHitMarker(anyKilled);
+        if (anyHit) {
+            // One beam is one hit, however many it pierces.
+            shotsHit++;
+            triggerHitMarker(anyKilled);
+        }
 
         if (result.terminalHit.isHit()) {
             result.terminalHit.point.mulAdd(result.terminalHit.normal, MARK_OFFSET);
@@ -1130,6 +1381,7 @@ public final class GameSimulation {
 
     private void fireScattergun(Scattergun.Shot shot) {
         boolean doubleBlast = shot == Scattergun.Shot.DOUBLE_BLAST;
+        shotsFired++;
         shells = Math.max(0, shells - shot.shellsSpent);
         emitPlayerSound(doubleBlast ? SoundEvent.Type.SCATTERGUN_ALT_FIRE : SoundEvent.Type.SCATTERGUN_FIRE, 1f);
         alertNoise(player.position.x, player.position.y, doubleBlast ? 13.0f : 11.0f, doubleBlast ? 6.5f : 5.5f);
@@ -1160,7 +1412,11 @@ public final class GameSimulation {
             }
             effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
         }
-        if (anyHit) triggerHitMarker(anyKilled);
+        if (anyHit) {
+            // One blast is one hit, however many pellets land.
+            shotsHit++;
+            triggerHitMarker(anyKilled);
+        }
     }
 
     private boolean applyNonDamageableImpact(RayHit hit, boolean spawnEffect, boolean emitSound) {

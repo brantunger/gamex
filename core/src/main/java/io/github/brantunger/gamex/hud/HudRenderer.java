@@ -8,6 +8,7 @@ import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.render.ProceduralTextures;
+import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
@@ -34,6 +35,57 @@ public final class HudRenderer implements Disposable {
     private static final float MENU_BOX_WIDTH = 520f;
     private static final float MENU_ROW_HEIGHT = 34f;
     private static final float MENU_ROW_STEP = 42f;
+    /** Label drawn in front of {@link GameSimulation#getObjectiveText()}. */
+    static final String OBJECTIVE_PREFIX = "OBJECTIVE: ";
+    /** Left edge of the status column, in HUD units. */
+    static final float STATUS_LEFT = 28f;
+    /** Font pixel size of the objective line, in HUD units. */
+    static final float OBJECTIVE_PIXEL = 2.4f;
+    /** Gap between the top of the window and the top of the status row, in HUD units. */
+    static final float STATUS_TOP = 28f;
+    /** Font pixel size of the status row, in HUD units. */
+    static final float STATUS_PIXEL = 3f;
+    /** How far the objective line's upper row sits below the bottom of the status row, in HUD units. */
+    static final float OBJECTIVE_ROW_DROP = 24f;
+    /** Gap between the top of the window and the top of the objective line's lower row, in HUD units. */
+    static final float OBJECTIVE_LOW_TOP = 110f;
+    /** Right edge the objective line is given room up to, in HUD units; the longest line ends at 409.6. */
+    static final float OBJECTIVE_RIGHT_LIMIT = 410f;
+    /**
+     * Half the width kept free around the centre of the window for the boss bar's panel and the toast boxes, in HUD
+     * units; the widest toast box is 450.8 wide.
+     */
+    static final float CENTRE_HALF_WIDTH = 226f;
+    /** Width of the boss health bar, in HUD units. */
+    static final float BOSS_BAR_WIDTH = 380f;
+    /** Gap between the top of the window and the bottom of the boss health bar, in HUD units. */
+    static final float BOSS_BAR_BOTTOM = 56f;
+    /** Room the boss bar's panel leaves on each side of the bar, in HUD units. */
+    static final float BOSS_PANEL_PAD_X = 12f;
+    /** Room the boss bar's panel leaves below the bar, in HUD units. */
+    static final float BOSS_PANEL_PAD_Y = 8f;
+    /** Font pixel size of a toast, in HUD units. */
+    static final float TOAST_PIXEL = 2.8f;
+    /** Room a toast box leaves on each side of its text, in HUD units. */
+    static final float TOAST_PAD_X = 14f;
+    /** Room a toast box leaves above and below its text, in HUD units. */
+    static final float TOAST_PAD_Y = 8f;
+    /** Gap between the top of the window and the bottom of a toast box, in HUD units. */
+    static final float TOAST_BOTTOM = 64f;
+    /** Gap between the top of the window and the bottom of a toast box while the boss bar is shown, in HUD units. */
+    static final float TOAST_BOTTOM_UNDER_BOSS = 104f;
+    /** Width of the Intermission Tally panel, in HUD units. */
+    static final float TALLY_PANEL_WIDTH = 640f;
+    /** Font pixel size of the tally's statistic lines, in HUD units. */
+    static final float TALLY_STAT_PIXEL = 2.6f;
+    /** Font pixel size of the medal lines on the tally and on Select Stage, in HUD units. */
+    static final float MEDAL_PIXEL = 2.4f;
+    /** Width of the Select Stage panel, in HUD units. */
+    static final float STAGE_SELECT_PANEL_WIDTH = 620f;
+    /** Width of a menu option row, in HUD units. */
+    static final float OPTION_ROW_WIDTH = MENU_BOX_WIDTH;
+    /** Font pixel size of a menu option row, in HUD units. */
+    static final float OPTION_PIXEL = 2.8f;
 
     private final SpriteBatch batch = new SpriteBatch();
     private final ProceduralTextures textures;
@@ -514,9 +566,25 @@ public final class HudRenderer implements Disposable {
         }
     }
 
+    /**
+     * Picks the row of the objective line. It sits under the status row while the longest line ends left of the
+     * room kept for the boss bar's panel and the toast boxes. On a narrower window it drops to a row below the
+     * toast that is shown under the boss bar, where nothing is drawn across the window.
+     * @param width the window width in pixels
+     * @param height the window height in pixels
+     * @param unit one HUD unit in pixels
+     * @return the bottom edge of the objective line in pixels
+     */
+    static float objectiveBottomY(float width, float height, float unit) {
+        if (OBJECTIVE_RIGHT_LIMIT * unit <= width * 0.5f - CENTRE_HALF_WIDTH * unit) {
+            return height - STATUS_TOP * unit - PixelFont.height(STATUS_PIXEL * unit) - OBJECTIVE_ROW_DROP * unit;
+        }
+        return height - OBJECTIVE_LOW_TOP * unit - PixelFont.height(OBJECTIVE_PIXEL * unit);
+    }
+
     private void drawStatus(GameSimulation simulation) {
-        float pixel = 3f * unit;
-        float topY = height - 28f * unit - PixelFont.height(pixel);
+        float pixel = STATUS_PIXEL * unit;
+        float topY = height - STATUS_TOP * unit - PixelFont.height(pixel);
         if (!simulation.enemies.isEmpty()) {
             int remaining = simulation.getEnemiesRemaining();
             if (remaining > 0) batch.setColor(1f, 0.52f, 0.46f, 0.95f);
@@ -529,10 +597,16 @@ public final class HudRenderer implements Disposable {
             PixelFont.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
         }
 
-        if (simulation.map.hasExit()) {
+        String objective = simulation.getObjectiveText();
+        if (objective != null) {
+            float objectivePixel = OBJECTIVE_PIXEL * unit;
+            float objectiveY = objectiveBottomY(width, height, unit);
             batch.setColor(0.55f, 0.95f, 1f, 0.9f);
-            PixelFont.draw(batch, textures.white, "OBJECTIVE: REACH EXIT PAD", 28f * unit, topY - 24f * unit,
-                2.4f * unit);
+            // Drawn in two parts, so the line is not built anew each frame.
+            PixelFont.draw(batch, textures.white, OBJECTIVE_PREFIX, STATUS_LEFT * unit, objectiveY, objectivePixel);
+            PixelFont.draw(batch, textures.white, objective,
+                STATUS_LEFT * unit + PixelFont.width(OBJECTIVE_PREFIX, objectivePixel) + objectivePixel, objectiveY,
+                objectivePixel);
         }
 
         String timer = "TIME " + formatTime(simulation.getTime());
@@ -547,15 +621,16 @@ public final class HudRenderer implements Disposable {
         boolean overdrive = boss.isOverdrive();
         float frac = Math.max(0f, Math.min(1f, boss.getHealth() / boss.getKind().maxHealth));
 
-        float barW = 380f * unit;
+        float barW = BOSS_BAR_WIDTH * unit;
         float barH = 14f * unit;
         float left = (width - barW) * 0.5f;
-        float barBottom = height - 56f * unit;
+        float barBottom = height - BOSS_BAR_BOTTOM * unit;
         float labelPix = 2.3f * unit;
         float labelH = PixelFont.height(labelPix);
 
         batch.setColor(0.05f, 0.06f, 0.11f, 0.80f);
-        rect(left - 12f * unit, barBottom - 8f * unit, barW + 24f * unit, barH + labelH + 22f * unit);
+        rect(left - BOSS_PANEL_PAD_X * unit, barBottom - BOSS_PANEL_PAD_Y * unit,
+            barW + 2f * BOSS_PANEL_PAD_X * unit, barH + labelH + 22f * unit);
 
         String title = overdrive ? "WARDEN MECH // OVERDRIVE" : "WARDEN MECH";
         if (overdrive) batch.setColor(0.42f, 0.86f, 1.00f, 0.98f);
@@ -577,14 +652,14 @@ public final class HudRenderer implements Disposable {
         String msg = simulation.getToastMessage();
         if (msg == null) return;
         float alpha = simulation.getToastAlpha();
-        float pixel = 2.8f * unit;
+        float pixel = TOAST_PIXEL * unit;
         float textW = PixelFont.width(msg, pixel);
-        float padX = 14f * unit;
-        float padY = 8f * unit;
+        float padX = TOAST_PAD_X * unit;
+        float padY = TOAST_PAD_Y * unit;
         float boxW = textW + padX * 2f;
         float boxH = PixelFont.height(pixel) + padY * 2f;
         float cx = width * 0.5f;
-        float y = height - (simulation.getActiveBoss() != null ? 104f : 64f) * unit;
+        float y = height - (simulation.getActiveBoss() != null ? TOAST_BOTTOM_UNDER_BOSS : TOAST_BOTTOM) * unit;
         batch.setColor(0.06f, 0.08f, 0.14f, 0.78f * alpha);
         rect(cx - boxW * 0.5f, y, boxW, boxH);
         batch.setColor(0.55f, 1f, 0.82f, alpha);
@@ -618,13 +693,19 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.62f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy + 4f * unit, 620f * unit, 468f * unit);
+        drawPanel(cx, cy + 4f * unit, STAGE_SELECT_PANEL_WIDTH * unit, 468f * unit);
         batch.setColor(0.55f, 0.95f, 1f, 1f);
         PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 174f * unit, 5.5f * unit);
         batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
         PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 144f * unit,
             2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
+        // Medals of the highlighted stage, in the strip under BACK.
+        String detail = menuState.getStageSelectDetail();
+        if (detail != null) {
+            batch.setColor(1f, 0.88f, 0.36f, 0.95f);
+            PixelFont.drawCentred(batch, textures.white, detail, cx, cy - 208f * unit, MEDAL_PIXEL * unit);
+        }
     }
 
     private void drawDifficultyScreen(MenuState menuState) {
@@ -710,7 +791,7 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.72f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy - 6f * unit, 640f * unit, 480f * unit);
+        drawPanel(cx, cy - 6f * unit, TALLY_PANEL_WIDTH * unit, 480f * unit);
 
         Levels.Stage stage = menuState.getActiveStage();
         SaveData.CompletionSummary sum = menuState.getLastSummary();
@@ -732,24 +813,31 @@ public final class HudRenderer implements Disposable {
         }
 
         if (sum != null) {
-            float statPix = 2.8f * unit;
-            String timeLine = "CLEAR TIME: " + formatTime(sum.clearTime) + "  (PAR " + formatTime(stage.parSeconds)
-                + ")" + (sum.newBestTime ? "  *NEW BEST!*" : "");
-            int pct = sum.targetsTotal <= 0 ? 100 : Math.round(sum.targetsDestroyed * 100f / sum.targetsTotal);
-            String label = stage.map.getEnemySpawns().isEmpty() ? "TARGETS CLEARED: " : "HOSTILES CLEARED: ";
-            String targetLine = label + sum.targetsDestroyed + "/" + sum.targetsTotal + " (" + pct + "%)";
-            String dmgLine = "DAMAGE TAKEN: " + Math.round(sum.damageTaken);
-            String rankLine = "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]";
+            float statPix = TALLY_STAT_PIXEL * unit;
+            boolean hostiles = !stage.map.getEnemySpawns().isEmpty();
 
             batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, timeLine, cx, cy + 78f * unit, statPix);
-            PixelFont.drawCentred(batch, textures.white, targetLine, cx, cy + 46f * unit, statPix);
-            PixelFont.drawCentred(batch, textures.white, dmgLine, cx, cy + 14f * unit, statPix);
+            PixelFont.drawCentred(batch, textures.white, tallyTimeLine(sum, stage.parSeconds), cx, cy + 86f * unit,
+                statPix);
+            if (sum.newBestTime) batch.setColor(1f, 0.88f, 0.36f, 1f);
+            PixelFont.drawCentred(batch, textures.white,
+                tallyBestLine(sum, menuState.getActiveLoadout().difficulty.label), cx, cy + 62f * unit, statPix);
+            batch.setColor(0.92f, 0.95f, 1f, 0.95f);
+            PixelFont.drawCentred(batch, textures.white, tallyClearedLine(sum, hostiles), cx, cy + 38f * unit,
+                statPix);
+            PixelFont.drawCentred(batch, textures.white, tallyStatsLine(sum), cx, cy + 14f * unit, statPix);
 
             if (sum.rank == 'S') batch.setColor(1f, 0.88f, 0.36f, 1f);
             else if (sum.rank == 'A') batch.setColor(0.45f, 0.96f, 0.85f, 1f);
             else batch.setColor(0.80f, 0.68f, 1f, 1f);
-            PixelFont.drawCentred(batch, textures.white, rankLine, cx, cy - 30f * unit, 4f * unit);
+            PixelFont.drawCentred(batch, textures.white, "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]",
+                cx, cy - 28f * unit, 4f * unit);
+
+            if (!sum.newMedals.isEmpty()) batch.setColor(1f, 0.88f, 0.36f, 1f);
+            else if (!sum.medals.isEmpty()) batch.setColor(0.52f, 1f, 0.82f, 0.95f);
+            else batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
+            PixelFont.drawCentred(batch, textures.white, tallyMedalLine(sum), cx, cy - 58f * unit,
+                MEDAL_PIXEL * unit);
         }
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.INTERMISSION));
@@ -782,7 +870,7 @@ public final class HudRenderer implements Disposable {
         float boxW = MENU_BOX_WIDTH * unit;
         float rowH = MENU_ROW_HEIGHT * unit;
         float rowStep = MENU_ROW_STEP * unit;
-        float textSize = 2.8f * unit;
+        float textSize = OPTION_PIXEL * unit;
 
         for (int i = 0; i < options.size(); i++) {
             boolean selected = i == menuState.getSelectedIndex();
@@ -801,6 +889,63 @@ public final class HudRenderer implements Disposable {
                     bottom + (rowH - PixelFont.height(textSize)) * 0.5f, textSize);
             }
         }
+    }
+
+    /** @return the tally's clear time line, with the stage's par time. */
+    static String tallyTimeLine(SaveData.CompletionSummary sum, float parSeconds) {
+        return "CLEAR TIME: " + formatTime(sum.clearTime) + "  (PAR " + formatTime(parSeconds) + ")";
+    }
+
+    /**
+     * @param sum the run's summary
+     * @param difficultyLabel the label of the difficulty the run was played on
+     * @return the tally's best time line for that difficulty, marked when this run set it
+     */
+    static String tallyBestLine(SaveData.CompletionSummary sum, String difficultyLabel) {
+        return "BEST (" + difficultyLabel + "): " + formatTime(sum.bestTime)
+            + (sum.newBestTime ? "  *NEW BEST!*" : "");
+    }
+
+    /**
+     * @param sum the run's summary
+     * @param hostiles whether the stage has hostiles; otherwise its targets are counted
+     * @return the tally's line of hostiles or targets destroyed
+     */
+    static String tallyClearedLine(SaveData.CompletionSummary sum, boolean hostiles) {
+        int pct = sum.targetsTotal <= 0 ? 100 : Math.round(sum.targetsDestroyed * 100f / sum.targetsTotal);
+        return (hostiles ? "HOSTILES CLEARED: " : "TARGETS CLEARED: ") + sum.targetsDestroyed + "/"
+            + sum.targetsTotal + " (" + pct + "%)";
+    }
+
+    /**
+     * @return the tally's line of damage taken, pickups collected and accuracy; {@code --} when no shot was fired.
+     *     Damage is rounded to the nearest whole and never below 1 once any was taken, so it reads 0 only on a run
+     *     that took none and earns {@link Medal#UNTOUCHED}.
+     */
+    static String tallyStatsLine(SaveData.CompletionSummary sum) {
+        int accuracy = sum.accuracyPercent();
+        int damage = sum.damageTaken <= 0f ? 0 : Math.max(1, Math.round(sum.damageTaken));
+        return "DAMAGE TAKEN: " + damage + "   PICKUPS: " + sum.pickupsCollected + "/"
+            + sum.pickupsTotal + "   ACCURACY: " + (accuracy < 0 ? "--" : accuracy + "%");
+    }
+
+    /**
+     * @return the tally's medal line: the medals this run earned, those earned for the first time between
+     *     asterisks, as in {@code MEDALS: *UNTOUCHED*  SWEEP}; a run that could earn none says so
+     */
+    static String tallyMedalLine(SaveData.CompletionSummary sum) {
+        if (!sum.medalsRecorded) return "TRAINING RUN - NO MEDALS";
+        if (sum.medals.isEmpty()) return "MEDALS: NONE";
+        StringBuilder line = new StringBuilder("MEDALS:");
+        boolean first = true;
+        for (Medal medal : Medal.values()) {
+            if (!sum.medals.contains(medal)) continue;
+            line.append(first ? " " : "  ");
+            first = false;
+            if (sum.newMedals.contains(medal)) line.append('*').append(medal.label).append('*');
+            else line.append(medal.label);
+        }
+        return line.toString();
     }
 
     static String formatTime(float seconds) {
