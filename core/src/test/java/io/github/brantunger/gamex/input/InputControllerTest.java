@@ -2,12 +2,14 @@ package io.github.brantunger.gamex.input;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.InputProcessor;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
@@ -27,6 +29,8 @@ import java.util.Set;
 class InputControllerTest {
 
     private static final float FRAME = 1f / 60f;
+    /** The index of the FIELD OF VIEW row on the Settings screen. */
+    private static final int FOV_ROW = 2;
 
     private Input previousInput;
     private Graphics previousGraphics;
@@ -42,6 +46,8 @@ class InputControllerTest {
     private int mouseY;
     /** The frame time the stub graphics reports. */
     private float deltaTime = FRAME;
+    /** The processor last registered with the stub input; the key and button events are delivered through it. */
+    private InputProcessor registered;
     private final PlayerInput out = new PlayerInput();
 
     @BeforeEach
@@ -53,6 +59,11 @@ class InputControllerTest {
             new Class<?>[] {Input.class},
             (proxy, method, args) -> {
                 switch (method.getName()) {
+                    case "setInputProcessor":
+                        registered = (InputProcessor) args[0];
+                        return null;
+                    case "getInputProcessor":
+                        return registered;
                     case "isKeyJustPressed":
                         return justPressed.contains((Integer) args[0]);
                     case "isKeyPressed":
@@ -121,12 +132,38 @@ class InputControllerTest {
         return menu;
     }
 
+    /** @return a menu on the Settings screen, opened from the pause menu, with the FIELD OF VIEW row selected */
+    private static MenuState settingsMenuOnFov(GameSettings settings) {
+        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        menu.escape();
+        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        menu.confirm();
+        assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
+        menu.setSelectedIndex(FOV_ROW);
+        assertTrue(menu.getOptions().get(menu.getSelectedIndex()).startsWith("FIELD OF VIEW"));
+        return menu;
+    }
+
+    /**
+     * @return the processor the backend would deliver events to, which must be {@code controller}: an event reaches
+     *     the controller only through the registration it makes when it is built
+     */
+    private InputProcessor processorOf(InputController controller) {
+        assertSame(controller, registered, "the controller must register itself as the input processor");
+        return registered;
+    }
+
+    /** Delivers a button-down event at ({@code x}, {@code y}) the way the backend does, through the registration. */
+    private void click(InputController controller, int x, int y, int button) {
+        processorOf(controller).touchDown(x, y, 0, button);
+    }
+
     /** Polls one frame of {@code seconds} with {@code keys} just pressed, each delivered as a key-down event first. */
     private MenuState.Command poll(InputController controller, float seconds, int... keys) {
         justPressed.clear();
         for (int key : keys) {
             justPressed.add(key);
-            controller.keyDown(key);
+            processorOf(controller).keyDown(key);
         }
         deltaTime = seconds;
         return controller.poll(out);
@@ -330,6 +367,42 @@ class InputControllerTest {
     }
 
     @Test
+    void horizontalKeysStuckAsJustPressedWhileMinimisedDoNotAdjustTheSetting() {
+        for (int key : new int[] {Input.Keys.LEFT, Input.Keys.A, Input.Keys.RIGHT, Input.Keys.D}) {
+            GameSettings settings = new GameSettings();
+            MenuState menu = settingsMenuOnFov(settings);
+            InputController controller = new InputController(menu, settings);
+            minimiseWithKeyFlagged(controller, key);
+            assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
+            assertEquals(FOV_ROW, menu.getSelectedIndex());
+
+            for (int frame = 1; frame <= 3; frame++) {
+                String at = "minimised frame " + frame + " with " + Input.Keys.toString(key);
+                assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), at);
+                assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), at);
+            }
+        }
+    }
+
+    @Test
+    void aHorizontalKeyPressAdjustsTheSettingOnce() {
+        for (int key : new int[] {Input.Keys.LEFT, Input.Keys.A, Input.Keys.RIGHT, Input.Keys.D}) {
+            GameSettings settings = new GameSettings();
+            MenuState menu = settingsMenuOnFov(settings);
+            InputController controller = new InputController(menu, settings);
+            boolean lowers = key == Input.Keys.LEFT || key == Input.Keys.A;
+            float adjusted = GameSettings.DEFAULT_FOV + (lowers ? -GameSettings.FOV_STEP : GameSettings.FOV_STEP);
+            String name = Input.Keys.toString(key);
+
+            assertEquals(MenuState.Command.NONE, poll(controller, FRAME, key), name);
+            assertEquals(adjusted, settings.getFov(), "one press of " + name + " moves one step");
+            assertEquals(MenuState.Command.NONE, poll(controller, FRAME), name);
+            assertEquals(adjusted, settings.getFov(), "one press of " + name + " acts once");
+            assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
+        }
+    }
+
+    @Test
     void leftClickStuckAsJustPressedWhileMinimisedDoesNotConfirmTheRowUnderTheCursor() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
         InputController controller = new InputController(menu, new GameSettings());
@@ -351,9 +424,9 @@ class InputControllerTest {
         int x = 640;
         int y = rowY(menu, "QUIT");
 
-        controller.touchDown(x, y, 0, Input.Buttons.RIGHT);
+        click(controller, x, y, Input.Buttons.RIGHT);
         assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), "a right click confirms nothing");
-        controller.touchDown(x, y, 0, Input.Buttons.LEFT);
+        click(controller, x, y, Input.Buttons.LEFT);
         assertEquals(MenuState.Command.QUIT, pollMinimised(controller, FRAME));
         assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), "one click acts once");
     }
@@ -410,7 +483,7 @@ class InputControllerTest {
         InputController controller = new InputController(menu, new GameSettings());
 
         leftHeld = true;
-        controller.touchDown(640, rowY(menu, "RESUME"), 0, Input.Buttons.LEFT);
+        click(controller, 640, rowY(menu, "RESUME"), Input.Buttons.LEFT);
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME));
         assertTrue(menu.isPlaying());
         poll(controller, FRAME);
