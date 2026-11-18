@@ -21,9 +21,16 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -45,7 +52,7 @@ class SoundManagerPartialLoadTest {
             Files.class.getClassLoader(),
             new Class<?>[] {Files.class},
             (proxy, method, args) -> {
-                if ("internal".equals(method.getName())) return new FileHandle((String) args[0]);
+                if ("internal".equals(method.getName())) return assetHandle((String) args[0]);
                 throw new UnsupportedOperationException(method.getName());
             });
         Gdx.audio = (Audio) Proxy.newProxyInstance(
@@ -63,6 +70,37 @@ class SoundManagerPartialLoadTest {
     void restoreGdxState() {
         Gdx.audio = previousAudio;
         Gdx.files = previousFiles;
+    }
+
+    private static Path resolveAssetsDir() {
+        List<Path> candidates = new ArrayList<>();
+        String assets = System.getProperty("gamex.assets");
+        if (assets != null) candidates.add(Paths.get(assets));
+        candidates.add(Paths.get("..", "assets"));
+        candidates.add(Paths.get("assets"));
+        for (Path candidate : candidates) {
+            if (java.nio.file.Files.isDirectory(candidate.resolve(Levels.LEVELS_DIR))) {
+                return candidate;
+            }
+        }
+        List<Path> tried = new ArrayList<>();
+        for (Path candidate : candidates) tried.add(candidate.toAbsolutePath().normalize());
+        throw new IllegalStateException("The levels folder was not found. Set the system property gamex.assets to "
+            + "the assets folder, or run from the root project or the core project. Tried: " + tried);
+    }
+
+    /** @return a handle that keeps the asset path the sound stubs key on and reads its text from the assets folder */
+    private static FileHandle assetHandle(String path) {
+        return new FileHandle(path) {
+            @Override
+            public String readString(String charset) {
+                try {
+                    return java.nio.file.Files.readString(resolveAssetsDir().resolve(path), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+        };
     }
 
     private Sound soundStub(String path) {
