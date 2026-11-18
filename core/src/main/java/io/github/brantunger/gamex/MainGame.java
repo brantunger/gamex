@@ -47,8 +47,32 @@ public class MainGame extends ApplicationAdapter {
     private float backdropTime;
     private float deathTimer;
     private float smoothedDt = 1f / 60f;
-    private int windowedWidth = DEFAULT_WINDOW_WIDTH;
-    private int windowedHeight = DEFAULT_WINDOW_HEIGHT;
+    private int windowedWidth;
+    private int windowedHeight;
+    private int lastResizeWidth;
+    private int lastResizeHeight;
+
+    /** Creates the game using the default windowed fallback size of 1280x720. */
+    public MainGame() {
+        this(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
+    }
+
+    /**
+     * Creates the game with an initial windowed fallback size used if launched in fullscreen and later switched to
+     * windowed mode.
+     */
+    public MainGame(int initialWindowWidth, int initialWindowHeight) {
+        this.windowedWidth = Math.max(160, initialWindowWidth);
+        this.windowedHeight = Math.max(120, initialWindowHeight);
+    }
+
+    int getWindowedWidth() {
+        return windowedWidth;
+    }
+
+    int getWindowedHeight() {
+        return windowedHeight;
+    }
 
     @Override
     public void create() {
@@ -103,9 +127,13 @@ public class MainGame extends ApplicationAdapter {
             Levels.Stage initialStage = menuState.getActiveStage();
             simulation = new GameSimulation(initialStage.map, menuState.getActiveLoadout(),
                 initialStage.completeOnAllTargets);
-            windowedWidth = Math.max(160, Gdx.graphics.getWidth());
-            windowedHeight = Math.max(120, Gdx.graphics.getHeight());
-            if (settings.isFullscreen()) applyDisplayMode();
+            if (!Gdx.graphics.isFullscreen()) {
+                windowedWidth = Math.max(160, Gdx.graphics.getWidth());
+                windowedHeight = Math.max(120, Gdx.graphics.getHeight());
+            }
+            if (settings.isFullscreen() != Gdx.graphics.isFullscreen()) {
+                applyDisplayMode();
+            }
         }
 
         textures = new ProceduralTextures();
@@ -114,18 +142,22 @@ public class MainGame extends ApplicationAdapter {
         hudRenderer = new HudRenderer(textures);
         soundManager = new SoundManager(demoRun != null);
         if (demoRun == null) controller = new InputController(menuState, settings);
+        syncDisplayViewport();
     }
 
     @Override
     public void resize(int width, int height) {
         if (width <= 0 || height <= 0) return;
-        if (!Gdx.graphics.isFullscreen()) {
+        if (Gdx.graphics != null && !Gdx.graphics.isFullscreen()) {
             windowedWidth = width;
             windowedHeight = height;
         }
-        worldRenderer.resize(width, height);
-        viewmodelRenderer.resize(width, height);
-        hudRenderer.resize(width, height);
+        applyBackBufferViewport();
+        lastResizeWidth = width;
+        lastResizeHeight = height;
+        if (worldRenderer != null) worldRenderer.resize(width, height);
+        if (viewmodelRenderer != null) viewmodelRenderer.resize(width, height);
+        if (hudRenderer != null) hudRenderer.resize(width, height);
     }
 
     @Override
@@ -139,6 +171,7 @@ public class MainGame extends ApplicationAdapter {
 
     @Override
     public void render() {
+        syncDisplayViewport();
         if (demoRun != null) {
             demoRun.nextFrame(input);
             backdropTime += DemoRun.FRAME_TIME;
@@ -253,12 +286,37 @@ public class MainGame extends ApplicationAdapter {
         return smoothedDt;
     }
 
+    void applyBackBufferViewport() {
+        if (Gdx.graphics == null || Gdx.gl == null) return;
+        int backBufferWidth = Gdx.graphics.getBackBufferWidth();
+        int backBufferHeight = Gdx.graphics.getBackBufferHeight();
+        if (backBufferWidth > 0 && backBufferHeight > 0) {
+            Gdx.gl.glViewport(0, 0, backBufferWidth, backBufferHeight);
+        }
+    }
+
+    void syncDisplayViewport() {
+        if (Gdx.graphics == null) return;
+        int width = Gdx.graphics.getWidth();
+        int height = Gdx.graphics.getHeight();
+        if (width > 0 && height > 0 && (width != lastResizeWidth || height != lastResizeHeight)) {
+            resize(width, height);
+        } else {
+            applyBackBufferViewport();
+        }
+    }
+
     private void applyDisplayMode() {
         if (settings.isFullscreen()) {
             Graphics.DisplayMode mode = Gdx.graphics.getDisplayMode();
-            Gdx.graphics.setFullscreenMode(mode);
+            if (mode != null) Gdx.graphics.setFullscreenMode(mode);
         } else {
             Gdx.graphics.setWindowedMode(windowedWidth, windowedHeight);
+        }
+        if (worldRenderer != null) {
+            syncDisplayViewport();
+        } else {
+            applyBackBufferViewport();
         }
     }
 
