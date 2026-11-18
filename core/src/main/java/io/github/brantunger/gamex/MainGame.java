@@ -19,6 +19,7 @@ import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.GdxPreferencesStore;
 import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
+import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.world.Levels;
 
@@ -226,14 +227,7 @@ public class MainGame extends ApplicationAdapter {
         if (screen == MenuState.Screen.PLAYING) {
             simulation.update(stepDt, input);
             if (simulation.isLevelCleared()) {
-                int cleared = simulation.enemies.isEmpty()
-                    ? simulation.getTargetsDestroyed()
-                    : simulation.getEnemiesDestroyed();
-                int total = simulation.enemies.isEmpty()
-                    ? simulation.targets.size()
-                    : simulation.enemies.size();
-                menuState.onStageCleared(simulation.captureCarryOverLoadout(), simulation.getTime(), cleared, total,
-                    simulation.getDamageTaken());
+                menuState.onStageCleared(simulation.captureCarryOverLoadout(), runStatsOf(simulation));
                 controller.syncCursorCapture();
             } else if (simulation.player.isDead()) {
                 deathTimer += Math.min(GameSimulation.MAX_DT, Math.max(0f, rawDt));
@@ -262,6 +256,20 @@ public class MainGame extends ApplicationAdapter {
             viewmodelRenderer.render(simulation, settings);
         }
         hudRenderer.render(simulation, menuState);
+    }
+
+    /**
+     * @param simulation a simulation whose stage was just cleared
+     * @return the run's statistics for the save data and the tally. Hostiles are counted on a stage that has any,
+     *     its targets otherwise.
+     */
+    static RunStats runStatsOf(GameSimulation simulation) {
+        boolean countTargets = simulation.enemies.isEmpty();
+        int cleared = countTargets ? simulation.getTargetsDestroyed() : simulation.getEnemiesDestroyed();
+        int total = countTargets ? simulation.targets.size() : simulation.enemies.size();
+        return new RunStats(simulation.getTime(), cleared, total, simulation.getDamageTaken(),
+            simulation.getPickupsCollected(), simulation.pickups.size(), simulation.getShotsFired(),
+            simulation.getShotsHit());
     }
 
     /**

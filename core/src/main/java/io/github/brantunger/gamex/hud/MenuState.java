@@ -5,6 +5,8 @@ import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.Medal;
+import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.world.Levels;
 
@@ -175,9 +177,11 @@ public final class MenuState {
                 for (int i = 0; i < campaign.size(); i++) {
                     Levels.Stage stage = campaign.get(i);
                     if (i <= unlocked) {
-                        char best = saveData.getBestOverallRank(stage.id);
-                        String badge = best == '-' ? "[READY]" : "[BEST: " + best + "]";
-                        items.add(stage.title + " " + badge);
+                        Difficulty fastest = saveData.getFastestDifficulty(stage.id);
+                        float bestTime = fastest == null ? Float.POSITIVE_INFINITY
+                            : saveData.getBestTime(stage.id, fastest);
+                        items.add(stageSelectRow(stage.title, saveData.getBestOverallRank(stage.id), bestTime,
+                            fastest));
                     } else {
                         items.add(stage.title + " [LOCKED]");
                     }
@@ -227,6 +231,49 @@ public final class MenuState {
                 return Collections.emptyList();
         }
         return items;
+    }
+
+    /**
+     * @param title the stage title
+     * @param bestRank the best rank over all difficulties, or '-' if the stage was never cleared
+     * @param bestTime the fastest clear over all difficulties in seconds; ignored when {@code fastest} is null
+     * @param fastest the difficulty that clear was made on, or null if no time is stored
+     * @return the Select Stage row of an unlocked stage: the title and {@code [READY]} before its first clear,
+     *     afterwards the best rank and the fastest clear with its difficulty, as in {@code [BEST: S] 1:42 (HARD)}
+     */
+    static String stageSelectRow(String title, char bestRank, float bestTime, Difficulty fastest) {
+        if (bestRank == '-') return title + " [READY]";
+        String row = title + " [BEST: " + bestRank + "]";
+        if (fastest == null) return row;
+        return row + " " + formatShortTime(bestTime) + " (" + fastest.label + ")";
+    }
+
+    /** @return the time as minutes and whole seconds, as in {@code 1:42}; it stops at {@code 99:59}. */
+    static String formatShortTime(float seconds) {
+        int whole = (int) Math.min(99 * 60 + 59, Math.max(0f, seconds));
+        return String.format(Locale.ROOT, "%d:%02d", whole / 60, whole % 60);
+    }
+
+    /**
+     * @return on Select Stage, the medals earned on the highlighted stage as a count per difficulty, as in
+     *     {@code MEDALS: EASY 2/4  NORMAL 4/4  HARD 0/4}; null on other screens, on BACK, on a locked stage and
+     *     on a stage with no medal yet
+     */
+    public String getStageSelectDetail() {
+        if (screen != Screen.STAGE_SELECT || selectedIndex >= campaign.size()
+            || selectedIndex > saveData.getUnlockedStageIndex()) {
+            return null;
+        }
+        String stageId = campaign.get(selectedIndex).id;
+        StringBuilder line = new StringBuilder("MEDALS:");
+        int earned = 0;
+        for (Difficulty diff : Difficulty.values()) {
+            int count = saveData.getMedals(stageId, diff).size();
+            earned += count;
+            line.append(diff.ordinal() == 0 ? " " : "  ").append(diff.label).append(' ').append(count).append('/')
+                .append(Medal.values().length);
+        }
+        return earned == 0 ? null : line.toString();
     }
 
     /** Moves the highlighted row up or down, wrapping cleanly. */
@@ -517,14 +564,23 @@ public final class MenuState {
 
     /**
      * Records stage completion with a full carried-over weapon/vital snapshot and opens {@link Screen#INTERMISSION}.
-     * Clearing a campaign stage other than the last saves the next stage with the carry-over at once, so progress
-     * survives leaving the tally without NEXT STAGE; clearing the last stage clears the saved run.
+     * The run carries no pickup or shot counts.
      */
     public void onStageCleared(PlayerLoadout carryOver, float clearTime, int destroyed, int totalTargets,
                                float damageTaken) {
+        onStageCleared(carryOver, new RunStats(clearTime, destroyed, totalTargets, damageTaken, 0, 0, 0, 0));
+    }
+
+    /**
+     * Records stage completion with a full carried-over weapon/vital snapshot and opens {@link Screen#INTERMISSION}.
+     * Clearing a campaign stage other than the last saves the next stage with the carry-over at once, so progress
+     * survives leaving the tally without NEXT STAGE; clearing the last stage clears the saved run. A Training Range
+     * run keeps its best time and rank but earns no medals.
+     */
+    public void onStageCleared(PlayerLoadout carryOver, RunStats stats) {
         if (screen != Screen.PLAYING) return;
-        lastSummary = saveData.recordCompletion(activeStage.id, activeLoadout.difficulty, clearTime,
-            activeStage.parSeconds, destroyed, totalTargets, damageTaken);
+        lastSummary = saveData.recordCompletion(activeStage.id, activeLoadout.difficulty, activeStage.parSeconds,
+            stats, !inTrainingRange);
         campaignCompleted = !inTrainingRange && (stageIndex + 1 >= campaign.size());
         if (!inTrainingRange) {
             PlayerLoadout nextLoadout = carryOver == null ? PlayerLoadout.forStage(stageIndex + 1, activeLoadout.difficulty)

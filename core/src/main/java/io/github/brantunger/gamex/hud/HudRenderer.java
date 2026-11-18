@@ -8,6 +8,7 @@ import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.render.ProceduralTextures;
+import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
@@ -34,6 +35,24 @@ public final class HudRenderer implements Disposable {
     private static final float MENU_BOX_WIDTH = 520f;
     private static final float MENU_ROW_HEIGHT = 34f;
     private static final float MENU_ROW_STEP = 42f;
+    /** Label drawn in front of {@link GameSimulation#getObjectiveText()}. */
+    static final String OBJECTIVE_PREFIX = "OBJECTIVE: ";
+    /** Left edge of the status column, in HUD units. */
+    static final float STATUS_LEFT = 28f;
+    /** Font pixel size of the objective line, in HUD units. */
+    static final float OBJECTIVE_PIXEL = 2.4f;
+    /** Width of the Intermission Tally panel, in HUD units. */
+    static final float TALLY_PANEL_WIDTH = 640f;
+    /** Font pixel size of the tally's statistic lines, in HUD units. */
+    static final float TALLY_STAT_PIXEL = 2.6f;
+    /** Font pixel size of the medal lines on the tally and on Select Stage, in HUD units. */
+    static final float MEDAL_PIXEL = 2.4f;
+    /** Width of the Select Stage panel, in HUD units. */
+    static final float STAGE_SELECT_PANEL_WIDTH = 620f;
+    /** Width of a menu option row, in HUD units. */
+    static final float OPTION_ROW_WIDTH = MENU_BOX_WIDTH;
+    /** Font pixel size of a menu option row, in HUD units. */
+    static final float OPTION_PIXEL = 2.8f;
 
     private final SpriteBatch batch = new SpriteBatch();
     private final ProceduralTextures textures;
@@ -529,10 +548,16 @@ public final class HudRenderer implements Disposable {
             PixelFont.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
         }
 
-        if (simulation.map.hasExit()) {
+        String objective = simulation.getObjectiveText();
+        if (objective != null) {
+            float objectivePixel = OBJECTIVE_PIXEL * unit;
+            float objectiveY = topY - 24f * unit;
             batch.setColor(0.55f, 0.95f, 1f, 0.9f);
-            PixelFont.draw(batch, textures.white, "OBJECTIVE: REACH EXIT PAD", 28f * unit, topY - 24f * unit,
-                2.4f * unit);
+            // Drawn in two parts, so the line is not built anew each frame.
+            PixelFont.draw(batch, textures.white, OBJECTIVE_PREFIX, STATUS_LEFT * unit, objectiveY, objectivePixel);
+            PixelFont.draw(batch, textures.white, objective,
+                STATUS_LEFT * unit + PixelFont.width(OBJECTIVE_PREFIX, objectivePixel) + objectivePixel, objectiveY,
+                objectivePixel);
         }
 
         String timer = "TIME " + formatTime(simulation.getTime());
@@ -618,13 +643,19 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.62f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy + 4f * unit, 620f * unit, 468f * unit);
+        drawPanel(cx, cy + 4f * unit, STAGE_SELECT_PANEL_WIDTH * unit, 468f * unit);
         batch.setColor(0.55f, 0.95f, 1f, 1f);
         PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 174f * unit, 5.5f * unit);
         batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
         PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 144f * unit,
             2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
+        // Medals of the highlighted stage, in the strip under BACK.
+        String detail = menuState.getStageSelectDetail();
+        if (detail != null) {
+            batch.setColor(1f, 0.88f, 0.36f, 0.95f);
+            PixelFont.drawCentred(batch, textures.white, detail, cx, cy - 208f * unit, MEDAL_PIXEL * unit);
+        }
     }
 
     private void drawDifficultyScreen(MenuState menuState) {
@@ -710,7 +741,7 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.72f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy - 6f * unit, 640f * unit, 480f * unit);
+        drawPanel(cx, cy - 6f * unit, TALLY_PANEL_WIDTH * unit, 480f * unit);
 
         Levels.Stage stage = menuState.getActiveStage();
         SaveData.CompletionSummary sum = menuState.getLastSummary();
@@ -732,24 +763,31 @@ public final class HudRenderer implements Disposable {
         }
 
         if (sum != null) {
-            float statPix = 2.8f * unit;
-            String timeLine = "CLEAR TIME: " + formatTime(sum.clearTime) + "  (PAR " + formatTime(stage.parSeconds)
-                + ")" + (sum.newBestTime ? "  *NEW BEST!*" : "");
-            int pct = sum.targetsTotal <= 0 ? 100 : Math.round(sum.targetsDestroyed * 100f / sum.targetsTotal);
-            String label = stage.map.getEnemySpawns().isEmpty() ? "TARGETS CLEARED: " : "HOSTILES CLEARED: ";
-            String targetLine = label + sum.targetsDestroyed + "/" + sum.targetsTotal + " (" + pct + "%)";
-            String dmgLine = "DAMAGE TAKEN: " + Math.round(sum.damageTaken);
-            String rankLine = "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]";
+            float statPix = TALLY_STAT_PIXEL * unit;
+            boolean hostiles = !stage.map.getEnemySpawns().isEmpty();
 
             batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, timeLine, cx, cy + 78f * unit, statPix);
-            PixelFont.drawCentred(batch, textures.white, targetLine, cx, cy + 46f * unit, statPix);
-            PixelFont.drawCentred(batch, textures.white, dmgLine, cx, cy + 14f * unit, statPix);
+            PixelFont.drawCentred(batch, textures.white, tallyTimeLine(sum, stage.parSeconds), cx, cy + 86f * unit,
+                statPix);
+            if (sum.newBestTime) batch.setColor(1f, 0.88f, 0.36f, 1f);
+            PixelFont.drawCentred(batch, textures.white,
+                tallyBestLine(sum, menuState.getActiveLoadout().difficulty.label), cx, cy + 62f * unit, statPix);
+            batch.setColor(0.92f, 0.95f, 1f, 0.95f);
+            PixelFont.drawCentred(batch, textures.white, tallyClearedLine(sum, hostiles), cx, cy + 38f * unit,
+                statPix);
+            PixelFont.drawCentred(batch, textures.white, tallyStatsLine(sum), cx, cy + 14f * unit, statPix);
 
             if (sum.rank == 'S') batch.setColor(1f, 0.88f, 0.36f, 1f);
             else if (sum.rank == 'A') batch.setColor(0.45f, 0.96f, 0.85f, 1f);
             else batch.setColor(0.80f, 0.68f, 1f, 1f);
-            PixelFont.drawCentred(batch, textures.white, rankLine, cx, cy - 30f * unit, 4f * unit);
+            PixelFont.drawCentred(batch, textures.white, "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]",
+                cx, cy - 28f * unit, 4f * unit);
+
+            if (!sum.newMedals.isEmpty()) batch.setColor(1f, 0.88f, 0.36f, 1f);
+            else if (!sum.medals.isEmpty()) batch.setColor(0.52f, 1f, 0.82f, 0.95f);
+            else batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
+            PixelFont.drawCentred(batch, textures.white, tallyMedalLine(sum), cx, cy - 58f * unit,
+                MEDAL_PIXEL * unit);
         }
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.INTERMISSION));
@@ -782,7 +820,7 @@ public final class HudRenderer implements Disposable {
         float boxW = MENU_BOX_WIDTH * unit;
         float rowH = MENU_ROW_HEIGHT * unit;
         float rowStep = MENU_ROW_STEP * unit;
-        float textSize = 2.8f * unit;
+        float textSize = OPTION_PIXEL * unit;
 
         for (int i = 0; i < options.size(); i++) {
             boolean selected = i == menuState.getSelectedIndex();
@@ -801,6 +839,58 @@ public final class HudRenderer implements Disposable {
                     bottom + (rowH - PixelFont.height(textSize)) * 0.5f, textSize);
             }
         }
+    }
+
+    /** @return the tally's clear time line, with the stage's par time. */
+    static String tallyTimeLine(SaveData.CompletionSummary sum, float parSeconds) {
+        return "CLEAR TIME: " + formatTime(sum.clearTime) + "  (PAR " + formatTime(parSeconds) + ")";
+    }
+
+    /**
+     * @param sum the run's summary
+     * @param difficultyLabel the label of the difficulty the run was played on
+     * @return the tally's best time line for that difficulty, marked when this run set it
+     */
+    static String tallyBestLine(SaveData.CompletionSummary sum, String difficultyLabel) {
+        return "BEST (" + difficultyLabel + "): " + formatTime(sum.bestTime)
+            + (sum.newBestTime ? "  *NEW BEST!*" : "");
+    }
+
+    /**
+     * @param sum the run's summary
+     * @param hostiles whether the stage has hostiles; otherwise its targets are counted
+     * @return the tally's line of hostiles or targets destroyed
+     */
+    static String tallyClearedLine(SaveData.CompletionSummary sum, boolean hostiles) {
+        int pct = sum.targetsTotal <= 0 ? 100 : Math.round(sum.targetsDestroyed * 100f / sum.targetsTotal);
+        return (hostiles ? "HOSTILES CLEARED: " : "TARGETS CLEARED: ") + sum.targetsDestroyed + "/"
+            + sum.targetsTotal + " (" + pct + "%)";
+    }
+
+    /** @return the tally's line of damage taken, pickups collected and accuracy; {@code --} when no shot was fired. */
+    static String tallyStatsLine(SaveData.CompletionSummary sum) {
+        int accuracy = sum.accuracyPercent();
+        return "DAMAGE TAKEN: " + Math.round(sum.damageTaken) + "   PICKUPS: " + sum.pickupsCollected + "/"
+            + sum.pickupsTotal + "   ACCURACY: " + (accuracy < 0 ? "--" : accuracy + "%");
+    }
+
+    /**
+     * @return the tally's medal line: the medals this run earned, those earned for the first time between
+     *     asterisks, as in {@code MEDALS: *UNTOUCHED*  SWEEP}; a run that could earn none says so
+     */
+    static String tallyMedalLine(SaveData.CompletionSummary sum) {
+        if (!sum.medalsRecorded) return "TRAINING RUN - NO MEDALS";
+        if (sum.medals.isEmpty()) return "MEDALS: NONE";
+        StringBuilder line = new StringBuilder("MEDALS:");
+        boolean first = true;
+        for (Medal medal : Medal.values()) {
+            if (!sum.medals.contains(medal)) continue;
+            line.append(first ? " " : "  ");
+            first = false;
+            if (sum.newMedals.contains(medal)) line.append('*').append(medal.label).append('*');
+            else line.append(medal.label);
+        }
+        return line.toString();
     }
 
     static String formatTime(float seconds) {

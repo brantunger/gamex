@@ -188,4 +188,35 @@ class CorruptPrefsTest {
         assertEquals(0, save.getUnlockedStageIndex());
         assertFalse(menu.getActiveLoadout().hasScattergun);
     }
+
+    @Test
+    void nonFiniteStoredBestTimeCountsAsNoBestAndTheNextClearReplacesIt() {
+        for (float stored : new float[] {Float.NaN, Float.NEGATIVE_INFINITY}) {
+            MapKeyValueStore store = new MapKeyValueStore();
+            store.putFloat("best.01_outer_breach.NORMAL.time", stored);
+            SaveData save = new SaveData(store);
+            assertEquals(Float.POSITIVE_INFINITY, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 0f,
+                "a stored " + stored + " reads as never cleared");
+
+            SaveData.CompletionSummary summary = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
+                40f, 50f, 8, 8, 0f);
+
+            assertTrue(summary.newBestTime, "a clear after a stored " + stored + " is a new best");
+            assertEquals(40f, summary.bestTime, 1e-4f, "best after a stored " + stored);
+            assertEquals(40f, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 1e-4f);
+        }
+    }
+
+    @Test
+    void nanBestTimeTextInPreferencesDoesNotBlockANewBest() {
+        Map<String, String> values = new HashMap<>();
+        values.put("best.01_outer_breach.NORMAL.time", "NaN");
+        SaveData save = new SaveData(new GdxPreferencesStore(textPreferences(values)));
+
+        SaveData.CompletionSummary summary = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
+            40f, 50f, 8, 8, 0f);
+
+        assertTrue(summary.newBestTime, "a clear after a stored NaN text is a new best");
+        assertEquals(40f, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 1e-4f);
+    }
 }
