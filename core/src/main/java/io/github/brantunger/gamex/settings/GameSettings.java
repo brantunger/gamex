@@ -36,7 +36,10 @@ public final class GameSettings {
     private float masterVolume = DEFAULT_MASTER_VOLUME;
     private boolean fullscreen;
 
-    /** Loads settings from {@code store}, clamping any out-of-range values. */
+    /**
+     * Loads settings from {@code store}, clamping any out-of-range values; a stored NaN or infinity becomes the
+     * default.
+     */
     public static GameSettings load(KeyValueStore store) {
         GameSettings settings = new GameSettings();
         if (store == null) return settings;
@@ -66,7 +69,8 @@ public final class GameSettings {
     }
 
     public void setMouseSensitivity(float value) {
-        float clamped = Math.max(MIN_SENSITIVITY, Math.min(MAX_SENSITIVITY, value));
+        float finite = Float.isFinite(value) ? value : DEFAULT_SENSITIVITY;
+        float clamped = Math.max(MIN_SENSITIVITY, Math.min(MAX_SENSITIVITY, finite));
         mouseSensitivity = Math.round(clamped * 100f) / 100f;
     }
 
@@ -87,7 +91,8 @@ public final class GameSettings {
     }
 
     public void setFov(float value) {
-        float clamped = Math.max(MIN_FOV, Math.min(MAX_FOV, value));
+        float finite = Float.isFinite(value) ? value : DEFAULT_FOV;
+        float clamped = Math.max(MIN_FOV, Math.min(MAX_FOV, finite));
         fov = Math.round(clamped);
     }
 
@@ -108,7 +113,8 @@ public final class GameSettings {
     }
 
     public void setMasterVolume(float value) {
-        float clamped = Math.max(MIN_MASTER_VOLUME, Math.min(MAX_MASTER_VOLUME, value));
+        float finite = Float.isFinite(value) ? value : DEFAULT_MASTER_VOLUME;
+        float clamped = Math.max(MIN_MASTER_VOLUME, Math.min(MAX_MASTER_VOLUME, finite));
         masterVolume = Math.round(clamped * 100f) / 100f;
     }
 

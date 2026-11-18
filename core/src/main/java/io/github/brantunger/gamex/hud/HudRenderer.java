@@ -71,12 +71,7 @@ public final class HudRenderer implements Disposable {
         batch.begin();
 
         MenuState.Screen screen = menuState.getScreen();
-        if (screen == MenuState.Screen.PLAYING
-            || screen == MenuState.Screen.PAUSED
-            || screen == MenuState.Screen.DEAD
-            || (screen == MenuState.Screen.SETTINGS && simulation != null && !simulation.isLevelCleared())) {
-            if (simulation != null) drawCombatHud(simulation);
-        }
+        if (showsCombatHud(menuState, simulation)) drawCombatHud(simulation);
 
         switch (screen) {
             case TITLE:
@@ -110,6 +105,27 @@ public final class HudRenderer implements Disposable {
 
         batch.setColor(1f, 1f, 1f, 1f);
         batch.end();
+    }
+
+    /**
+     * @param menuState the menu state
+     * @param simulation the simulation behind the overlay, or null
+     * @return whether the combat HUD is drawn under the active screen: in play, on the Pause and Death screens, and
+     *     on Settings when it was opened from Pause over a stage that is not cleared. Settings opened from the Title
+     *     has no run behind it, so it shows no combat HUD.
+     */
+    static boolean showsCombatHud(MenuState menuState, GameSimulation simulation) {
+        if (simulation == null) return false;
+        switch (menuState.getScreen()) {
+            case PLAYING:
+            case PAUSED:
+            case DEAD:
+                return true;
+            case SETTINGS:
+                return menuState.getSettingsReturnScreen() == MenuState.Screen.PAUSED && !simulation.isLevelCleared();
+            default:
+                return false;
+        }
     }
 
     /**
@@ -590,6 +606,7 @@ public final class HudRenderer implements Disposable {
             3f * unit);
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.TITLE));
+        drawQuitPrompt(menuState, cx, cy - 222f * unit);
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
         PixelFont.drawCentred(batch, textures.white,
@@ -655,6 +672,7 @@ public final class HudRenderer implements Disposable {
         batch.setColor(0.8f, 0.72f, 1f, 1f);
         PixelFont.drawCentred(batch, textures.white, "PAUSED", cx, cy + 114f * unit, 6.5f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.PAUSED));
+        drawQuitPrompt(menuState, cx, cy - 178f * unit);
     }
 
     private void drawSettingsScreen(MenuState menuState) {
@@ -735,6 +753,13 @@ public final class HudRenderer implements Disposable {
         }
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.INTERMISSION));
+    }
+
+    /** Draws the quit confirmation under the option rows while a first press of the quit key is pending. */
+    private void drawQuitPrompt(MenuState menuState, float cx, float y) {
+        if (!menuState.isQuitPromptVisible()) return;
+        batch.setColor(1f, 0.72f, 0.30f, 0.95f);
+        PixelFont.drawCentred(batch, textures.white, MenuState.QUIT_PROMPT, cx, y, 2.8f * unit);
     }
 
     private void drawBackdropShade(float alpha) {
