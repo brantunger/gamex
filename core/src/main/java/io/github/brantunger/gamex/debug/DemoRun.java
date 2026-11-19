@@ -27,8 +27,9 @@ import java.util.zip.Deflater;
  *  range targets. Set to {@code raillance} to engage 1.8x tactical zoom down the Security Hub corridor and fire a
  *  piercing Rail Lance beam. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer
  *  Breach, {@code title} shows the Title screen over Outer Breach, {@code lockdown} opens a bulkhead door in Stage 04,
- *  {@code stages} shows the unlocked 6-stage Select Stage screen, {@code warden} stages the Stage 06 Warden Mech
- *  boss encounter across live Shock Grates, and {@code jump} vaults airborne over the Training Range Shock Grate.</li>
+ *  {@code stages} shows the unlocked 6-stage Select Stage screen, {@code warden} stages the Stage 06 Warden
+ *  boss encounter across live Shock Grates, {@code wardenidle} watches the Warden stand before it has noticed the
+ *  player, and {@code jump} vaults airborne over the Training Range Shock Grate.</li>
  *  <li>{@code GAMEX_VIEWMODEL_ORBIT}: set to {@code yaw} or {@code yaw,pitch} in degrees to draw only the pistol and
  *  hand, on a plain background, seen from outside: 0 is from behind, 90 the left side, 180 the front, and a pitch
  *  of 90 is from above.</li>

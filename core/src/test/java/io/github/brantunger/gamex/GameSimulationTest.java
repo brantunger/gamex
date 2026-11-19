@@ -940,17 +940,17 @@ class GameSimulationTest {
         // Move close to sealed M bulkhead and verify prompt + locked toast.
         sim.player.position.set(4.5f, 1.3f);
         sim.player.look(90f, 0f); // face south toward M at (4.5, 2.5)
-        assertEquals("SEALED BY WARDEN MECH", sim.getInteractionPrompt());
+        assertEquals("SEALED BY THE WARDEN", sim.getInteractionPrompt());
         input.interact = true;
         sim.update(FRAME, input);
         input.interact = false;
-        assertEquals("SEALED BY WARDEN MECH", sim.getToastMessage());
+        assertEquals("SEALED BY THE WARDEN", sim.getToastMessage());
         assertFalse(bossDoor.isOpening());
 
         // Turn back toward Warden and drop HP below 50%: wakes HUD boss bar & triggers Overdrive event.
         sim.player.look(-90f, 0f);
         sim.drainSoundEvents();
-        warden.damage(320f);
+        warden.damage(470f);
         sim.update(FRAME, input);
         assertNotNull(sim.getActiveBoss());
         assertTrue(sim.getActiveBoss().isOverdrive());
@@ -1048,7 +1048,7 @@ class GameSimulationTest {
     }
 
     @Test
-    void railLancePiercesTargetsSpawnsBeamAndScalesWardenBossPlating() {
+    void railLancePiercesTargetsSpawnsBeamAndDoesLessToTheWarden() {
         GameSimulation sim = new GameSimulation(
             GameMap.parse(
                 "#############",
@@ -1071,7 +1071,7 @@ class GameSimulationTest {
         for (int i = 0; i < 24; i++) sim.update(FRAME, input);
         assertTrue(sim.railBeams.isEmpty(), "Rail beam trail decays and removes after DURATION");
 
-        // Warden Mech boss plating reduces 120 base Rail Lance damage to 90 (75%).
+        // The Warden's hide reduces 120 base Rail Lance damage to 90 (75%).
         GameSimulation bossSim = new GameSimulation(
             GameMap.parse(
                 "###########",

@@ -128,7 +128,8 @@ class EnemyMovementTest {
         List<Damageable> solids = solidsExcept(sim, warden);
         Vector2 at = new Vector2();
 
-        // Its fan volleys reach the player from the alcove, so progress is measured by position, not by damage.
+        // The test is about leaving the alcove, so progress is measured by position; the Warden can hurt the
+        // player only once it reaches them.
         boolean leftAlcove = false;
         for (int i = 0; i < 60 * 15 && !sim.player.isDead() && !leftAlcove; i++) {
             warden.alert();

@@ -102,10 +102,6 @@ public final class SoundSynth {
                 samples = renderHazardZap();
                 peakScale = 22_000.0;
                 break;
-            case BOSS_SHOOT:
-                samples = renderBossShoot();
-                peakScale = 27_000.0;
-                break;
             case BOSS_SLAM:
                 samples = renderBossSlam();
                 peakScale = 30_000.0;
@@ -808,29 +804,6 @@ public final class SoundSynth {
                 + 0.45 * StrictMath.sin(TWO_PI * 720.0 * t)) * mod;
             double env = (1.0 - StrictMath.exp(-t / 0.004)) * StrictMath.exp(-t / 0.048);
             buf[i] = StrictMath.tanh((hp * 0.85 + buzz * 0.70) * env * 1.4);
-        }
-        return buf;
-    }
-
-    private static double[] renderBossShoot() {
-        double[] buf = alloc(0.20);
-        double phase = 0.0;
-        double subPhase = 0.0;
-        int rng = 0xB055F12E;
-        double lp = 0.0;
-        for (int i = 0; i < buf.length; i++) {
-            double t = (double) i / SAMPLE_RATE;
-            double freq = 140.0 + 380.0 * StrictMath.exp(-t / 0.045);
-            double subFreq = 64.0 + 95.0 * StrictMath.exp(-t / 0.040);
-            phase += TWO_PI * freq / SAMPLE_RATE;
-            subPhase += TWO_PI * subFreq / SAMPLE_RATE;
-            rng = nextRng(rng);
-            lp += 0.25 * (rngFloat(rng) - lp);
-            double plasma = (0.65 * StrictMath.sin(phase) + 0.25 * StrictMath.sin(phase * 2.0))
-                * StrictMath.exp(-t / 0.075);
-            double thump = StrictMath.sin(subPhase) * StrictMath.exp(-t / 0.055) * 0.75;
-            double crack = lp * StrictMath.exp(-t / 0.025) * 0.45;
-            buf[i] = StrictMath.tanh((plasma + thump + crack) * 1.35);
         }
         return buf;
     }

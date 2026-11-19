@@ -407,9 +407,6 @@ public final class ModelPreviewApp extends ApplicationAdapter {
                 + handIndexed.vertexCount();
             vmRail.rawVertices = vmRail.totalTriangles * 3;
 
-            addWorldEntry(loaded, dir, "enemy-warden.obj", 0f, Enemy.Kind.WARDEN.height * 0.5f, 0f, 1.55f,
-                Enemy.Kind.WARDEN.radius, Enemy.Kind.WARDEN.height,
-                "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
             addWorldEntry(loaded, dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
                 Enemy.Kind.GUARD.radius, Enemy.Kind.GUARD.height,
                 "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
@@ -637,18 +634,6 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             if (animate) {
                 float boltKick = Math.max(0f, MathUtils.sin(time * 2.8f)) * RailLanceModel.BOLT_TRAVEL;
                 animRotations.put("bolt", new Matrix4().setToTranslation(0f, 0f, boltKick));
-            }
-        } else if (entry.label.equals("enemy-warden.obj")) {
-            boolean overdrive = Math.floorMod(accentIndex, 2) == 1;
-            accent = overdrive ? WorldModels.ACCENT_WARDEN_OVERDRIVE : WorldModels.ACCENT_WARDEN_PHASE1;
-            accentLabel = overdrive ? "OVERDRIVE" : "PHASE1";
-            if (animate) {
-                float swing = MathUtils.sin(time * 5.2f);
-                rootMat.translate(0f, Math.abs(swing) * 0.016f, 0f);
-                animRotations.put("leg_l", new Matrix4().setToRotation(Vector3.X, swing * 22f));
-                animRotations.put("leg_r", new Matrix4().setToRotation(Vector3.X, -swing * 22f));
-                animRotations.put("arm_l", new Matrix4().setToRotation(Vector3.X, -swing * 12f));
-                animRotations.put("arm_r", new Matrix4().setToRotation(Vector3.X, swing * 12f));
             }
         } else if (entry.label.equals("enemy-guard.obj") && animate) {
             float swing = MathUtils.sin(time * 6f);

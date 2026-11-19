@@ -28,7 +28,6 @@ import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.RayHit;
 import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
-import io.github.brantunger.gamex.world.WorldModels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,8 +113,8 @@ public final class GameSimulation {
     public static final String OBJECTIVE_CYAN_KEYCARD = "FIND THE CYAN KEYCARD";
     /** Objective while a lockdown bulkhead bars the way and no security console is overridden. */
     public static final String OBJECTIVE_CONSOLE = "OVERRIDE THE SECURITY CONSOLE";
-    /** Objective while a living Warden Mech seals the way. */
-    public static final String OBJECTIVE_WARDEN = "DESTROY THE WARDEN MECH";
+    /** Objective while a living Warden seals the way. */
+    public static final String OBJECTIVE_WARDEN = "DESTROY THE WARDEN";
     /** Objective once nothing bars the way to the exit pad. */
     public static final String OBJECTIVE_EXIT = "REACH EXIT PAD";
     /** Objective of a stage without an exit that clears once every target is destroyed. */
@@ -546,20 +545,17 @@ public final class GameSimulation {
                         new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ()), Vector3.Y, 1.6f));
                     showToast("WARDEN OVERDRIVE");
                 }
-                if (enemy.consumeSlamTriggered()) {
-                    emitWorldSound(SoundEvent.Type.BOSS_SLAM, enemy.getX(), 0.25f, enemy.getZ(), 1.15f);
+                // Each punch of the Warden's combo is heard, whether it lands or not.
+                for (int punch = enemy.consumePunchesThrown(); punch > 0; punch--) {
+                    log.debug("{} threw a punch at {} s; {} of this combo have landed", enemy.getKind(),
+                        roundedTime(), enemy.getPunchesLanded());
+                    emitWorldSound(SoundEvent.Type.BOSS_SLAM, enemy.getX(), enemy.getHeight() * 0.6f, enemy.getZ(),
+                        1.15f);
                 }
-                if (enemyProjectiles.size() > boltsBefore) {
-                    if (enemy.getKind() == Enemy.Kind.WARDEN) {
-                        emitWorldSound(SoundEvent.Type.BOSS_SHOOT,
-                            enemy.getX(), WorldModels.WARDEN_MUZZLE_Y, enemy.getZ(), 1.1f);
-                    } else {
-                        for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
-                            EnemyProjectile bolt = enemyProjectiles.get(b);
-                            emitWorldSound(SoundEvent.Type.ENEMY_SHOOT,
-                                bolt.position.x, bolt.position.y, bolt.position.z, 1f);
-                        }
-                    }
+                for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
+                    EnemyProjectile bolt = enemyProjectiles.get(b);
+                    emitWorldSound(SoundEvent.Type.ENEMY_SHOOT,
+                        bolt.position.x, bolt.position.y, bolt.position.z, 1f);
                 }
                 if (enemy.getKind() == Enemy.Kind.DRONE && stateBefore != Enemy.State.LUNGING
                     && enemy.getState() == Enemy.State.LUNGING) {
@@ -781,14 +777,14 @@ public final class GameSimulation {
             case LOCKDOWN:
                 return "SEALED BY SECURITY CONSOLE";
             case BOSS:
-                return "SEALED BY WARDEN MECH";
+                return "SEALED BY THE WARDEN";
             case NONE:
             default:
                 return "[E] OPEN BULKHEAD";
         }
     }
 
-    /** @return the active alerted live Warden Mech boss for HUD display, or {@code null} when dormant or dead. */
+    /** @return the active alerted live Warden for HUD display, or {@code null} when dormant or dead. */
     public Enemy getActiveBoss() {
         for (int i = 0; i < enemies.size(); i++) {
             Enemy enemy = enemies.get(i);
@@ -1231,7 +1227,7 @@ public final class GameSimulation {
                 }
                 break;
             case BOSS:
-                showToast("SEALED BY WARDEN MECH");
+                showToast("SEALED BY THE WARDEN");
                 emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 break;
             case LOCKDOWN:

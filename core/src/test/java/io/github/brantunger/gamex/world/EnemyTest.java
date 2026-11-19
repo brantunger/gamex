@@ -170,45 +170,45 @@ class EnemyTest {
     }
 
     @Test
-    void wardenTransitionsIntoOverdriveAtHalfHealthFiringFiveBoltFansAndChargeSlams() {
-        assertEquals(600f, Enemy.Kind.WARDEN.maxHealth, 1e-6f);
+    void wardenEntersOverdriveOnceAtHalfHealth() {
+        assertEquals(900f, Enemy.Kind.WARDEN.maxHealth, 1e-6f);
+        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 9.5f, 1.5f, 270f);
+        assertFalse(warden.isOverdrive());
+        assertFalse(warden.consumeOverdriveTriggered());
+
+        warden.damage(440f);
+        assertFalse(warden.isOverdrive(), "460 of 900 health is above half");
+        assertFalse(warden.consumeOverdriveTriggered());
+
+        warden.damage(10f);
+        assertTrue(warden.isOverdrive(), "half health is overdrive");
+        assertTrue(warden.consumeOverdriveTriggered());
+        assertFalse(warden.consumeOverdriveTriggered(), "reported once");
+
+        warden.damage(50f);
+        assertFalse(warden.consumeOverdriveTriggered(), "and entered once");
+    }
+
+    @Test
+    void wardenFiresNoProjectilesAtAnyRange() {
         GameMap arena = GameMap.parse(
             "###############",
             "#>............#",
             "#.............#",
             "###############");
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 9.5f, 1.5f, 270f);
-        Player player = new Player(1.5f, 1.5f, 90f);
-        List<EnemyProjectile> bolts = new ArrayList<>();
-        Pathfinder pf = new Pathfinder();
-
-        // Phase 1 (> 50% HP): first volley spawns a 3-bolt fan.
-        assertFalse(warden.isOverdrive());
-        for (int i = 0; i < 60 && bolts.isEmpty(); i++) {
-            warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+        for (float health : new float[] {900f, 400f}) {
+            Enemy warden = new Enemy(Enemy.Kind.WARDEN, 12.5f, 1.5f, 270f);
+            warden.damage(900f - health);
+            Player player = new Player(1.5f, 1.5f, 90f, 100f, 100f);
+            List<EnemyProjectile> bolts = new ArrayList<>();
+            Pathfinder pf = new Pathfinder();
+            // Long enough to see the player, run the length of the room and throw combos at them.
+            for (int i = 0; i < 600 && !player.isDead(); i++) {
+                warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            }
+            assertTrue(bolts.isEmpty(), "the Warden is melee only; at " + health + " health it fired " + bolts.size());
+            assertTrue(player.getHealth() + player.getArmor() < 200f, "it reached the player and punched them");
         }
-        assertEquals(Enemy.WARDEN_FAN_PHASE1, bolts.size(), "Phase 1 volley must emit 3 bolts");
-        assertFalse(warden.consumeOverdriveTriggered());
-
-        // Dropping health to <= 50% (300 HP) triggers Overdrive once and upgrades next volley to a 5-bolt fan.
-        warden.damage(310f);
-        assertTrue(warden.isOverdrive());
-        assertTrue(warden.consumeOverdriveTriggered());
-        assertFalse(warden.consumeOverdriveTriggered());
-
-        bolts.clear();
-        for (int i = 0; i < 120 && bolts.isEmpty(); i++) {
-            warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
-        }
-        assertEquals(Enemy.WARDEN_FAN_PHASE2, bolts.size(), "Phase 2 Overdrive volley must emit 5 bolts");
-
-        // At close range (<= WARDEN_SLAM_TRIGGER_RANGE), Warden winds up and deals a hydraulic charge slam.
-        Enemy slamWarden = new Enemy(Enemy.Kind.WARDEN, 4.0f, 1.5f, 270f);
-        Player closeTarget = new Player(2.5f, 1.5f, 90f);
-        for (int i = 0; i < 65; i++) {
-            slamWarden.update(DT, arena, pf, closeTarget, Difficulty.NORMAL, Collections.emptyList(), null);
-        }
-        assertTrue(closeTarget.getHealth() < Player.MAX_HEALTH, "Charge slam should hit close stationary target");
     }
 
     @Test
@@ -244,24 +244,24 @@ class EnemyTest {
         assertFalse(Collision.overlapsWall(corridor, Collections.emptyList(),
             drone.getX(), drone.getZ(), drone.getRadius()), "drone pushed into corridor wall");
 
-        // Warden charge slam in the same 1.0u-wide corridor when direct radial pushback hits the east wall.
+        // Warden combo in the same 1.0u-wide corridor: its lunges stop at a player who steps against the west wall.
         Enemy warden = new Enemy(Enemy.Kind.WARDEN, 1.55f, 2.50f, 180f);
         Player wPlayer = new Player(1.55f, 3.80f, 0f);
-        for (int i = 0; i < 60 && warden.getState() != Enemy.State.LUNGING; i++) {
+        for (int i = 0; i < 60 && warden.getState() != Enemy.State.WINDUP; i++) {
             warden.update(DT, corridor, pf, wPlayer, Difficulty.NORMAL, Collections.emptyList(), null);
         }
-        assertEquals(Enemy.State.LUNGING, warden.getState());
-        wPlayer.position.set(1.30f, warden.getZ() + 0.20f);
-        for (int i = 0; i < 30 && warden.getState() != Enemy.State.RECOVERING; i++) {
+        assertEquals(Enemy.State.WINDUP, warden.getState());
+        wPlayer.position.set(1.30f, wPlayer.position.y);
+        for (int i = 0; i < 200 && warden.getState() != Enemy.State.RECOVERING; i++) {
             warden.update(DT, corridor, pf, wPlayer, Difficulty.NORMAL, Collections.emptyList(), null);
+            float wardenDist = Vector2.dst(warden.getX(), warden.getZ(), wPlayer.position.x, wPlayer.position.y);
+            assertTrue(wardenDist >= Player.RADIUS + warden.getRadius() - 1e-4f,
+                "warden lunged inside player at dist=" + wardenDist);
+            assertFalse(Collision.overlapsWall(corridor, Collections.emptyList(),
+                warden.getX(), warden.getZ(), warden.getRadius()), "warden pushed into corridor wall");
         }
         assertEquals(Enemy.State.RECOVERING, warden.getState());
         assertTrue(wPlayer.getHealth() < Player.MAX_HEALTH);
-        float wardenDist = Vector2.dst(warden.getX(), warden.getZ(), wPlayer.position.x, wPlayer.position.y);
-        assertTrue(wardenDist >= Player.RADIUS + warden.getRadius() - 1e-4f,
-            "warden stayed clipped inside player at dist=" + wardenDist);
-        assertFalse(Collision.overlapsWall(corridor, Collections.emptyList(),
-            warden.getX(), warden.getZ(), warden.getRadius()), "warden pushed into corridor wall");
     }
 
     @Test
@@ -295,28 +295,32 @@ class EnemyTest {
             drone.getX(), drone.getZ(), drone.getRadius()));
         assertFalse(Collision.overlapsSolid(blockers, new Vector2(drone.getX(), drone.getZ()), drone.getRadius()));
 
-        // Warden lunges diagonally into NW corner while a SecurityConsole blocks direct radial pushback.
+        // Warden combo diagonally into NW corner beside a SecurityConsole: its lunges stop at the player.
         Enemy warden = new Enemy(Enemy.Kind.WARDEN, 1.95f, 1.95f, 315f);
         Player wPlayer = new Player(1.32f, 1.32f, 135f);
         SecurityConsole console = new SecurityConsole(2.05f, 1.32f);
         List<Damageable> wBlockers = Collections.singletonList(console);
-        for (int i = 0; i < 60 && warden.getState() != Enemy.State.LUNGING; i++) {
+        for (int i = 0; i < 60 && warden.getState() != Enemy.State.WINDUP; i++) {
             warden.update(DT, room, pf, wPlayer, Difficulty.NORMAL, wBlockers, null);
         }
-        assertEquals(Enemy.State.LUNGING, warden.getState());
+        assertEquals(Enemy.State.WINDUP, warden.getState());
         wPlayer.position.set(1.45f, 1.56f);
-        warden.update(0.06f, room, pf, wPlayer, Difficulty.NORMAL, wBlockers, null);
+        for (int i = 0; i < 200 && warden.getState() != Enemy.State.RECOVERING; i++) {
+            warden.update(DT, room, pf, wPlayer, Difficulty.NORMAL, wBlockers, null);
+            float wardenDist = Vector2.dst(warden.getX(), warden.getZ(), wPlayer.position.x, wPlayer.position.y);
+            assertTrue(wardenDist >= Player.RADIUS + warden.getRadius() - 1e-4f,
+                "corner warden lunged inside player at dist=" + wardenDist);
+            assertFalse(Collision.overlapsWall(room, Collections.emptyList(),
+                warden.getX(), warden.getZ(), warden.getRadius()));
+            assertFalse(Collision.overlapsSolid(wBlockers, new Vector2(warden.getX(), warden.getZ()),
+                warden.getRadius()));
+        }
         assertEquals(Enemy.State.RECOVERING, warden.getState());
-        float wardenDist = Vector2.dst(warden.getX(), warden.getZ(), wPlayer.position.x, wPlayer.position.y);
-        assertTrue(wardenDist >= Player.RADIUS + warden.getRadius() - 1e-4f,
-            "corner warden stayed inside player at dist=" + wardenDist);
-        assertFalse(Collision.overlapsWall(room, Collections.emptyList(),
-            warden.getX(), warden.getZ(), warden.getRadius()));
-        assertFalse(Collision.overlapsSolid(wBlockers, new Vector2(warden.getX(), warden.getZ()), warden.getRadius()));
+        assertTrue(wPlayer.getHealth() < Player.MAX_HEALTH);
     }
 
     @Test
-    void wardenAcrossBlockingPropWithinStopRangeSidestepsAndFiresVolleysInsteadOfBlockedSlams() {
+    void wardenAcrossBlockingPropSidestepsRoundItAndPunchesInsteadOfStartingABlockedCombo() {
         GameMap arena = GameMap.parse(
             "#########",
             "#.......#",
@@ -327,26 +331,25 @@ class EnemyTest {
         assertWardenClearsBlockingProp(arena, new Target(Target.Kind.CANISTER, 4.50f, 2.50f));
         assertWardenClearsBlockingProp(arena, new Enemy(Enemy.Kind.TURRET, 4.50f, 2.50f, 90f));
 
-        // Unobstructed close-range slam (even with a SecurityConsole behind the player) still triggers immediately.
+        // Unobstructed close-range combo (even with a SecurityConsole behind the player) still starts at once.
         Enemy unobstructed = new Enemy(Enemy.Kind.WARDEN, 3.85f, 2.50f, 90f);
         Player openPlayer = new Player(5.00f, 2.50f, 270f);
         SecurityConsole behindPlayer = new SecurityConsole(6.00f, 2.50f);
         List<EnemyProjectile> openBolts = new ArrayList<>();
         Pathfinder pf = new Pathfinder();
-        boolean slammed = false;
-        for (int i = 0; i < 65; i++) {
+        int punches = 0;
+        for (int i = 0; i < 120; i++) {
             unobstructed.update(DT, arena, pf, openPlayer, Difficulty.NORMAL,
                 Collections.singletonList(behindPlayer), openBolts);
-            if (unobstructed.consumeSlamTriggered()) {
-                slammed = true;
-            }
+            punches += unobstructed.consumePunchesThrown();
         }
-        assertTrue(slammed, "Unobstructed close-range Warden must still trigger charge slam");
-        assertTrue(openPlayer.getHealth() < Player.MAX_HEALTH, "Unobstructed slam must damage player");
+        assertTrue(punches > 0, "Unobstructed close-range Warden must still throw its combo");
+        assertTrue(openPlayer.getHealth() < Player.MAX_HEALTH, "Unobstructed combo must damage player");
+        assertTrue(openBolts.isEmpty());
     }
 
     private static void assertWardenClearsBlockingProp(GameMap arena, Damageable prop) {
-        // Warden (3.95, 2.50) and Player (5.00, 2.50) start at dist = 1.05 <= 1.35 across prop at (4.50, 2.50).
+        // Warden (3.95, 2.50) and Player (5.00, 2.50) start at dist = 1.05 across prop at (4.50, 2.50).
         Enemy warden = new Enemy(Enemy.Kind.WARDEN, 3.95f, 2.50f, 90f);
         Player player = new Player(5.00f, 2.50f, 270f);
         List<Damageable> blockers = Collections.singletonList(prop);
@@ -358,19 +361,16 @@ class EnemyTest {
         for (int i = 0; i < 240; i++) {
             warden.update(DT, arena, pf, player, Difficulty.NORMAL, blockers, bolts);
             if (warden.getX() < 4.15f && Math.abs(warden.getZ() - 2.50f) < 0.25f) {
-                assertFalse(warden.consumeSlamTriggered(),
-                    "Warden must not launch blocked 0-damage slam straight into " + prop.getClass().getSimpleName());
-            } else {
-                warden.consumeSlamTriggered();
+                assertFalse(warden.getState() == Enemy.State.WINDUP,
+                    "Warden must not start a blocked combo straight into " + prop.getClass().getSimpleName());
             }
             if (warden.getX() > 4.30f && Math.abs(warden.getZ() - 2.50f) > 0.25f) {
                 sidesteppedAroundProp = true;
             }
         }
-        assertTrue(bolts.size() >= Enemy.WARDEN_FAN_PHASE1,
-            "Warden should fire plasma fan volley when slam path is blocked by " + prop.getClass().getSimpleName());
+        assertTrue(bolts.isEmpty(), "Warden is melee only and fires nothing across " + prop.getClass().getSimpleName());
         assertTrue(sidesteppedAroundProp,
-            "Warden must sidestep around " + prop.getClass().getSimpleName() + " instead of freezing at dist <= 1.35");
+            "Warden must sidestep around " + prop.getClass().getSimpleName() + " instead of freezing behind it");
         assertTrue(player.getHealth() < Player.MAX_HEALTH,
             "Warden must reach and damage player after rounding " + prop.getClass().getSimpleName());
     }
@@ -625,7 +625,7 @@ class EnemyTest {
     }
 
     @Test
-    void wardenSlamLaunchUsesRateLimitedYawWhenPlayerDashesBehindDuringTelegraph() {
+    void wardenComboLungesAlongRateLimitedYawWhenPlayerDashesBehindBeforeTheFirstPunch() {
         GameMap arena = GameMap.parse(
             "###########",
             "#.........#",
@@ -641,28 +641,28 @@ class EnemyTest {
         Enemy warden = new Enemy(Enemy.Kind.WARDEN, 5.5f, 5.5f, 270f);
         Player player = new Player(4.1f, 5.5f, 90f);
 
-        for (int i = 0; i < 60 && !(warden.getState() == Enemy.State.WINDUP
-            && warden.isSlamAttack() && warden.getWindupProgress() >= 0.5f); i++) {
+        for (int i = 0; i < 120 && !(warden.getState() == Enemy.State.WINDUP && warden.getComboTime() >= 0.15f); i++) {
             warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.WINDUP, warden.getState());
-        assertTrue(warden.isSlamAttack());
+        assertEquals(0, warden.consumePunchesThrown(), "the first punch has not been thrown yet");
 
-        // Dash 180 deg behind the Warden halfway through the 0.42s telegraph.
+        // Dash 180 deg behind the Warden before the lunge into its first punch starts.
         player.position.set(7.2f, 5.5f);
         float preLaunchX = warden.getX();
-        for (int i = 0; i < 45 && warden.getState() != Enemy.State.RECOVERING; i++) {
+        for (int i = 0; i < 200 && warden.getState() != Enemy.State.RECOVERING; i++) {
             warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.RECOVERING, warden.getState());
         assertTrue(warden.getX() < preLaunchX - 0.5f,
-            "Warden snapped backwards on slam launch instead of launching along rate-limited yaw: x=" + warden.getX());
+            "Warden snapped backwards in its combo instead of lunging along rate-limited yaw: x=" + warden.getX());
+        assertEquals(0, warden.getPunchesLanded());
         assertEquals(Player.MAX_HEALTH, player.getHealth(), 1e-4f,
-            "Player who dashed behind Warden during slam telegraph must dodge cleanly");
+            "Player who dashed behind Warden before its first punch must dodge cleanly");
     }
 
     @Test
-    void guardAndWardenRequireForwardArcBeforeWindupAndClampVolleysWhenFlanked() {
+    void guardRequiresForwardArcBeforeWindupAndClampsItsBoltWhenFlanked() {
         GameMap arena = GameMap.parse(
             "#############",
             "#...........#",
@@ -677,69 +677,47 @@ class EnemyTest {
             "#############");
         Pathfinder pf = new Pathfinder();
 
-        // 1. Woken from 180 deg behind: after WAKE_COOLDOWN (0.25s -> 18 frames = 0.30s), neither Guard nor Warden
-        // has turned within the forward firing arc yet, so neither may initiate WINDUP backwards.
+        // 1. Woken from 180 deg behind: after WAKE_COOLDOWN (0.25s -> 18 frames = 0.30s), the Guard has not turned
+        // within the forward firing arc yet, so it may not initiate WINDUP backwards.
         Enemy rearGuard = new Enemy(Enemy.Kind.GUARD, 5.5f, 5.5f, 0f);
-        Enemy rearWarden = new Enemy(Enemy.Kind.WARDEN, 5.5f, 5.5f, 0f);
         Player behindPlayer = new Player(5.5f, 8.3f, 0f);
         List<EnemyProjectile> rearGuardBolts = new ArrayList<>();
-        List<EnemyProjectile> rearWardenBolts = new ArrayList<>();
 
         for (int i = 0; i < 18; i++) {
             rearGuard.update(DT, arena, pf, behindPlayer, Difficulty.NORMAL, Collections.emptyList(), rearGuardBolts);
-            rearWarden.update(DT, arena, pf, behindPlayer, Difficulty.NORMAL, Collections.emptyList(), rearWardenBolts);
         }
         assertEquals(Enemy.State.PURSUING, rearGuard.getState(), "Guard started WINDUP while still facing away");
-        assertEquals(Enemy.State.PURSUING, rearWarden.getState(), "Warden started WINDUP while still facing away");
         assertTrue(rearGuardBolts.isEmpty());
-        assertTrue(rearWardenBolts.isEmpty());
 
-        // Once they finish turning into their forward firing arc, both enter WINDUP and fire cleanly.
+        // Once it finishes turning into its forward firing arc, it enters WINDUP and fires cleanly.
         for (int i = 0; i < 65; i++) {
             rearGuard.update(DT, arena, pf, behindPlayer, Difficulty.NORMAL, Collections.emptyList(), rearGuardBolts);
-            rearWarden.update(DT, arena, pf, behindPlayer, Difficulty.NORMAL, Collections.emptyList(), rearWardenBolts);
         }
         assertFalse(rearGuardBolts.isEmpty(), "Guard should fire after turning to face player");
-        assertEquals(Enemy.WARDEN_FAN_PHASE1, rearWardenBolts.size(), "Warden should fire volley after turning to face player");
 
-        // 2. Flanking 180 deg behind right before ranged WINDUP completes: emitted bolts stay clamped to forward arc.
+        // 2. Flanking 180 deg behind right before ranged WINDUP completes: the emitted bolt stays clamped to forward arc.
         Enemy flankedGuard = new Enemy(Enemy.Kind.GUARD, 5.5f, 5.5f, 90f);
-        Enemy flankedWarden = new Enemy(Enemy.Kind.WARDEN, 5.5f, 5.5f, 90f);
         Player runner = new Player(9.0f, 5.5f, 270f);
         List<EnemyProjectile> guardVolley = new ArrayList<>();
-        List<EnemyProjectile> wardenVolley = new ArrayList<>();
 
         for (int i = 0; i < 60 && !(flankedGuard.getState() == Enemy.State.WINDUP
             && flankedGuard.getWindupProgress() > 0.90f); i++) {
             flankedGuard.update(DT, arena, pf, runner, Difficulty.NORMAL, Collections.emptyList(), guardVolley);
         }
-        for (int i = 0; i < 60 && !(flankedWarden.getState() == Enemy.State.WINDUP
-            && flankedWarden.getWindupProgress() > 0.92f); i++) {
-            flankedWarden.update(DT, arena, pf, runner, Difficulty.NORMAL, Collections.emptyList(), wardenVolley);
-        }
         assertTrue(guardVolley.isEmpty());
-        assertTrue(wardenVolley.isEmpty());
 
-        runner.position.set(3.5f, 5.5f); // teleported 180 deg behind (-X) while both face +X (yaw ~ 90)
+        runner.position.set(3.5f, 5.5f); // teleported 180 deg behind (-X) while the Guard faces +X (yaw ~ 90)
         for (int i = 0; i < 10 && guardVolley.isEmpty(); i++) {
             flankedGuard.update(DT, arena, pf, runner, Difficulty.NORMAL, Collections.emptyList(), guardVolley);
         }
-        for (int i = 0; i < 10 && wardenVolley.isEmpty(); i++) {
-            flankedWarden.update(DT, arena, pf, runner, Difficulty.NORMAL, Collections.emptyList(), wardenVolley);
-        }
         assertEquals(1, guardVolley.size());
-        assertEquals(Enemy.WARDEN_FAN_PHASE1, wardenVolley.size());
 
         Vector3 guardDir = measureBoltDirection(guardVolley.get(0), arena);
         assertTrue(guardDir.x > 0.5f, "flanked Guard fired backwards through torso: " + guardDir);
-        for (EnemyProjectile wBolt : wardenVolley) {
-            Vector3 wDir = measureBoltDirection(wBolt, arena);
-            assertTrue(wDir.x > 0.4f, "flanked Warden fired fan bolt backwards through torso: " + wDir);
-        }
     }
 
     @Test
-    void wallAndDoorHuggingEnemiesPullProtrudingMuzzlesClearSoBoltsFlyCleanly() {
+    void wallAndDoorHuggingGuardsPullProtrudingMuzzlesClearSoBoltsFlyCleanly() {
         GameMap alcove = GameMap.parse(
             "#######",
             "##...##",
@@ -776,28 +754,7 @@ class EnemyTest {
         assertTrue(guardTarget.getHealth() < Player.MAX_HEALTH,
             "wall-hugging Guard bolt detonated on shoulder wall instead of reaching player");
 
-        // 2. Wall-hugging Phase 2 Overdrive Warden whose right cannon protrudes past radius=0.32 into < 2.075 beside wall x = 2.0.
-        Enemy wallWarden = new Enemy(Enemy.Kind.WARDEN, 2.32f, 4.20f, 196f);
-        wallWarden.damage(310f);
-        assertTrue(wallWarden.isOverdrive());
-        Player wardenTarget = new Player(1.35f, 8.50f, 0f);
-        List<EnemyProjectile> wardenBolts = new ArrayList<>();
-        for (int i = 0; i < 60 && wardenBolts.isEmpty(); i++) {
-            wallWarden.update(DT, alcove, null, wardenTarget, Difficulty.NORMAL, Collections.emptyList(), wardenBolts);
-        }
-        assertEquals(Enemy.WARDEN_FAN_PHASE2, wardenBolts.size());
-        for (EnemyProjectile wBolt : wardenBolts) {
-            assertFalse(Collision.overlapsWall(alcove, Collections.emptyList(),
-                wBolt.position.x, wBolt.position.z, EnemyProjectile.RADIUS),
-                "wall-hugging Warden bolt spawned overlapping adjacent wall at " + wBolt.position);
-            for (int i = 0; i < 60 && !wBolt.isFinished(); i++) {
-                wBolt.update(DT, alcove, wardenTarget, 1f, Collections.emptyList(), Collections.emptyList(), null);
-            }
-        }
-        assertTrue(wardenTarget.getHealth() < Player.MAX_HEALTH,
-            "wall-hugging Warden fan volley failed to reach player");
-
-        // 3. Guard hugging closed SPAN_Z bulkhead door slabs (east face x = 2.59 across z in [2.0, 4.0]).
+        // 2. Guard hugging closed SPAN_Z bulkhead door slabs (east face x = 2.59 across z in [2.0, 4.0]).
         GameMap doorAlcove = GameMap.parse(
             "#######",
             "#.#...#",

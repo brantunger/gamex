@@ -25,5 +25,17 @@ subprojects {
   ext.appName = 'gamex'
   repositories {
     mavenCentral()
+    // gdx-gltf, the glTF loader and PBR shader, is published on JitPack only. It is read from there and nowhere
+    // else, and nothing else is read from there.
+    exclusiveContent {
+      forRepository {
+        maven {
+          url = 'https://jitpack.io'
+        }
+      }
+      filter {
+        includeGroup 'com.github.mgsx-dev.gdx-gltf'
+      }
+    }
   }
 }

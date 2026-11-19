@@ -4,6 +4,9 @@ dependencies {
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
   // The logging facade only; each application module brings its own binding (desktop and tools use Logback).
   api "org.slf4j:slf4j-api:$slf4jVersion"
+  // Loads the .glb models and draws them with its PBR shader. It was built against libGDX 1.9.11; the gdx version
+  // above wins.
+  implementation "com.github.mgsx-dev.gdx-gltf:gltf:$gltfVersion"
 
   testImplementation platform("org.junit:junit-bom:$junitVersion")
   testImplementation "org.junit.jupiter:junit-jupiter"

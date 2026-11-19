@@ -50,7 +50,8 @@ import java.util.Map;
 
 /**
  * Draws the 3D view: the map as a few static meshes, one per texture, the targets, pickups and blast projectiles as
- * 3D models loaded from OBJ files, and the halos, exit pad and effects as billboards.
+ * 3D models loaded from OBJ files, the Warden as an animated glTF model, and the halos, exit pad and effects as
+ * billboards.
  */
 public final class WorldRenderer implements Disposable {
 
@@ -193,12 +194,6 @@ public final class WorldRenderer implements Disposable {
     private final Mesh guardTorsoMesh;
     private final Mesh guardArmLeftMesh;
     private final Mesh guardArmRightMesh;
-    private final Mesh wardenPelvisMesh;
-    private final Mesh wardenLegLeftMesh;
-    private final Mesh wardenLegRightMesh;
-    private final Mesh wardenTorsoMesh;
-    private final Mesh wardenArmLeftMesh;
-    private final Mesh wardenArmRightMesh;
     private final Mesh enemyBoltMesh;
     private final Mesh doorMesh;
     private final Mesh hazardGrateMesh;
@@ -207,7 +202,8 @@ public final class WorldRenderer implements Disposable {
     private final ModelRig turretRig;
     private final ModelRig droneRig;
     private final ModelRig guardRig;
-    private final ModelRig wardenRig;
+    /** The Warden's model, loaded the first time a stage with a live Warden is drawn and kept from then on. */
+    private WardenModel wardenModel;
     private final CameraGroupStrategy groupStrategy;
     private final DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
@@ -242,6 +238,8 @@ public final class WorldRenderer implements Disposable {
      */
     public WorldRenderer(GameMap map, ProceduralTextures textures) {
         this.textures = textures;
+        // The Warden's model is loaded later; whether it is there to load is found out now.
+        WardenModel.checkFile();
         int modelsBefore = ModelMesh.getLoadedCount();
         camera = createWorldCamera(Gdx.graphics);
 
@@ -293,15 +291,6 @@ public final class WorldRenderer implements Disposable {
         guardTorsoMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "torso");
         guardArmLeftMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "arm_l");
         guardArmRightMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "arm_r");
-
-        ObjModel wardenObj = ModelMesh.loadModel(WorldModels.WARDEN_PATH, "warden");
-        wardenRig = new ModelRig(wardenObj);
-        wardenPelvisMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "pelvis");
-        wardenLegLeftMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "leg_l");
-        wardenLegRightMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "leg_r");
-        wardenTorsoMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "torso");
-        wardenArmLeftMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "arm_l");
-        wardenArmRightMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "arm_r");
 
         enemyBoltMesh = ModelMesh.loadIndexedMesh(WorldModels.ENEMY_BOLT_PATH, "enemy bolt", WorldModels::packIndexed);
         doorMesh = ModelMesh.loadIndexedMesh(WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead", WorldModels::packIndexed);
@@ -641,20 +630,7 @@ public final class WorldRenderer implements Disposable {
                         guardRig.evaluatePartTransform("arm_r", guardRotations, rootTransform, modelTransform));
                     break;
                 case WARDEN:
-                    setWardenAccent(enemy, windup, animTime);
-                    prepareWardenPose(enemy);
-                    drawModelMesh(wardenPelvisMesh,
-                        wardenRig.evaluatePartTransform("pelvis", guardRotations, rootTransform, modelTransform));
-                    drawModelMesh(wardenLegLeftMesh,
-                        wardenRig.evaluatePartTransform("leg_l", guardRotations, rootTransform, modelTransform));
-                    drawModelMesh(wardenLegRightMesh,
-                        wardenRig.evaluatePartTransform("leg_r", guardRotations, rootTransform, modelTransform));
-                    drawModelMesh(wardenTorsoMesh,
-                        wardenRig.evaluatePartTransform("torso", guardRotations, rootTransform, modelTransform));
-                    drawModelMesh(wardenArmLeftMesh,
-                        wardenRig.evaluatePartTransform("arm_l", guardRotations, rootTransform, modelTransform));
-                    drawModelMesh(wardenArmRightMesh,
-                        wardenRig.evaluatePartTransform("arm_r", guardRotations, rootTransform, modelTransform));
+                    // Drawn by renderWardens, after the models of this shader.
                     break;
                 case DRONE:
                 default:
@@ -756,6 +732,31 @@ public final class WorldRenderer implements Disposable {
             }
             setAccent(null);
         }
+
+        renderWardens(simulation, roomLight, animTime);
+    }
+
+    /**
+     * Draws the Wardens with their own shader, into the same depth buffer as the rest of the world, and then puts
+     * back the state the world pass runs with. A stage without a live Warden neither loads the model nor touches
+     * the state.
+     */
+    private void renderWardens(GameSimulation simulation, float roomLight, float animTime) {
+        if (!WardenModel.isNeeded(simulation.enemies)) {
+            if (wardenModel != null) wardenModel.releasePuppets();
+            return;
+        }
+        if (wardenModel == null) wardenModel = new WardenModel(FOG_COLOUR, FOG_START, FOG_END);
+        wardenModel.draw(camera, simulation.enemies, animTime, roomLight);
+
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
+        Gdx.gl.glDepthMask(true);
+        Gdx.gl.glEnable(GL20.GL_CULL_FACE);
+        Gdx.gl.glCullFace(GL20.GL_BACK);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+        Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
+        modelShader.bind();
     }
 
     private void drawModelMesh(Mesh mesh, Matrix4 transform) {
@@ -790,51 +791,6 @@ public final class WorldRenderer implements Disposable {
         rotLegR.setToRotation(Vector3.X, -strideDeg);
         rotArmL.setToRotation(Vector3.X, -strideDeg * 0.8f);
         rotArmR.setToRotation(Vector3.X, -strideDeg * 0.15f);
-    }
-
-    private void prepareWardenPose(Enemy enemy) {
-        float swing = MathUtils.sin(enemy.getWalkPhase());
-        float bobY = Math.abs(swing) * 0.015f;
-        float strideDeg = swing * 20f;
-        rootTransform.idt()
-            .translate(enemy.getX(), bobY, enemy.getZ())
-            .rotate(Vector3.Y, -enemy.getYaw());
-        rotLegL.setToRotation(Vector3.X, strideDeg);
-        rotLegR.setToRotation(Vector3.X, -strideDeg);
-
-        float armPitchL;
-        float armPitchR;
-        if (enemy.isSlamAttack()) {
-            float windup = enemy.getWindupProgress();
-            float slamPitch = enemy.getState() == Enemy.State.LUNGING ? -44f : windup * 68f;
-            armPitchL = slamPitch;
-            armPitchR = slamPitch;
-        } else {
-            float windup = enemy.getWindupProgress();
-            float recoil = enemy.getShootRecoil() * 16f;
-            armPitchL = -strideDeg * 0.45f + windup * 10f + recoil;
-            armPitchR = strideDeg * 0.45f + windup * 10f + recoil;
-        }
-        rotArmL.setToRotation(Vector3.X, armPitchL);
-        rotArmR.setToRotation(Vector3.X, armPitchR);
-    }
-
-    private void setWardenAccent(Enemy enemy, float windup, float time) {
-        if (enemy.isOverdrive()) {
-            float pulse = 0.5f + 0.5f * MathUtils.sin(time * 9f);
-            modelShader.setUniformf("u_accentColour",
-                WorldModels.ACCENT_WARDEN_OVERDRIVE[0] * (0.72f + 0.28f * pulse),
-                WorldModels.ACCENT_WARDEN_OVERDRIVE[1] * (0.85f + 0.15f * pulse) + 0.15f * windup,
-                WorldModels.ACCENT_WARDEN_OVERDRIVE[2],
-                WorldModels.ACCENT_WARDEN_OVERDRIVE[3]);
-        } else {
-            float boost = 0.22f * windup;
-            modelShader.setUniformf("u_accentColour",
-                Math.min(1f, WorldModels.ACCENT_WARDEN_PHASE1[0] + boost),
-                Math.min(1f, WorldModels.ACCENT_WARDEN_PHASE1[1] + 0.35f * boost),
-                WorldModels.ACCENT_WARDEN_PHASE1[2],
-                WorldModels.ACCENT_WARDEN_PHASE1[3]);
-        }
     }
 
     private void prepareDronePose(Enemy enemy, float time) {
@@ -1010,8 +966,11 @@ public final class WorldRenderer implements Disposable {
                     guardRig.evaluateSocketWorld("telegraph", guardRotations, rootTransform, scratch);
                     break;
                 case WARDEN:
-                    prepareWardenPose(enemy);
-                    wardenRig.evaluateSocketWorld("telegraph", guardRotations, rootTransform, scratch);
+                    rootTransform.idt()
+                        .translate(enemy.getX(), 0f, enemy.getZ())
+                        .rotate(Vector3.Y, -enemy.getYaw());
+                    scratch.set(0f, WorldModels.WARDEN_TELEGRAPH_Y, WorldModels.WARDEN_TELEGRAPH_Z)
+                        .mul(rootTransform);
                     break;
                 case DRONE:
                 default:
@@ -1209,12 +1168,7 @@ public final class WorldRenderer implements Disposable {
         guardTorsoMesh.dispose();
         guardArmLeftMesh.dispose();
         guardArmRightMesh.dispose();
-        wardenPelvisMesh.dispose();
-        wardenLegLeftMesh.dispose();
-        wardenLegRightMesh.dispose();
-        wardenTorsoMesh.dispose();
-        wardenArmLeftMesh.dispose();
-        wardenArmRightMesh.dispose();
+        if (wardenModel != null) wardenModel.dispose();
         enemyBoltMesh.dispose();
         doorMesh.dispose();
         hazardGrateMesh.dispose();

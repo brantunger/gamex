@@ -15,7 +15,7 @@ import java.util.List;
  * Scattergun and shell box pickups, {@code R} and {@code r} are the Rail Lance and slug pack pickups, {@code S} is a
  * security console pedestal, {@code ~} is an always-live shock floor grate, {@code o} and {@code O} are open floor
  * with a canister or a ring board on it, {@code D}, {@code T}, {@code G} and {@code B} are rusher drone, sentry turret,
- * guard bot and Warden Mech spawns, {@code +}, {@code a} and {@code e} are medkit, armor and energy cell pickups,
+ * guard bot and Warden spawns, {@code +}, {@code a} and {@code e} are medkit, armor and energy cell pickups,
  * {@code X} is an optional level exit pad, and one of {@code ^ > v <} is the player spawn, facing north, east, south or west.
  */
 public final class GameMap {

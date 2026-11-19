@@ -729,7 +729,7 @@ public final class HudRenderer implements Disposable {
         rect(left - BOSS_PANEL_PAD_X * unit, barBottom - BOSS_PANEL_PAD_Y * unit,
             barW + 2f * BOSS_PANEL_PAD_X * unit, barH + labelH + 22f * unit);
 
-        String title = overdrive ? "WARDEN MECH // OVERDRIVE" : "WARDEN MECH";
+        String title = overdrive ? "WARDEN // OVERDRIVE" : "WARDEN";
         if (overdrive) batch.setColor(0.42f, 0.86f, 1.00f, 0.98f);
         else batch.setColor(1.00f, 0.44f, 0.28f, 0.98f);
         PixelFont.drawCentred(batch, textures.white, title, width * 0.5f, barBottom + barH + 6f * unit, labelPix);

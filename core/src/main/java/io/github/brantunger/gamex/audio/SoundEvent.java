@@ -26,7 +26,6 @@ public final class SoundEvent {
         ENEMY_SHOOT,
         DRONE_LUNGE,
         HAZARD_ZAP,
-        BOSS_SHOOT,
         BOSS_SLAM,
         BOSS_OVERDRIVE,
         BOSS_DESTROYED,
