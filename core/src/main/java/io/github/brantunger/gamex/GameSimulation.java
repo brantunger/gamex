@@ -29,12 +29,15 @@ import io.github.brantunger.gamex.world.RayHit;
 import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -43,6 +46,8 @@ import java.util.Set;
  * input.
  */
 public final class GameSimulation {
+
+    private static final Logger log = LoggerFactory.getLogger(GameSimulation.class);
 
     /** A short-lived 3D rail beam wake rendered from weapon muzzle to terminal impact. */
     public static final class RailBeam {
@@ -324,6 +329,15 @@ public final class GameSimulation {
         }
         reachable = new boolean[cellCount];
         reachQueue = new int[cellCount];
+        if (log.isDebugEnabled()) {
+            for (int i = 0; i < enemies.size(); i++) {
+                Enemy enemy = enemies.get(i);
+                log.debug("Spawned {} at ({}, {})", enemy.getKind(), enemy.getX(), enemy.getZ());
+            }
+            log.debug("Simulation ready on {}: {}x{} map, {} targets, {} hostiles, {} pickups, {} doors, {} consoles",
+                this.entryLoadout.difficulty, map.getWidth(), map.getHeight(), targets.size(), enemies.size(),
+                pickups.size(), doors.size(), consoles.size());
+        }
     }
 
     /**
@@ -521,6 +535,8 @@ public final class GameSimulation {
                 enemy.update(dt, map, enemyPath, player, entryLoadout.difficulty,
                     allDamageables, doors, enemyProjectiles);
                 if (enemy.consumeOverdriveTriggered()) {
+                    log.info("Boss phase 2: {} entered overdrive at {} health after {} s", enemy.getKind(),
+                        enemy.getHealth(), roundedTime());
                     emitWorldSound(SoundEvent.Type.BOSS_OVERDRIVE,
                         enemy.getX(), enemy.getHeight() * 0.55f, enemy.getZ(), 1.25f);
                     effects.add(new Effect(Effect.Type.EXPLOSION,
@@ -564,6 +580,8 @@ public final class GameSimulation {
         damageTaken += vitalsLost;
         if (vitalsLost > 0f) {
             if (player.isDead()) {
+                log.info("Player died after {} s at ({}, {}); {} damage taken", roundedTime(), player.position.x,
+                    player.position.y, damageTaken);
                 emitPlayerSound(SoundEvent.Type.PLAYER_DEATH, 1f);
             } else {
                 emitPlayerSound(SoundEvent.Type.PLAYER_HURT, Math.min(1f, 0.6f + vitalsLost / 50f));
@@ -577,6 +595,8 @@ public final class GameSimulation {
         // cleared the stage.
         if ((exitReached || allDestroyed) && !player.isDead()) {
             levelCleared = true;
+            log.info("Level cleared in {} s by {}: {} damage taken, {} of {} shots hit", roundedTime(),
+                exitReached ? "reaching the exit" : "destroying everything", damageTaken, shotsHit, shotsFired);
             // Nothing moves the player once the stage is cleared, so a jump in progress ends here.
             player.settleOnFloor();
         }
@@ -843,7 +863,10 @@ public final class GameSimulation {
         // the last flood did not reach. The cell of a bulkhead the player leans on counts as reached.
         if (state != objectiveState || playerCell < 0 || !reachable[playerCell]) {
             objectiveState = state;
+            String previous = objectiveText;
             objectiveText = computeObjectiveText(playerCell);
+            // The text is worked out again more often than it changes, so only a new one is logged.
+            if (!Objects.equals(previous, objectiveText)) log.debug("Objective changed to '{}'", objectiveText);
         }
         return objectiveText;
     }
@@ -1015,6 +1038,7 @@ public final class GameSimulation {
             String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale,
                 heldKeycards, pickupArsenal);
             if (message != null) {
+                log.debug("Picked up {}: {}", pickup.getKind(), message);
                 showToast(message);
                 emitPlayerSound(pickupSoundFor(pickup.getKind()), 1f);
             }
@@ -1138,6 +1162,8 @@ public final class GameSimulation {
         if (target instanceof SecurityConsole) {
             SecurityConsole console = (SecurityConsole) target;
             if (!console.activate()) return;
+            log.debug("Security console activated at ({}, {}); lockdown bulkheads open", console.getX(),
+                console.getZ());
             for (int i = 0; i < doors.size(); i++) {
                 Door candidate = doors.get(i);
                 if (candidate.getLockKind() == Door.LockKind.LOCKDOWN && candidate.open()) {
@@ -1444,6 +1470,8 @@ public final class GameSimulation {
                 progressed = true;
                 triggerHitMarker(true);
                 Target target = targets.get(i);
+                log.debug("Destroyed target {} at ({}, {}); {} left", target.getKind(), target.getX(), target.getZ(),
+                    getTargetsRemaining());
                 if (target.getKind() == Target.Kind.CANISTER) {
                     Vector3 centre = new Vector3(target.getX(), target.getHeight() * 0.5f, target.getZ());
                     effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, CANISTER_BLAST_RADIUS));
@@ -1465,6 +1493,13 @@ public final class GameSimulation {
                 Enemy enemy = enemies.get(i);
                 Vector3 centre = new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ());
                 boolean isBoss = enemy.getKind() == Enemy.Kind.WARDEN;
+                if (isBoss) {
+                    log.info("Boss destroyed: {} at ({}, {}) after {} s", enemy.getKind(), enemy.getX(), enemy.getZ(),
+                        roundedTime());
+                } else {
+                    log.debug("Killed {} at ({}, {}); {} hostiles left", enemy.getKind(), enemy.getX(), enemy.getZ(),
+                        getEnemiesRemaining());
+                }
                 effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y,
                     isBoss ? 1.8f : enemy.getHeight() * 0.8f));
                 emitWorldSound(isBoss ? SoundEvent.Type.BOSS_DESTROYED : SoundEvent.Type.ENEMY_DESTROYED,
@@ -1552,6 +1587,11 @@ public final class GameSimulation {
                 emitWorldSound(SoundEvent.Type.ENEMY_HIT, enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ(), 1f);
             }
         }
+    }
+
+    /** @return the play time in seconds to two decimal places, for the log. */
+    private float roundedTime() {
+        return Math.round(time * 100f) / 100f;
     }
 
     private void emitPlayerSound(SoundEvent.Type type, float intensity) {

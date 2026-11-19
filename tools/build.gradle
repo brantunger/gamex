@@ -4,6 +4,8 @@ dependencies {
   implementation project(':core')
   implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
   implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+  // The SLF4J binding for the core classes the tools use; src/main/resources/logback.xml shows warnings and errors only.
+  runtimeOnly "ch.qos.logback:logback-classic:$logbackVersion"
 
   constraints {
     implementation("org.lwjgl:lwjgl:$lwjgl3Version")

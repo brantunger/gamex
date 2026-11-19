@@ -7,6 +7,8 @@ import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.settings.GameSettings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -20,6 +22,8 @@ import java.util.Map;
  * muted or when no audio device exists; a sound file that fails to load silences only its own cue.
  */
 public final class SoundManager implements Disposable {
+
+    private static final Logger log = LoggerFactory.getLogger(SoundManager.class);
 
     /** Directory inside {@code assets/} holding shipped {@code .wav} sound effects. */
     public static final String SOUNDS_DIR = "sounds";
@@ -49,6 +53,18 @@ public final class SoundManager implements Disposable {
             }
             loadedCharge = loadSound(CHARGE_HUM_PATH);
             available = !sounds.isEmpty() || loadedCharge != null;
+            int expected = SoundEvent.Type.values().length + 1;
+            int loaded = sounds.size() + (loadedCharge == null ? 0 : 1);
+            if (loaded == expected) {
+                log.info("Loaded {} sounds from {}/", loaded, SOUNDS_DIR);
+            } else {
+                log.warn("Loaded {} of {} sounds from {}/; the rest stay silent", loaded, expected, SOUNDS_DIR);
+            }
+        } else if (muted) {
+            log.info("Sound is muted; no sounds loaded");
+        } else {
+            // The desktop backend always provides an audio object, a silent one when no device opens.
+            log.debug("No libGDX audio or files backend is set, as in a headless test; no sounds loaded");
         }
         this.chargeHum = loadedCharge;
     }
@@ -56,9 +72,11 @@ public final class SoundManager implements Disposable {
     /** @return the sound at internal asset {@code path}, or null if it is missing or cannot be decoded. */
     private static Sound loadSound(String path) {
         try {
-            return Gdx.audio.newSound(Gdx.files.internal(path));
+            Sound sound = Gdx.audio.newSound(Gdx.files.internal(path));
+            log.debug("Loaded sound {}", path);
+            return sound;
         } catch (RuntimeException e) {
-            System.err.println("Sound " + path + " failed to load; continuing without it: " + e.getMessage());
+            log.warn("Sound {} failed to load; continuing without it: {}", path, e.getMessage());
             return null;
         }
     }
@@ -135,6 +153,7 @@ public final class SoundManager implements Disposable {
 
     @Override
     public void dispose() {
+        log.debug("Disposing {} sounds", sounds.size() + (chargeHum == null ? 0 : 1));
         stopLoops();
         available = false;
         disposeHandles(chargeHum);

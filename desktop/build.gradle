@@ -46,6 +46,8 @@ dependencies {
   implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
   implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
   implementation project(':core')
+  // The SLF4J binding; src/main/resources/logback.xml sends the log to the console.
+  runtimeOnly "ch.qos.logback:logback-classic:$logbackVersion"
 
   // Forces LWJGL3 to use at least $lwjgl3Version, currently 3.4.3, to avoid warnings on Java 25 and up.
   constraints{
@@ -60,11 +62,25 @@ dependencies {
   testImplementation platform("org.junit:junit-bom:$junitVersion")
   testImplementation "org.junit.jupiter:junit-jupiter"
   testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+  // Lets the tests read log lines and load logback.xml; src/test/resources/logback-test.xml sets them to WARN.
+  testImplementation "ch.qos.logback:logback-classic:$logbackVersion"
+}
+
+// Writes the project version into gamex-version.properties, which the launcher logs at startup. It works for the
+// run task as well as the JAR, which a manifest attribute would not.
+processResources {
+  def versionText = projectVersion
+  inputs.property('gamexVersion', versionText)
+  filesMatching('gamex-version.properties') {
+    expand(gamexVersion: versionText)
+  }
 }
 
 test {
   useJUnitPlatform()
   inputs.dir(project.file("icons")).withPathSensitivity(PathSensitivity.RELATIVE)
+  // The version the launcher should report, for the test that reads gamex-version.properties.
+  systemProperty 'gamex.version', projectVersion
 }
 
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
@@ -146,7 +162,8 @@ construo {
   jlink {
     guessModulesFromJar.set(false)
     // You may need to add more modules, as needed.
-    modules.addAll("java.base", "java.management", "java.desktop", "jdk.unsupported")
+    // Logback reads logback.xml with java.xml, which java.desktop already brings in; it is named to keep it.
+    modules.addAll("java.base", "java.management", "java.desktop", "jdk.unsupported", "java.xml")
   }
 
   targets.configure {

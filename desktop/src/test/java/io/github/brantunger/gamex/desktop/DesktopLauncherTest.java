@@ -5,23 +5,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 class DesktopLauncherTest {
@@ -36,29 +41,42 @@ class DesktopLauncherTest {
         throw new IllegalStateException("Desktop file not found from working directory: " + relativePath);
     }
 
-    private static String captureErr(Runnable action) {
-        PrintStream previous = System.err;
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+    /** @return the warnings the launcher logs while {@code action} runs, as formatted messages in order */
+    private static List<String> captureWarnings(Runnable action) {
+        Logger logger = (Logger) LoggerFactory.getLogger(DesktopLauncher.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        boolean additive = logger.isAdditive();
+        appender.start();
+        logger.addAppender(appender);
+        // The lines go to the list alone, not on to the console as well.
+        logger.setAdditive(false);
         try {
-            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
             action.run();
         } finally {
-            System.setErr(previous);
+            logger.setAdditive(additive);
+            logger.detachAppender(appender);
+            appender.stop();
         }
-        return captured.toString(StandardCharsets.UTF_8);
+        List<String> warnings = new ArrayList<>();
+        for (ILoggingEvent event : appender.list) {
+            assertEquals(Level.WARN, event.getLevel(), event.getFormattedMessage());
+            warnings.add(event.getFormattedMessage());
+        }
+        return warnings;
     }
 
     @Test
     void windowSizeUsesDefaultSilentlyWhenMissingOrBlank() {
         for (String input : new String[] {null, "", "   "}) {
-            String err = captureErr(() -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input)));
-            assertEquals("", err, "expected no warning for blank input: '" + input + "'");
+            List<String> warnings = captureWarnings(
+                () -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input)));
+            assertEquals(List.of(), warnings, "expected no warning for blank input: '" + input + "'");
         }
     }
 
     @Test
     void windowSizeParsesValidDimensionsWithinBoundsSilently() {
-        String err = captureErr(() -> {
+        List<String> warnings = captureWarnings(() -> {
             assertArrayEquals(new int[] {800, 600}, DesktopLauncher.windowSize("800x600"));
             assertArrayEquals(new int[] {1920, 1080}, DesktopLauncher.windowSize(" 1920X1080 "));
             assertArrayEquals(new int[] {DesktopLauncher.MIN_WINDOW_WIDTH, DesktopLauncher.MIN_WINDOW_HEIGHT},
@@ -66,7 +84,7 @@ class DesktopLauncherTest {
             assertArrayEquals(new int[] {DesktopLauncher.MAX_WINDOW_WIDTH, DesktopLauncher.MAX_WINDOW_HEIGHT},
                 DesktopLauncher.windowSize("7680x4320"));
         });
-        assertEquals("", err);
+        assertEquals(List.of(), warnings);
     }
 
     @Test
@@ -77,9 +95,43 @@ class DesktopLauncherTest {
             "fullscreen", "800", "800x", "x600", "800x600x2"
         };
         for (String input : invalid) {
-            String err = captureErr(() -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input)));
-            assertTrue(err.contains(input), "expected warning to name '" + input + "' but got: " + err);
-            assertTrue(err.contains("using 1280x720"), err);
+            List<String> warnings = captureWarnings(
+                () -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input)));
+            assertEquals(List.of("GAMEX_WINDOW is not a size between 160x120 and 7680x4320 like 800x600: '" + input
+                + "'; using 1280x720"), warnings);
+        }
+    }
+
+    @Test
+    void versionIsTheProjectVersionTheBuildWroteIntoTheResource() {
+        String expected = System.getProperty("gamex.version");
+        assertTrue(expected != null && !expected.isEmpty(), "the build passes gamex.version to the tests");
+        assertEquals(expected, DesktopLauncher.version());
+    }
+
+    @Test
+    void versionIsUnknownWhenMissingBlankOrAnUnfilledPlaceholder() {
+        for (String input : new String[] {null, "", "  ", "${gamexVersion}", " ${version} "}) {
+            assertEquals("unknown", DesktopLauncher.version(input), "'" + input + "'");
+        }
+        assertEquals("1.2.3", DesktopLauncher.version(" 1.2.3 "));
+    }
+
+    @Test
+    void logLevelIsReadSilentlyWhenMissingBlankOrValid() {
+        String[][] cases = {{null, "INFO"}, {"", "INFO"}, {"  ", "INFO"}, {"debug", "DEBUG"}, {" Warn ", "WARN"}};
+        for (String[] pair : cases) {
+            List<String> warnings = captureWarnings(() -> assertEquals(pair[1], DesktopLauncher.logLevel(pair[0])));
+            assertEquals(List.of(), warnings, "expected no warning for '" + pair[0] + "'");
+        }
+    }
+
+    @Test
+    void logLevelThatIsNotALevelIsInfoWithAWarning() {
+        for (String input : new String[] {"garbage", "verbose", "warning"}) {
+            List<String> warnings = captureWarnings(() -> assertEquals("INFO", DesktopLauncher.logLevel(input)));
+            assertEquals(List.of("GAMEX_LOG_LEVEL is not trace, debug, info, warn or error: '" + input
+                + "'; using INFO"), warnings);
         }
     }
 

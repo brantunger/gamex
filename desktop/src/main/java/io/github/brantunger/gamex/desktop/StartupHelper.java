@@ -18,6 +18,8 @@ package io.github.brantunger.gamex.desktop;
 
 import org.lwjgl.system.JNI;
 import org.lwjgl.system.macosx.ObjCRuntime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
@@ -43,6 +45,8 @@ import java.util.Locale;
  */
 final class StartupHelper {
 
+    private static final Logger log = LoggerFactory.getLogger(StartupHelper.class);
+
     static final String JVM_RESTARTED_PROPERTY = "gamex.jvmIsRestarted";
 
     private StartupHelper() {}
@@ -66,7 +70,7 @@ final class StartupHelper {
 
         String javaExecPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         if (!new File(javaExecPath).exists()) {
-            System.err.println("A Java installation could not be found to restart with -XstartOnFirstThread. If you"
+            log.warn("A Java installation could not be found to restart with -XstartOnFirstThread. If you"
                 + " are distributing this game with a bundled JRE, set the '-XstartOnFirstThread' argument manually.");
             return NOT_RESTARTED;
         }
@@ -77,8 +81,7 @@ final class StartupHelper {
         try {
             return new ProcessBuilder(command).inheritIO().start().waitFor();
         } catch (Exception e) {
-            System.err.println("There was a problem restarting the JVM with -XstartOnFirstThread.");
-            e.printStackTrace();
+            log.error("There was a problem restarting the JVM with -XstartOnFirstThread.", e);
             return 1;
         }
     }
@@ -98,7 +101,7 @@ final class StartupHelper {
         if (graalImageCode != null && !graalImageCode.isEmpty()) return false;
         if ("true".equals(restartedFlag)) {
             // Should not be reachable; it stops a child from spawning children forever.
-            System.err.println("StartupHelper was asked to restart a JVM it had already restarted; carrying on.");
+            log.warn("StartupHelper was asked to restart a JVM it had already restarted; carrying on.");
             return false;
         }
         return true;

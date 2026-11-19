@@ -237,7 +237,7 @@ on by environment variables:
 | Variable | Meaning |
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
-| `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number prints a warning and uses 60. |
+| `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number logs a warning and uses 60. |
 | `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden` or `jump`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the weapon in hand and the hand, from outside. |
 
@@ -267,7 +267,7 @@ no exit. The script name is not case-sensitive, and an unknown name is the same 
 With `GAMEX_VIEWMODEL_ORBIT` the saved frame shows the weapon in hand and the hand alone, at rest, on a plain grey
 background, without the world or the HUD. That weapon is the Pistol, except in the `scattergun`, `warden` and `jump`
 scripts (the Scattergun) and the `raillance` script (the Rail Lance). A yaw of 0 shows them from behind, 90 from the left side and 180 from the front; a
-pitch of 90 shows them from above, and the pitch is 0 if left out. A value that is not a number prints a warning
+pitch of 90 shows them from above, and the pitch is 0 if left out. A value that is not a number logs a warning
 and the normal picture is saved.
 
 `GAMEX_SCREENSHOT_FRAME`, `GAMEX_DEMO` and `GAMEX_VIEWMODEL_ORBIT` do nothing unless `GAMEX_SCREENSHOT` is set.
@@ -279,7 +279,7 @@ Use an absolute path. The `desktop:run` task runs in the `assets` folder, so a r
 there.
 
 One more variable works on any run, with or without `GAMEX_SCREENSHOT`: `GAMEX_WINDOW` sets the window size as
-`WIDTHxHEIGHT`, for example `800x600`. A value that is malformed, smaller than 160x120 or larger than 7680x4320 prints a
+`WIDTHxHEIGHT`, for example `800x600`. A value that is malformed, smaller than 160x120 or larger than 7680x4320 logs a
 warning and the window opens at 1280x720. Whenever the variable is set, even to such a value, the game stays in a
 window although fullscreen is saved on. The saved setting is not changed, so the Settings screen still reads
 `FULLSCREEN: ON`.
@@ -300,6 +300,49 @@ bash:
 ```sh
 GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./gradlew desktop:run
 ```
+
+## Logging
+
+The game logs to the console through SLF4J and Logback, on standard error, one line per event. A few
+warnings and errors (the version file or the saved settings could not be read, the macOS restart failed) are
+followed by the exception's stack trace:
+
+```
+14:02:11.482 INFO  DesktopLauncher - Starting gamex 1.0.0: window 1280x720, log level INFO
+```
+
+`GAMEX_LOG_LEVEL` sets how much is logged. Like `GAMEX_WINDOW`, it works on any run:
+
+| Value | What is logged |
+| --- | --- |
+| unset, blank, or `info` | Startup and shutdown, the screens shown, the assets loaded (one line for each batch), settings read, saved progress read and written, levels started and cleared, deaths, boss phases, best times and medals, display mode switches; and every warning. |
+| `debug` | All of that, plus each model, sound and stage file loaded, hostiles spawned and killed, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
+| `warn`, `error` | Only warnings and errors, or only errors. |
+| `trace` | The same as `debug`; the game logs nothing at that level. |
+
+The value can be in any case, with spaces around it. Any other value logs a warning and the level is `info`.
+
+A warning is logged for most things the game falls back on: a sound that does not load, an environment variable it
+cannot read, a saved number that is not a number (once for each key), a saved run with an unknown difficulty. An
+unknown saved weapon, a setting out of range and an unknown `GAMEX_DEMO` name are replaced without one.
+
+Nothing is logged for a frame in which nothing happened, and nothing is written to a file.
+
+PowerShell:
+
+```powershell
+$env:GAMEX_LOG_LEVEL = "debug"
+.\gradlew.bat desktop:run
+Remove-Item Env:GAMEX_LOG_LEVEL
+```
+
+bash:
+
+```sh
+GAMEX_LOG_LEVEL=debug ./gradlew desktop:run
+```
+
+The `tools` programs print their own output and show only the warnings and errors of the game classes they use.
 
 ## Project layout
 
@@ -330,7 +373,8 @@ GAMEX_SCREENSHOT=/tmp/gamex.png GAMEX_DEMO=targets GAMEX_SCREENSHOT_FRAME=120 ./
   - `input`: reads the keyboard and mouse for play and for the menus, adds up mouse movement for looking around
     (`LookAccumulator`), and handles pause and cursor capture.
   - `debug`: the debug screenshot mode.
-- `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings and the window icons.
+- `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings, the window icons, and the log level and
+  console log configuration (`LogLevel`, `logback.xml`).
 - `tools`: the Gradle model and audio authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
   DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `RailLanceSculpt`, `HandSculpt`, `GenerateAllModels`,
   `SoundSynth`, `GenerateAllSounds`, and the interactive LWJGL3 previewer (`ModelPreviewApp`).
@@ -390,8 +434,11 @@ editing an asset reruns them. They cover:
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
 - `model`: the OBJ parser (including files it must reject) and model-file error reporting (`ModelVertices.read`).
 - `debug`: the parsing of `GAMEX_VIEWMODEL_ORBIT` and the `jump` demo script (`DemoRunTest`).
+- logging: a cleared level, menu navigation, a settings change, a best time, medals and a damaged saved run each log
+  their line at the right level, and frames in which nothing happens log nothing (`GameLoggingTest`).
 - `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), when the game starts fullscreen,
-  the packaging icons, and when and how `StartupHelper` relaunches the JVM on macOS.
+  the packaging icons, when and how `StartupHelper` relaunches the JVM on macOS, and reading `GAMEX_LOG_LEVEL` and
+  the level `logback.xml` then runs at (`LogLevelTest`).
 - `tools` (`:tools:test`): `GeneratedModelsTest` and `GeneratedSoundsTest` run `GenerateAllModels` and
   `GenerateAllSounds` and check that every shipped `.obj` and `.wav` matches the generators byte for byte;
   `GeneratedModelsTest` also checks the indexed vertex deduplication.

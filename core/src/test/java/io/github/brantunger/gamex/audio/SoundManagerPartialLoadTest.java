@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
 import com.badlogic.gdx.Audio;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
@@ -11,6 +12,7 @@ import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.LogCapture;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -157,6 +159,37 @@ class SoundManagerPartialLoadTest {
         assertEquals(1, calls(confirmCue, "play"), "the cue that loaded plays");
         assertEquals(1, totalCalls("play"), "the failed cue plays nothing and breaks nothing");
         manager.dispose();
+    }
+
+    @Test
+    void aFailedCueLogsOneWarningNamingItAndTheLoadSummaryCountsIt() {
+        String moveCue = SoundManager.assetPath(SoundEvent.Type.MENU_MOVE);
+        failing.add(moveCue);
+        int all = SoundEvent.Type.values().length + 1;
+
+        try (LogCapture capture = LogCapture.of(SoundManager.class, Level.DEBUG)) {
+            new SoundManager(false).dispose();
+
+            assertEquals(List.of(
+                "Sound " + moveCue + " failed to load; continuing without it: Error reading WAV file: " + moveCue,
+                "Loaded " + (all - 1) + " of " + all + " sounds from sounds/; the rest stay silent"),
+                capture.messages(Level.WARN));
+            assertEquals(List.of(), capture.messages(Level.INFO), "a partial load is a warning, not an info line");
+            long perFile = capture.messages(Level.DEBUG).stream()
+                .filter(line -> line.startsWith("Loaded sound ")).count();
+            assertEquals(all - 1, perFile, "each sound that loaded has its own line at DEBUG");
+        }
+    }
+
+    @Test
+    void aFullLoadLogsOneSummaryAtInfoAndNoWarning() {
+        int all = SoundEvent.Type.values().length + 1;
+        try (LogCapture capture = LogCapture.of(SoundManager.class, Level.INFO)) {
+            new SoundManager(false).dispose();
+
+            assertEquals(List.of("Loaded " + all + " sounds from sounds/"), capture.messages(Level.INFO));
+            assertEquals(List.of(), capture.messages(Level.WARN));
+        }
     }
 
     @Test
