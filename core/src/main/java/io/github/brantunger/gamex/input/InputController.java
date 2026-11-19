@@ -8,6 +8,8 @@ import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Reads the keyboard and mouse for both active gameplay ({@link PlayerInput}) and menu navigation ({@link MenuState}).
@@ -18,6 +20,8 @@ import io.github.brantunger.gamex.settings.GameSettings;
  * window is minimised would repeat its action on every frame; an event is delivered once per press.
  */
 public final class InputController extends InputAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(InputController.class);
 
     private final LookAccumulator look = new LookAccumulator();
     private final MenuState menuState;
@@ -214,6 +218,7 @@ public final class InputController extends InputAdapter {
         boolean shouldCapture = menuState.isPlaying();
         if (shouldCapture == captured) return;
         captured = shouldCapture;
+        log.debug("Cursor {}", captured ? "captured for play" : "released for the menus");
         Gdx.input.setCursorCatched(captured);
         if (captured) {
             look.capture();

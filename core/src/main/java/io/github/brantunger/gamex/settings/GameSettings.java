@@ -1,9 +1,14 @@
 package io.github.brantunger.gamex.settings;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * User-configurable gameplay and display settings, clamped to safe ranges and persisted via {@link KeyValueStore}.
  */
 public final class GameSettings {
+
+    private static final Logger log = LoggerFactory.getLogger(GameSettings.class);
 
     public static final String PREFERENCES_NAME = "io.github.brantunger.gamex.settings";
 
@@ -62,6 +67,8 @@ public final class GameSettings {
         store.putFloat(KEY_MASTER_VOLUME, masterVolume);
         store.putBoolean(KEY_FULLSCREEN, fullscreen);
         store.flush();
+        log.debug("Saved settings: sensitivity {}, invert Y {}, field of view {}, view bob {}, volume {},"
+            + " fullscreen {}", mouseSensitivity, invertY, fov, viewBob, masterVolume, fullscreen);
     }
 
     public float getMouseSensitivity() {

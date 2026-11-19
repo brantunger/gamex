@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Console logging for the game. The level comes from the gamex.logLevel system property, which DesktopLauncher sets
+  from the GAMEX_LOG_LEVEL environment variable after checking it. The variable is not read here: Logback turns a
+  level it does not know into DEBUG, and its substitution would find the raw environment variable.
+-->
+<configuration>
+  <!--
+    Silences Logback's own status messages, including its report of a mistake in this file: a well-formed but wrong
+    configuration logs nothing at all. Only XML that does not parse is reported: status lines on
+    standard output and the parse error on standard error.
+  -->
+  <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+
+  <!-- Standard error, where the game's warnings have always gone; its log lines never go to standard output. -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.err</target>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{0} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <root level="${gamex.logLevel:-INFO}">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

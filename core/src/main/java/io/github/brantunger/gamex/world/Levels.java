@@ -1,6 +1,8 @@
 package io.github.brantunger.gamex.world;
 
 import com.badlogic.gdx.Gdx;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,6 +30,8 @@ import java.util.regex.Pattern;
  * rectangular {@link GameMap} layout. Lines whose trimmed text begins with {@code //} are treated as comments.
  */
 public final class Levels {
+
+    private static final Logger log = LoggerFactory.getLogger(Levels.class);
 
     /** Directory inside {@code assets/} holding level layouts, stage definitions, and {@code campaign.txt}. */
     public static final String LEVELS_DIR = "levels";
@@ -137,7 +141,9 @@ public final class Levels {
      * @return the parsed map
      */
     public static GameMap loadMap(String assetPath) {
-        return parseMap(assetPath, readAssetText(assetPath));
+        GameMap map = parseMap(assetPath, readAssetText(assetPath));
+        log.debug("Loaded map {}: {}x{}", assetPath, map.getWidth(), map.getHeight());
+        return map;
     }
 
     /**
@@ -146,7 +152,10 @@ public final class Levels {
      * @return the parsed stage
      */
     public static Stage loadStage(String assetPath) {
-        return parseStage(assetPath, readAssetText(assetPath));
+        Stage stage = parseStage(assetPath, readAssetText(assetPath));
+        log.debug("Loaded stage {} from {}: {}x{}, par {} s", stage.id, assetPath, stage.map.getWidth(),
+            stage.map.getHeight(), stage.parSeconds);
+        return stage;
     }
 
     /**
@@ -156,7 +165,9 @@ public final class Levels {
      * @return unmodifiable ordered list of campaign stages
      */
     public static List<Stage> loadCampaign(String assetPath) {
-        return parseCampaign(assetPath, readAssetText(assetPath), Levels::loadStage);
+        List<Stage> stages = parseCampaign(assetPath, readAssetText(assetPath), Levels::loadStage);
+        log.info("Loaded {} campaign stages from {}", stages.size(), assetPath);
+        return stages;
     }
 
     /**

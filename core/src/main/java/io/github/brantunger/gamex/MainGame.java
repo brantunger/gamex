@@ -22,9 +22,13 @@ import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.world.Levels;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class MainGame extends ApplicationAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(MainGame.class);
 
     /** Short delay after player death before the Death menu overlays the lowered view, in seconds. */
     private static final float DEATH_MENU_DELAY = 0.45f;
@@ -93,6 +97,13 @@ public class MainGame extends ApplicationAdapter {
     public void create() {
         demoRun = DemoRun.fromEnvironment();
         if (demoRun != null) {
+            if (demoRun.getScript().isEmpty()) {
+                log.info("Debug screenshot run with no demo script: settings and progress are neither read nor"
+                    + " written");
+            } else {
+                log.info("Debug screenshot run with demo script '{}': settings and progress are neither read nor"
+                    + " written", demoRun.getScript());
+            }
             settingsStore = new MapKeyValueStore();
             settings = new GameSettings();
             saveData = new SaveData(new MapKeyValueStore());
@@ -149,6 +160,11 @@ public class MainGame extends ApplicationAdapter {
             Levels.Stage initialStage = menuState.getActiveStage();
             simulation = new GameSimulation(initialStage.map, menuState.getActiveLoadout(),
                 initialStage.completeOnAllTargets);
+            log.info("Loaded settings: sensitivity {}, invert Y {}, field of view {}, view bob {}, volume {},"
+                + " fullscreen {}", settings.getMouseSensitivity(), settings.isInvertY(), settings.getFov(),
+                settings.isViewBob(), settings.getMasterVolume(), settings.isFullscreen());
+            log.info("Loaded progress: saved run {}, unlocked stage index {}", saveData.hasSavedRun(),
+                saveData.getUnlockedStageIndex());
             applyStartupDisplayMode(settings);
         }
 
@@ -159,11 +175,14 @@ public class MainGame extends ApplicationAdapter {
         soundManager = new SoundManager(demoRun != null);
         if (demoRun == null) controller = new InputController(menuState, settings);
         syncDisplayViewport();
+        log.info("Game created at {}x{}, fullscreen {}", Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
+            Gdx.graphics.isFullscreen());
     }
 
     @Override
     public void resize(int width, int height) {
         if (width <= 0 || height <= 0) return;
+        if (width != lastResizeWidth || height != lastResizeHeight) log.debug("Resized to {}x{}", width, height);
         if (Gdx.graphics != null && !Gdx.graphics.isFullscreen()) {
             windowedWidth = width;
             windowedHeight = height;
@@ -178,6 +197,7 @@ public class MainGame extends ApplicationAdapter {
 
     @Override
     public void pause() {
+        log.debug("Paused: the window lost the focus, was minimised or is closing");
         if (soundManager != null) soundManager.stopLoops();
         if (controller != null) {
             controller.pause();
@@ -248,6 +268,7 @@ public class MainGame extends ApplicationAdapter {
         if (showsBackdrop(menuState)) {
             if (simulation.map != menuState.getActiveStage().map) {
                 Levels.Stage stage = menuState.getActiveStage();
+                log.debug("Backdrop shows stage {}", stage.id);
                 simulation = new GameSimulation(stage.map, menuState.getActiveLoadout(), stage.completeOnAllTargets);
             }
             worldRenderer.renderBackdrop(simulation, settings, backdropTime);
@@ -295,7 +316,10 @@ public class MainGame extends ApplicationAdapter {
         switch (command) {
             case LAUNCH_STAGE: {
                 Levels.Stage stage = menuState.getActiveStage();
-                simulation = new GameSimulation(stage.map, menuState.getActiveLoadout(), stage.completeOnAllTargets);
+                PlayerLoadout loadout = menuState.getActiveLoadout();
+                log.info("Level started: {} ({}) on {}, health {}, armor {}, weapon {}", stage.id, stage.title,
+                    loadout.difficulty, loadout.health, loadout.armor, loadout.activeWeapon);
+                simulation = new GameSimulation(stage.map, loadout, stage.completeOnAllTargets);
                 worldRenderer.setMap(simulation.map);
                 deathTimer = 0f;
                 controller.syncCursorCapture();
@@ -306,6 +330,7 @@ public class MainGame extends ApplicationAdapter {
                 applyDisplayMode(settings.isFullscreen());
                 break;
             case QUIT:
+                log.info("Quit chosen from the menu");
                 settings.save(settingsStore);
                 Gdx.app.exit();
                 break;
@@ -363,8 +388,14 @@ public class MainGame extends ApplicationAdapter {
     private void applyDisplayMode(boolean fullscreen) {
         if (fullscreen) {
             Graphics.DisplayMode mode = Gdx.graphics.getDisplayMode();
-            if (mode != null) Gdx.graphics.setFullscreenMode(mode);
+            if (mode != null) {
+                log.info("Switching to fullscreen {}x{}", mode.width, mode.height);
+                Gdx.graphics.setFullscreenMode(mode);
+            } else {
+                log.warn("No display mode to go fullscreen with; staying in a window");
+            }
         } else {
+            log.info("Switching to a {}x{} window", windowedWidth, windowedHeight);
             Gdx.graphics.setWindowedMode(windowedWidth, windowedHeight);
         }
         if (worldRenderer != null) {
@@ -376,6 +407,7 @@ public class MainGame extends ApplicationAdapter {
 
     @Override
     public void dispose() {
+        log.info("Shutting down");
         if (settings != null && settingsStore != null && demoRun == null) {
             settings.save(settingsStore);
         }

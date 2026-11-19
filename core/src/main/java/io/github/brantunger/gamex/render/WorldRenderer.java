@@ -38,6 +38,8 @@ import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -48,6 +50,8 @@ import java.util.Map;
  * 3D models loaded from OBJ files, and the halos, exit pad and effects as billboards.
  */
 public final class WorldRenderer implements Disposable {
+
+    private static final Logger log = LoggerFactory.getLogger(WorldRenderer.class);
 
     private static final float FIELD_OF_VIEW = 70f;
     private static final float NEAR = 0.1f;
@@ -230,6 +234,7 @@ public final class WorldRenderer implements Disposable {
      */
     public WorldRenderer(GameMap map, ProceduralTextures textures) {
         this.textures = textures;
+        int modelsBefore = ModelMesh.getLoadedCount();
         camera = new PerspectiveCamera(FIELD_OF_VIEW, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.near = NEAR;
         camera.far = FAR;
@@ -313,6 +318,7 @@ public final class WorldRenderer implements Disposable {
         orb = new TextureRegion(textures.orb);
         explosion = new TextureRegion(textures.explosion);
         exitPad = new TextureRegion(textures.exitPad);
+        log.info("Loaded {} world models", ModelMesh.getLoadedCount() - modelsBefore);
     }
 
     /** Rebuilds the static map geometry when loading a different stage. */
@@ -322,6 +328,8 @@ public final class WorldRenderer implements Disposable {
         surfaces.clear();
         currentMap = map;
         MapGeometry geometry = MapGeometry.build(map);
+        log.debug("Built the geometry of a {}x{} map: {} wall textures", map.getWidth(), map.getHeight(),
+            geometry.walls.size());
         for (Map.Entry<Character, float[]> entry : geometry.walls.entrySet()) {
             surfaces.add(new Surface(buildMesh(entry.getValue()), textures.wall(entry.getKey())));
         }

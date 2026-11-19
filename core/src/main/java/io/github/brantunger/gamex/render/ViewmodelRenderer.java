@@ -26,6 +26,8 @@ import io.github.brantunger.gamex.weapon.RailLanceModel;
 import io.github.brantunger.gamex.weapon.ScattergunModel;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Draws the first-person pistol and hand as a 3D model, in a pass of its own between the world and the HUD. The pass
@@ -37,6 +39,8 @@ import io.github.brantunger.gamex.weapon.WeaponSlot;
  * shape readable. There is no fog on it.
  */
 public final class ViewmodelRenderer implements Disposable {
+
+    private static final Logger log = LoggerFactory.getLogger(ViewmodelRenderer.class);
 
     private static final float FIELD_OF_VIEW = 52f;
     private static final float NEAR = 0.02f;
@@ -157,6 +161,7 @@ public final class ViewmodelRenderer implements Disposable {
         if (!shader.isCompiled()) {
             throw new GdxRuntimeException("The viewmodel shader did not compile: " + shader.getLog());
         }
+        int modelsBefore = ModelMesh.getLoadedCount();
         ObjModel pistolObj = ModelMesh.loadModel(PistolModel.ASSET_PATH, "pistol");
         PistolModel pistol = PistolModel.from(pistolObj);
         muzzleSocket = pistolObj.getSocket("muzzle");
@@ -174,6 +179,7 @@ public final class ViewmodelRenderer implements Disposable {
         railBolt = ModelMesh.buildIndexed(rail.boltMesh);
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
         hand = ModelMesh.loadIndexedMesh(HandModel.ASSET_PATH, "hand", HandModel::packIndexed);
+        log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
 
         groupStrategy = new CameraGroupStrategy(camera);
         decalBatch = new DecalBatch(groupStrategy);

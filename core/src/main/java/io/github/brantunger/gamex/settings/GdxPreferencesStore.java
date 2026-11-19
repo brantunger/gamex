@@ -1,6 +1,11 @@
 package io.github.brantunger.gamex.settings;
 
 import com.badlogic.gdx.Preferences;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Adapts libGDX {@link Preferences} to {@link KeyValueStore}. A stored number that does not parse, as in a
@@ -8,7 +13,11 @@ import com.badlogic.gdx.Preferences;
  */
 public final class GdxPreferencesStore implements KeyValueStore {
 
+    private static final Logger log = LoggerFactory.getLogger(GdxPreferencesStore.class);
+
     private final Preferences prefs;
+    /** Keys already warned about; the menus read some keys on every frame. */
+    private final Set<String> warnedKeys = new HashSet<>();
 
     /** @param prefs the backing libGDX preferences instance */
     public GdxPreferencesStore(Preferences prefs) {
@@ -20,6 +29,7 @@ public final class GdxPreferencesStore implements KeyValueStore {
         try {
             return prefs.getFloat(key, defaultValue);
         } catch (NumberFormatException e) {
+            warnUnreadable(key, defaultValue);
             return defaultValue;
         }
     }
@@ -29,8 +39,14 @@ public final class GdxPreferencesStore implements KeyValueStore {
         try {
             return prefs.getInteger(key, defaultValue);
         } catch (NumberFormatException e) {
+            warnUnreadable(key, defaultValue);
             return defaultValue;
         }
+    }
+
+    /** Warns, once for each key, that a stored number did not parse. */
+    private void warnUnreadable(String key, Object defaultValue) {
+        if (warnedKeys.add(key)) log.warn("The stored value of '{}' is not a number; using {}", key, defaultValue);
     }
 
     @Override

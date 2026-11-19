@@ -3,6 +3,8 @@ package io.github.brantunger.gamex.settings;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.EnumSet;
@@ -13,6 +15,8 @@ import java.util.Set;
  * best time, best rank and medals earned, each per difficulty.
  */
 public final class SaveData {
+
+    private static final Logger log = LoggerFactory.getLogger(SaveData.class);
 
     public static final String PREFERENCES_NAME = "io.github.brantunger.gamex.save";
 
@@ -112,6 +116,7 @@ public final class SaveData {
         try {
             diff = Difficulty.valueOf(diffName);
         } catch (IllegalArgumentException e) {
+            log.warn("The saved run has an unknown difficulty '{}'; using {}", diffName, Difficulty.NORMAL);
             diff = Difficulty.NORMAL;
         }
         boolean hasScattergun = store.getBoolean(KEY_RUN_HAS_SCATTERGUN, false);
@@ -119,6 +124,8 @@ public final class SaveData {
         boolean hasRailLance = store.getBoolean(KEY_RUN_HAS_RAIL_LANCE, false);
         int slugs = store.getInteger(KEY_RUN_SLUGS, 0);
         WeaponSlot weapon = WeaponSlot.fromName(store.getString(KEY_RUN_WEAPON, WeaponSlot.PISTOL.name()));
+        log.info("Read the saved run: stage index {}, {}, health {}, armor {}, weapon {}", getSavedStageIndex(), diff,
+            health, armor, weapon);
         return new PlayerLoadout(health, armor, diff, hasScattergun, shells, hasRailLance, slugs, weapon);
     }
 
@@ -138,12 +145,15 @@ public final class SaveData {
             store.putInteger(KEY_UNLOCKED_STAGE, stageIndex);
         }
         store.flush();
+        log.info("Saved the run: stage index {}, {}, health {}, armor {}, weapon {}", Math.max(0, stageIndex),
+            loadout.difficulty, loadout.health, loadout.armor, loadout.activeWeapon);
     }
 
     /** Clears the in-progress campaign snapshot (for example after completing the final stage). */
     public void clearSavedRun() {
         store.putBoolean(KEY_HAS_RUN, false);
         store.flush();
+        log.info("Cleared the saved run");
     }
 
     /** @return highest zero-based campaign stage index unlocked so far. */
@@ -156,6 +166,7 @@ public final class SaveData {
         if (stageIndex > getUnlockedStageIndex()) {
             store.putInteger(KEY_UNLOCKED_STAGE, stageIndex);
             store.flush();
+            log.info("Unlocked stage index {}", stageIndex);
         }
     }
 
@@ -205,6 +216,17 @@ public final class SaveData {
             if (!fresh.isEmpty()) store.putInteger(prefix + "medals", Medal.toBits(held) | Medal.toBits(fresh));
         }
         store.flush();
+
+        log.info("Recorded {} on {}: time {} s, rank {}, best rank {}", stageId, difficulty, stats.clearTime, rank,
+            bestRank);
+        if (newBestTime) {
+            if (Float.isInfinite(prevBestTime)) {
+                log.info("First best time on {} on {}: {} s", stageId, difficulty, bestTime);
+            } else {
+                log.info("New best time on {} on {}: {} s, was {} s", stageId, difficulty, bestTime, prevBestTime);
+            }
+        }
+        if (!newMedals.isEmpty()) log.info("Medals awarded on {} on {}: {}", stageId, difficulty, newMedals);
 
         return new CompletionSummary(stats, bestTime, newBestTime, rank, bestRank, recordMedals, medals, newMedals);
     }

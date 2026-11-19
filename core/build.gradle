@@ -2,10 +2,14 @@
 
 dependencies {
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
+  // The logging facade only; each application module brings its own binding (desktop and tools use Logback).
+  api "org.slf4j:slf4j-api:$slf4jVersion"
 
   testImplementation platform("org.junit:junit-bom:$junitVersion")
   testImplementation "org.junit.jupiter:junit-jupiter"
   testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+  // The tests' binding, set to WARN by src/test/resources/logback-test.xml; tests also read log lines through it.
+  testImplementation "ch.qos.logback:logback-classic:$logbackVersion"
 }
 
 // Tells the tests where the assets folder is. Editing a committed model, sound or level reruns the tests; paths are

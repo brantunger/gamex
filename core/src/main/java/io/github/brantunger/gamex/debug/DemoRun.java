@@ -4,6 +4,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import io.github.brantunger.gamex.player.PlayerInput;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.Locale;
@@ -32,6 +34,8 @@ import java.util.zip.Deflater;
  * by the same {@link #FRAME_TIME}, so the saved frame is the same on every run.
  */
 public final class DemoRun {
+
+    private static final Logger log = LoggerFactory.getLogger(DemoRun.class);
 
     /** The simulated time per frame, in seconds. */
     public static final float FRAME_TIME = 1f / 60f;
@@ -71,8 +75,7 @@ public final class DemoRun {
             try {
                 captureFrame = Math.max(1, Integer.parseInt(frameText.trim()));
             } catch (NumberFormatException e) {
-                System.err.println("GAMEX_SCREENSHOT_FRAME is not a whole number: '" + frameText + "'; using "
-                    + DEFAULT_FRAME);
+                log.warn("GAMEX_SCREENSHOT_FRAME is not a whole number: '{}'; using {}", frameText, DEFAULT_FRAME);
             }
         }
         return new DemoRun(path, captureFrame, System.getenv("GAMEX_DEMO"));
@@ -108,7 +111,7 @@ public final class DemoRun {
             float pitch = parts.length > 1 ? Float.parseFloat(parts[1].trim()) : 0f;
             return new float[] {yaw, pitch};
         } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
-            System.err.println("GAMEX_VIEWMODEL_ORBIT is not 'yaw' or 'yaw,pitch' in degrees: '" + text + "'");
+            log.warn("GAMEX_VIEWMODEL_ORBIT is not 'yaw' or 'yaw,pitch' in degrees: '{}'", text);
             return null;
         }
     }
@@ -169,7 +172,7 @@ public final class DemoRun {
         // The frame buffer's first row is the bottom of the picture, so the rows are flipped on the way out.
         PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, Deflater.DEFAULT_COMPRESSION, true);
         pixmap.dispose();
-        Gdx.app.log("DemoRun", "Saved frame " + frame + " to " + path);
+        log.info("Saved frame {} to {}", frame, path);
         Gdx.app.exit();
     }
 }

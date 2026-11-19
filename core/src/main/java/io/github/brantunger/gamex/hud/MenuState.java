@@ -9,6 +9,8 @@ import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.world.Levels;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,6 +22,8 @@ import java.util.Locale;
  * Intermission Tally flows. Has no graphics or input-device dependencies so it can be unit-tested directly.
  */
 public final class MenuState {
+
+    private static final Logger log = LoggerFactory.getLogger(MenuState.class);
 
     /** Active top-level UI screen. */
     public enum Screen {
@@ -142,6 +146,7 @@ public final class MenuState {
             return Command.QUIT;
         }
         quitConfirmTimer = QUIT_CONFIRM_SECONDS;
+        log.debug("Quit asked for on {}; waiting for a second press", screen);
         emitUiSound(SoundEvent.Type.MENU_BACK);
         return Command.NONE;
     }
@@ -284,6 +289,7 @@ public final class MenuState {
         int next = ((selectedIndex + delta) % n + n) % n;
         if (next != selectedIndex) {
             selectedIndex = next;
+            log.debug("Menu {} moved to '{}'", screen, options.get(next));
             emitUiSound(SoundEvent.Type.MENU_MOVE);
         }
     }
@@ -293,6 +299,7 @@ public final class MenuState {
         List<String> options = getOptions();
         if (index >= 0 && index < options.size() && index != selectedIndex) {
             selectedIndex = index;
+            log.debug("Menu {} pointed at '{}'", screen, options.get(index));
             emitUiSound(SoundEvent.Type.MENU_MOVE);
         }
     }
@@ -301,28 +308,45 @@ public final class MenuState {
     public Command adjustHorizontal(int direction) {
         if (screen != Screen.SETTINGS || direction == 0) return Command.NONE;
         switch (selectedIndex) {
-            case 0:
+            case 0: {
+                float before = settings.getMouseSensitivity();
                 settings.adjustSensitivity(direction);
+                // At the end of its range the value stays where it was, and then nothing changed.
+                if (settings.getMouseSensitivity() != before) {
+                    log.debug("Setting changed: mouse sensitivity {}", settings.getMouseSensitivity());
+                }
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
+            }
             case 1:
                 settings.setInvertY(!settings.isInvertY());
+                log.debug("Setting changed: invert Y {}", settings.isInvertY());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
-            case 2:
+            case 2: {
+                float before = settings.getFov();
                 settings.adjustFov(direction);
+                if (settings.getFov() != before) log.debug("Setting changed: field of view {}", settings.getFov());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
+            }
             case 3:
                 settings.setViewBob(!settings.isViewBob());
+                log.debug("Setting changed: view bob {}", settings.isViewBob());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
-            case 4:
+            case 4: {
+                float before = settings.getMasterVolume();
                 settings.adjustMasterVolume(direction);
+                if (settings.getMasterVolume() != before) {
+                    log.debug("Setting changed: master volume {}", settings.getMasterVolume());
+                }
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
+            }
             case 5:
                 settings.setFullscreen(!settings.isFullscreen());
+                log.debug("Setting changed: fullscreen {}", settings.isFullscreen());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.APPLY_DISPLAY;
             default:
@@ -335,6 +359,7 @@ public final class MenuState {
         List<String> options = getOptions();
         if (options.isEmpty()) return Command.NONE;
         String choice = options.get(Math.min(selectedIndex, options.size() - 1));
+        log.debug("Menu {} confirmed '{}'", screen, choice);
         switch (screen) {
             case TITLE:
                 if (choice.startsWith("CONTINUE")) {
@@ -343,6 +368,7 @@ public final class MenuState {
                     stageIndex = Math.min(saveData.getSavedStageIndex(), campaign.size() - 1);
                     activeStage = campaign.get(stageIndex);
                     activeLoadout = saveData.getSavedLoadout();
+                    log.info("Continuing the saved run at stage {} on {}", activeStage.id, activeLoadout.difficulty);
                     entryLoadout = activeLoadout;
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
@@ -597,6 +623,11 @@ public final class MenuState {
     }
 
     private void setScreen(Screen next) {
+        if (screen == null) {
+            log.info("Screen {} shown", next);
+        } else if (next != screen) {
+            log.info("Screen {} shown after {}", next, screen);
+        }
         this.screen = next;
         this.selectedIndex = 0;
         this.quitConfirmTimer = 0f;
