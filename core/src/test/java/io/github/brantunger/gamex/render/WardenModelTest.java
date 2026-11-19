@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.model.GlbFile;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.world.Enemy;
@@ -111,7 +112,7 @@ class WardenModelTest {
 
     @Test
     void theComboOfTheSimulationLastsAsLongAsItsClip() {
-        assertEquals(clipLength(WardenPose.ATTACK.clip), Enemy.WARDEN_COMBO_TIME, 1e-4f,
+        assertEquals(clipLength(WardenPose.ATTACK.clip), TestTuning.WARDEN.comboTime, 1e-4f,
             "the simulation times the punches against this clip; a new clip needs new punch times");
     }
 
@@ -191,15 +192,15 @@ class WardenModelTest {
         assertFalse(WardenModel.isNeeded(Collections.emptyList()));
 
         List<Enemy> enemies = new ArrayList<>();
-        enemies.add(new Enemy(Enemy.Kind.GUARD, 2.5f, 2.5f, 0f));
-        enemies.add(new Enemy(Enemy.Kind.TURRET, 4.5f, 2.5f, 0f));
+        enemies.add(new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 2.5f, 2.5f, 0f));
+        enemies.add(new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 4.5f, 2.5f, 0f));
         assertFalse(WardenModel.isNeeded(enemies));
 
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 6.5f, 2.5f, 0f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 6.5f, 2.5f, 0f);
         enemies.add(warden);
         assertTrue(WardenModel.isNeeded(enemies));
 
-        warden.damage(Enemy.Kind.WARDEN.maxHealth);
+        warden.damage(TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).maxHealth);
         assertTrue(warden.isDestroyed());
         assertFalse(WardenModel.isNeeded(enemies), "a destroyed Warden is not drawn");
     }

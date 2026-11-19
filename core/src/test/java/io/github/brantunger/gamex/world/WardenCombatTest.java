@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector2;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import org.junit.jupiter.api.Test;
@@ -20,8 +21,19 @@ class WardenCombatTest {
     private static final float DT = 1f / 60f;
     /** The yaw that faces +x, the way the Warden faces in these arenas. */
     private static final float EAST = 90f;
-    private static final float[] PUNCH_TIMES = {0.60f, 1.10f, 1.27f};
-    private static final float[] PUNCH_DAMAGE = {16f, 16f, 28f};
+    /** When each punch lands and what it does, as the tuning the Wardens here are built with has them. */
+    private static final float[] PUNCH_TIMES = perPunch(true);
+    private static final float[] PUNCH_DAMAGE = perPunch(false);
+    private static final float WALK_SPEED = TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).moveSpeed;
+    private static final float MAX_HEALTH = TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).maxHealth;
+
+    private static float[] perPunch(boolean times) {
+        float[] values = new float[TestTuning.WARDEN.punchCount()];
+        for (int i = 0; i < values.length; i++) {
+            values[i] = times ? TestTuning.WARDEN.punchTime(i) : TestTuning.WARDEN.punchDamage(i);
+        }
+        return values;
+    }
 
     private static GameMap arena() {
         String wall = "########################################";
@@ -51,7 +63,8 @@ class WardenCombatTest {
     }
 
     private static void step(Enemy warden, GameMap map, Player player, Difficulty difficulty) {
-        warden.update(DT, map, new Pathfinder(), player, difficulty, Collections.emptyList(), null);
+        warden.update(DT, map, new Pathfinder(), player, TestTuning.DIFFICULTY.of(difficulty), Collections.emptyList(),
+            null);
     }
 
     /** Steps a Warden that stands in reach of the player until its combo starts. */
@@ -106,7 +119,7 @@ class WardenCombatTest {
     @Test
     void aStandingPlayerTakesTheThreePunchesWhenTheClipThrowsThem() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         Player player = new Player(11.3f, 10.5f, 270f);
         startCombo(warden, map, player, Difficulty.NORMAL);
 
@@ -118,9 +131,9 @@ class WardenCombatTest {
             assertEquals(PUNCH_DAMAGE[i], combo.hitDamage.get(i), 1e-3f, "punch " + (i + 1));
         }
         assertEquals(3, combo.punchesThrown);
-        assertEquals(Enemy.WARDEN_COMBO_TIME, combo.comboSeconds, DT + 1e-4f, "the whole clip plays");
-        assertEquals(Enemy.WARDEN_RECOVER_TIME, combo.recoverSeconds, DT + 1e-4f);
-        assertEquals(Enemy.WARDEN_COMBO_TIME, combo.heldAt, 1e-4f, "the recovery holds the end of the clip");
+        assertEquals(TestTuning.WARDEN.comboTime, combo.comboSeconds, DT + 1e-4f, "the whole clip plays");
+        assertEquals(TestTuning.WARDEN.recoverTime, combo.recoverSeconds, DT + 1e-4f);
+        assertEquals(TestTuning.WARDEN.comboTime, combo.heldAt, 1e-4f, "the recovery holds the end of the clip");
         assertEquals(Enemy.State.WINDUP, warden.getState(), "the player is still there, so the next combo follows");
         assertEquals(0, warden.getPunchesLanded(), "and its count of punches starts again");
     }
@@ -128,19 +141,19 @@ class WardenCombatTest {
     @Test
     void aPunchLandsOnlyWithinItsReach() {
         GameMap map = arena();
-        Enemy near = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy near = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         Player nearPlayer = new Player(11.3f, 10.5f, 270f);
         startCombo(near, map, nearPlayer, Difficulty.NORMAL);
         Combo inReach = playCombo(near, map, nearPlayer, Difficulty.NORMAL,
-            heldAt(Enemy.WARDEN_PUNCH_REACH - 0.05f, 0f));
+            heldAt(TestTuning.WARDEN.punchReach - 0.05f, 0f));
         assertEquals(3, inReach.hitTimes.size(), "dead ahead and just inside the reach, every punch lands");
 
-        Enemy far = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy far = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         Player farPlayer = new Player(11.3f, 10.5f, 270f);
         startCombo(far, map, farPlayer, Difficulty.NORMAL);
         // The player is placed before each step and the Warden's lunge then gains about 0.13 on them within it.
         Combo outOfReach = playCombo(far, map, farPlayer, Difficulty.NORMAL,
-            heldAt(Enemy.WARDEN_PUNCH_REACH + 0.2f, 0f));
+            heldAt(TestTuning.WARDEN.punchReach + 0.2f, 0f));
         assertEquals(0, outOfReach.hitTimes.size(), "dead ahead and just outside the reach, none does");
         assertEquals(Player.MAX_HEALTH, farPlayer.getHealth(), 1e-6f);
         assertEquals(3, outOfReach.punchesThrown, "a punch that misses is still thrown, and heard");
@@ -151,20 +164,20 @@ class WardenCombatTest {
     void aPunchLandsOnlyWithinItsFrontalArc() {
         GameMap map = arena();
         for (float side : new float[] {-1f, 1f}) {
-            Enemy inside = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+            Enemy inside = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
             Player insidePlayer = new Player(11.3f, 10.5f, 270f);
             startCombo(inside, map, insidePlayer, Difficulty.NORMAL);
             Combo inArc = playCombo(inside, map, insidePlayer, Difficulty.NORMAL,
-                heldAt(0.8f, side * (Enemy.WARDEN_PUNCH_ARC_DEG - 15f)));
+                heldAt(0.8f, side * (TestTuning.WARDEN.punchArc - 15f)));
             // The player is placed before each step, and the Warden's lunge within it then widens the angle by
             // up to 6 degrees; hence the margin on this side of the arc.
             assertEquals(3, inArc.hitTimes.size(), "inside the arc on side " + side);
 
-            Enemy outside = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+            Enemy outside = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
             Player outsidePlayer = new Player(11.3f, 10.5f, 270f);
             startCombo(outside, map, outsidePlayer, Difficulty.NORMAL);
             Combo outOfArc = playCombo(outside, map, outsidePlayer, Difficulty.NORMAL,
-                heldAt(0.8f, side * (Enemy.WARDEN_PUNCH_ARC_DEG + 3f)));
+                heldAt(0.8f, side * (TestTuning.WARDEN.punchArc + 3f)));
             assertEquals(0, outOfArc.hitTimes.size(), "just outside the arc on side " + side + ", well within reach");
         }
     }
@@ -173,7 +186,7 @@ class WardenCombatTest {
     void aPlayerStandingOffToOneSideWhenTheComboStartsIsStillHit() {
         GameMap map = arena();
         for (float degrees : new float[] {-35f, -25f, -15f, -5f, 5f, 15f, 25f, 35f}) {
-            Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+            Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
             Player player = new Player(11.3f, 10.5f, 270f, 100f, 100f);
             startCombo(warden, map, player, Difficulty.NORMAL);
             // Off its facing, as after a step to one side as the combo starts, and standing there from then on.
@@ -190,8 +203,8 @@ class WardenCombatTest {
     @Test
     void aPlayerWalkingStraightBackIsCaughtByTheFirstLunge() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
-        Player player = new Player(10.5f + Enemy.WARDEN_ATTACK_RANGE - 0.01f, 10.5f, 270f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Player player = new Player(10.5f + TestTuning.WARDEN.attackRange - 0.01f, 10.5f, 270f);
         startCombo(warden, map, player, Difficulty.NORMAL);
 
         Combo combo = playCombo(warden, map, player, Difficulty.NORMAL,
@@ -206,8 +219,8 @@ class WardenCombatTest {
     void aSidestepFromTheStartOfTheComboAvoidsEveryPunch() {
         GameMap map = arena();
         for (float side : new float[] {-1f, 1f}) {
-            Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
-            Player player = new Player(10.5f + Enemy.WARDEN_ATTACK_RANGE - 0.01f, 10.5f, 270f);
+            Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+            Player player = new Player(10.5f + TestTuning.WARDEN.attackRange - 0.01f, 10.5f, 270f);
             startCombo(warden, map, player, Difficulty.NORMAL);
 
             Combo combo = playCombo(warden, map, player, Difficulty.NORMAL, (p, w, sinceStart) -> {
@@ -223,8 +236,8 @@ class WardenCombatTest {
     @Test
     void aDashStraightBackAtTheStartOfTheComboAvoidsEveryPunch() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
-        Player player = new Player(10.5f + Enemy.WARDEN_ATTACK_RANGE - 0.01f, 10.5f, 270f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Player player = new Player(10.5f + TestTuning.WARDEN.attackRange - 0.01f, 10.5f, 270f);
         startCombo(warden, map, player, Difficulty.NORMAL);
 
         Combo combo = playCombo(warden, map, player, Difficulty.NORMAL, (p, w, sinceStart) -> {
@@ -251,9 +264,9 @@ class WardenCombatTest {
                 String[] names = {"walking back", "sidestepping south", "sidestepping north", "dashing back"};
                 for (int i = 0; i < dodges.length; i++) {
                     // A wider arena than the usual one is not needed: the longest of these ends 9.5 from the start.
-                    Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
-                    if (overdrive) warden.damage(Enemy.Kind.WARDEN.maxHealth * 0.5f);
-                    Player player = new Player(10.5f + Enemy.WARDEN_ATTACK_RANGE - 0.01f, 10.5f, 270f, 100f, 100f);
+                    Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+                    if (overdrive) warden.damage(MAX_HEALTH * 0.5f);
+                    Player player = new Player(10.5f + TestTuning.WARDEN.attackRange - 0.01f, 10.5f, 270f, 100f, 100f);
                     startCombo(warden, map, player, difficulty);
                     Dodge dodge = dodges[i];
                     Combo combo = playCombo(warden, map, player, difficulty, (p, w, sinceStart) -> {
@@ -278,7 +291,7 @@ class WardenCombatTest {
             "#...........#",
             "#...........#",
             "#############");
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 2.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 2.5f, EAST);
         Player player = new Player(11.3f, 2.5f, 270f);
         startCombo(warden, map, player, Difficulty.NORMAL);
 
@@ -300,10 +313,10 @@ class WardenCombatTest {
         assertEquals(1, doors.size());
         assertFalse(doors.get(0).isOpening());
         GameMap map = sim.map;
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 3.9f, 1.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 3.9f, 1.5f, EAST);
         Player player = new Player(4.7f, 1.5f, 270f);
         for (int i = 0; i < 120 && warden.getState() != Enemy.State.WINDUP; i++) {
-            warden.update(DT, map, new Pathfinder(), player, Difficulty.NORMAL, Collections.emptyList(), doors, null);
+            warden.update(DT, map, new Pathfinder(), player, TestTuning.NORMAL, Collections.emptyList(), doors, null);
         }
         assertEquals(Enemy.State.WINDUP, warden.getState());
 
@@ -312,7 +325,7 @@ class WardenCombatTest {
         float nearest = Float.MAX_VALUE;
         int thrown = 0;
         while (warden.getState() == Enemy.State.WINDUP) {
-            warden.update(DT, map, new Pathfinder(), player, Difficulty.NORMAL, Collections.emptyList(), doors, null);
+            warden.update(DT, map, new Pathfinder(), player, TestTuning.NORMAL, Collections.emptyList(), doors, null);
             int punches = warden.consumePunchesThrown();
             if (punches > 0) {
                 nearest = Math.min(nearest, player.position.x - warden.getX());
@@ -323,7 +336,7 @@ class WardenCombatTest {
         }
 
         assertEquals(3, thrown);
-        assertTrue(nearest < Enemy.WARDEN_PUNCH_REACH, "the player was within reach of a punch, " + nearest
+        assertTrue(nearest < TestTuning.WARDEN.punchReach, "the player was within reach of a punch, " + nearest
             + " away, dead ahead; only the door was between them");
         assertEquals(Player.MAX_HEALTH, player.getHealth(), 1e-6f, "a closed door stops a punch");
         assertEquals(0, warden.getPunchesLanded());
@@ -332,15 +345,15 @@ class WardenCombatTest {
     @Test
     void aLungeDoesNotGoThroughSomethingSolidInItsWay() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         // A turret stands 1.5 ahead of the Warden: the first lunge alone is 2.3 long.
-        Enemy turret = new Enemy(Enemy.Kind.TURRET, 12.0f, 10.5f, 0f);
+        Enemy turret = new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 12.0f, 10.5f, 0f);
         List<Damageable> solids = new ArrayList<>();
         solids.add(warden);
         solids.add(turret);
         Player player = new Player(11.3f, 10.5f, 270f);
         for (int i = 0; i < 120 && warden.getState() != Enemy.State.WINDUP; i++) {
-            warden.update(DT, map, new Pathfinder(), player, Difficulty.NORMAL, solids, null);
+            warden.update(DT, map, new Pathfinder(), player, TestTuning.NORMAL, solids, null);
         }
         assertEquals(Enemy.State.WINDUP, warden.getState());
 
@@ -349,7 +362,7 @@ class WardenCombatTest {
         float touching = warden.getRadius() + turret.getRadius();
         float nearest = Float.MAX_VALUE;
         while (warden.getState() == Enemy.State.WINDUP) {
-            warden.update(DT, map, new Pathfinder(), player, Difficulty.NORMAL, solids, null);
+            warden.update(DT, map, new Pathfinder(), player, TestTuning.NORMAL, solids, null);
             float apart = Vector2.dst(warden.getX(), warden.getZ(), turret.getX(), turret.getZ());
             assertTrue(apart >= touching - 1e-3f, "the Warden went into the turret: " + apart + " apart at "
                 + warden.getComboTime() + " s, and " + touching + " is touching");
@@ -359,13 +372,13 @@ class WardenCombatTest {
         // It slides round the turret, as every body that meets one does, rather than stop dead against it.
         assertTrue(warden.getX() > 10.9f, "it did lunge: x " + warden.getX());
         assertTrue(nearest < touching + 0.05f, "and met the turret on its way: " + nearest + " apart at the nearest");
-        assertEquals(Enemy.Kind.TURRET.maxHealth, turret.getHealth(), 1e-6f, "the lunge itself does no damage");
+        assertEquals(turret.getMaxHealth(), turret.getHealth(), 1e-6f, "the lunge itself does no damage");
     }
 
     @Test
     void theTelegraphBuildsUpBeforeEachPunchAndIsGoneBetweenThem() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         Player player = new Player(11.3f, 10.5f, 270f, 100f, 100f);
         startCombo(warden, map, player, Difficulty.NORMAL);
         assertEquals(0f, warden.getWindupProgress(), 1e-6f, "nothing warns of a punch 0.6 s away");
@@ -390,7 +403,7 @@ class WardenCombatTest {
     @Test
     void oneLongStepThatPassesTwoPunchesThrowsBoth() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         Player player = new Player(11.3f, 10.5f, 270f);
         startCombo(warden, map, player, Difficulty.NORMAL);
         while (warden.getComboTime() < 1.0f) step(warden, map, player, Difficulty.NORMAL);
@@ -398,7 +411,7 @@ class WardenCombatTest {
         float before = player.getHealth();
 
         // The lunges of both punches fall in this step too; the Warden must not pass through the player.
-        warden.update(0.3f, map, new Pathfinder(), player, Difficulty.NORMAL, Collections.emptyList(), null);
+        warden.update(0.3f, map, new Pathfinder(), player, TestTuning.NORMAL, Collections.emptyList(), null);
 
         assertEquals(2, warden.consumePunchesThrown(), "the punches at 1.10 s and 1.27 s");
         assertEquals(0, warden.consumePunchesThrown(), "each is reported once");
@@ -417,7 +430,7 @@ class WardenCombatTest {
             float z = warden.getZ();
             warden.alert();
             pathfinder.compute(map, player.position.x, player.position.y);
-            warden.update(DT, map, pathfinder, player, Difficulty.NORMAL, Collections.emptyList(), null);
+            warden.update(DT, map, pathfinder, player, TestTuning.NORMAL, Collections.emptyList(), null);
             travelled += (float) Math.hypot(warden.getX() - x, warden.getZ() - z);
             if (expectedSpeed >= 0f) {
                 assertEquals(expectedSpeed, warden.getGroundSpeed(), 1e-4f, "after " + i + " steps");
@@ -429,15 +442,15 @@ class WardenCombatTest {
     @Test
     void theWardenRunsAtAPlayerItSeesAndOutpacesTheirWalk() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 5.5f, 10.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 5.5f, 10.5f, EAST);
         Player player = new Player(30.5f, 10.5f, 270f);
 
-        float travelled = travel(warden, map, new Pathfinder(), player, 1f, Enemy.WARDEN_RUN_SPEED);
+        float travelled = travel(warden, map, new Pathfinder(), player, 1f, TestTuning.WARDEN.runSpeed);
 
         assertTrue(warden.isChasing());
-        assertEquals(Enemy.WARDEN_RUN_SPEED, travelled, 0.05f);
-        assertTrue(Enemy.WARDEN_RUN_SPEED > Player.MOVE_SPEED + 0.3f, "walking away must not work");
-        assertTrue(Enemy.WARDEN_RUN_SPEED < Player.DASH_SPEED, "a dash must");
+        assertEquals(TestTuning.WARDEN.runSpeed, travelled, 0.05f);
+        assertTrue(TestTuning.WARDEN.runSpeed > Player.MOVE_SPEED + 0.3f, "walking away must not work");
+        assertTrue(TestTuning.WARDEN.runSpeed < Player.DASH_SPEED, "a dash must");
     }
 
     /** A wall with one gap, far from both of them, between the Warden and the player. */
@@ -456,64 +469,65 @@ class WardenCombatTest {
     @Test
     void theWardenOnlyWalksAfterAPlayerItCannotSee() {
         GameMap map = dividedMap();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 4.5f, 1.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 4.5f, 1.5f, EAST);
         Player player = new Player(16.5f, 1.5f, 270f);
         assertFalse(Hitscan.hasLineOfSight(map, Collections.emptyList(), 4.5f, 1.5f, 16.5f, 1.5f));
 
-        float travelled = travel(warden, map, new Pathfinder(), player, 2f, Enemy.Kind.WARDEN.moveSpeed);
+        float travelled = travel(warden, map, new Pathfinder(), player, 2f, WALK_SPEED);
 
         assertFalse(warden.isChasing());
-        assertEquals(2f * Enemy.Kind.WARDEN.moveSpeed, travelled, 0.1f, "it walks the way round");
-        assertTrue(Enemy.Kind.WARDEN.moveSpeed < 0.5f * Enemy.WARDEN_RUN_SPEED, "a walk, not a slower run");
+        assertEquals(2f * WALK_SPEED, travelled, 0.1f, "it walks the way round");
+        assertTrue(WALK_SPEED < 0.5f * TestTuning.WARDEN.runSpeed, "a walk, not a slower run");
     }
 
     @Test
     void theWardenKeepsRunningForAMomentAfterItLosesSightThenWalks() {
         GameMap map = dividedMap();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 3.5f, 1.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 3.5f, 1.5f, EAST);
         Player player = new Player(8.5f, 1.5f, 270f);
         Pathfinder pathfinder = new Pathfinder();
-        travel(warden, map, pathfinder, player, 0.25f, Enemy.WARDEN_RUN_SPEED);
+        travel(warden, map, pathfinder, player, 0.25f, TestTuning.WARDEN.runSpeed);
 
         // The player is suddenly behind the wall.
         player.position.set(16.5f, 1.5f);
-        travel(warden, map, pathfinder, player, Enemy.WARDEN_CHASE_MEMORY - 2f * DT, Enemy.WARDEN_RUN_SPEED);
+        travel(warden, map, pathfinder, player, TestTuning.WARDEN.chaseMemory - 2f * DT, TestTuning.WARDEN.runSpeed);
         assertTrue(warden.isChasing(), "a sightline lost for a moment does not slow it");
 
         travel(warden, map, pathfinder, player, 3f * DT, -1f);
-        travel(warden, map, pathfinder, player, 0.5f, Enemy.Kind.WARDEN.moveSpeed);
+        travel(warden, map, pathfinder, player, 0.5f, WALK_SPEED);
         assertFalse(warden.isChasing());
     }
 
     @Test
     void overdriveMakesTheWardenRunFasterPunchHarderAndSoonerAndRecoverSooner() {
         GameMap map = arena();
-        Enemy runner = new Enemy(Enemy.Kind.WARDEN, 5.5f, 10.5f, EAST);
-        runner.damage(Enemy.Kind.WARDEN.maxHealth * 0.5f);
+        Enemy runner = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 5.5f, 10.5f, EAST);
+        runner.damage(MAX_HEALTH * 0.5f);
         assertTrue(runner.isOverdrive());
-        float fast = Enemy.WARDEN_RUN_SPEED * Enemy.WARDEN_OVERDRIVE_SPEED_SCALE;
+        float fast = TestTuning.WARDEN.runSpeed * TestTuning.WARDEN.overdriveSpeedScale;
         assertEquals(fast, travel(runner, map, new Pathfinder(), new Player(30.5f, 10.5f, 270f), 1f, fast), 0.05f);
-        assertTrue(fast > Enemy.WARDEN_RUN_SPEED + 0.5f);
+        assertTrue(fast > TestTuning.WARDEN.runSpeed + 0.5f);
         assertTrue(fast < Player.DASH_SPEED, "a dash still gets away");
 
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
-        warden.damage(Enemy.Kind.WARDEN.maxHealth * 0.5f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        warden.damage(MAX_HEALTH * 0.5f);
         Player player = new Player(11.3f, 10.5f, 270f);
         startCombo(warden, map, player, Difficulty.NORMAL);
         Combo combo = playCombo(warden, map, player, Difficulty.NORMAL, STAND);
 
         assertEquals(3, combo.hitTimes.size());
         for (int i = 0; i < 3; i++) {
-            assertEquals(PUNCH_TIMES[i] / Enemy.WARDEN_OVERDRIVE_COMBO_RATE, combo.hitTimes.get(i), DT + 1e-4f,
+            assertEquals(PUNCH_TIMES[i] / TestTuning.WARDEN.overdriveComboRate, combo.hitTimes.get(i), DT + 1e-4f,
                 "punch " + (i + 1) + " comes sooner");
-            assertEquals(PUNCH_DAMAGE[i] * Enemy.WARDEN_OVERDRIVE_DAMAGE_SCALE, combo.hitDamage.get(i), 1e-3f,
+            assertEquals(PUNCH_DAMAGE[i] * TestTuning.WARDEN.overdriveDamageScale, combo.hitDamage.get(i), 1e-3f,
                 "punch " + (i + 1) + " hits harder");
         }
-        assertEquals(Enemy.WARDEN_COMBO_TIME / Enemy.WARDEN_OVERDRIVE_COMBO_RATE, combo.comboSeconds, DT + 1e-4f);
-        assertEquals(Enemy.WARDEN_RECOVER_TIME * Enemy.WARDEN_OVERDRIVE_RECOVER_SCALE, combo.recoverSeconds,
+        assertEquals(TestTuning.WARDEN.comboTime / TestTuning.WARDEN.overdriveComboRate, combo.comboSeconds,
             DT + 1e-4f);
-        assertTrue(Enemy.WARDEN_OVERDRIVE_DAMAGE_SCALE > 1.2f && Enemy.WARDEN_OVERDRIVE_COMBO_RATE > 1.05f
-            && Enemy.WARDEN_OVERDRIVE_RECOVER_SCALE < 0.8f && Enemy.WARDEN_OVERDRIVE_TURN_SCALE > 1.2f);
+        assertEquals(TestTuning.WARDEN.recoverTime * TestTuning.WARDEN.overdriveRecoverScale, combo.recoverSeconds,
+            DT + 1e-4f);
+        assertTrue(TestTuning.WARDEN.overdriveDamageScale > 1.2f && TestTuning.WARDEN.overdriveComboRate > 1.05f
+            && TestTuning.WARDEN.overdriveRecoverScale < 0.8f && TestTuning.WARDEN.overdriveTurnScale > 1.2f);
     }
 
     @Test
@@ -521,8 +535,8 @@ class WardenCombatTest {
         GameMap map = arena();
         float[] turned = new float[2];
         for (int phase = 0; phase < 2; phase++) {
-            Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
-            if (phase == 1) warden.damage(Enemy.Kind.WARDEN.maxHealth * 0.5f);
+            Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+            if (phase == 1) warden.damage(MAX_HEALTH * 0.5f);
             Player player = new Player(11.3f, 10.5f, 270f);
             startCombo(warden, map, player, Difficulty.NORMAL);
             // The player is at once far off to its right, out of every punch's way.
@@ -530,28 +544,28 @@ class WardenCombatTest {
             for (int i = 0; i < 12; i++) step(warden, map, player, Difficulty.NORMAL);
             turned[phase] = warden.getYaw() - EAST;
         }
-        assertEquals(Enemy.WARDEN_COMBO_TURN_RATE * 12f * DT, turned[0], 0.05f, "slowly: a sidestep gets round it");
-        assertEquals(turned[0] * Enemy.WARDEN_OVERDRIVE_TURN_SCALE, turned[1], 0.05f);
+        assertEquals(TestTuning.WARDEN.comboTurnRate * 12f * DT, turned[0], 0.05f, "slowly: a sidestep gets round it");
+        assertEquals(turned[0] * TestTuning.WARDEN.overdriveTurnScale, turned[1], 0.05f);
     }
 
     @Test
     void difficultyChangesTheTimingOfTheComboAndItsDamage() {
         GameMap map = arena();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, EAST);
         Player player = new Player(11.3f, 10.5f, 270f);
         startCombo(warden, map, player, Difficulty.HARD);
         Combo combo = playCombo(warden, map, player, Difficulty.HARD, STAND);
 
-        assertEquals(Enemy.WARDEN_COMBO_TIME / Difficulty.HARD.enemySpeedScale, combo.comboSeconds, DT + 1e-4f);
-        assertEquals(PUNCH_DAMAGE[0] * Difficulty.HARD.damageTakenScale, combo.hitDamage.get(0), 1e-3f);
-        assertEquals(Enemy.WARDEN_RECOVER_TIME / Difficulty.HARD.enemySpeedScale, combo.recoverSeconds, DT + 1e-4f);
+        assertEquals(TestTuning.WARDEN.comboTime / TestTuning.HARD.enemySpeedScale, combo.comboSeconds, DT + 1e-4f);
+        assertEquals(PUNCH_DAMAGE[0] * TestTuning.HARD.damageTakenScale, combo.hitDamage.get(0), 1e-3f);
+        assertEquals(TestTuning.WARDEN.recoverTime / TestTuning.HARD.enemySpeedScale, combo.recoverSeconds, DT + 1e-4f);
     }
 
     @Test
     void theWardenDoesNotStartItsComboAtAPlayerBehindIt() {
         GameMap map = arena();
         // Facing west with the player in reach to the east: it has to turn round first.
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 10.5f, 10.5f, 270f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 10.5f, 10.5f, 270f);
         Player player = new Player(11.3f, 10.5f, 270f);
         warden.alert();
         step(warden, map, player, Difficulty.NORMAL);
@@ -559,6 +573,6 @@ class WardenCombatTest {
 
         startCombo(warden, map, player, Difficulty.NORMAL);
         float off = Math.abs(((warden.getYaw() - EAST) % 360f + 540f) % 360f - 180f);
-        assertTrue(off <= Enemy.WARDEN_ATTACK_FACING_DEG + 1e-3f, "it faces the player when it starts: off by " + off);
+        assertTrue(off <= TestTuning.WARDEN.attackFacing + 1e-3f, "it faces the player when it starts: off by " + off);
     }
 }

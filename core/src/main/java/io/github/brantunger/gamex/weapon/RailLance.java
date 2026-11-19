@@ -13,10 +13,11 @@ public final class RailLance {
     /** Baseline slugs granted on Normal difficulty when picking up a Slug Pack. */
     public static final int PICKUP_PACK_SLUGS = 3;
 
-    /** Piercing beam damage dealt to standard targets and enemies (one-shots Drones, Turrets, Guards, Ring Boards). */
+    /**
+     * Piercing beam damage dealt to targets, and to enemies before the {@code rail_damage_scale} of their kind
+     * (one-shots Drones, Turrets, Guards, Ring Boards; the Warden's heavy hide takes less).
+     */
     public static final float DAMAGE = 120f;
-    /** Piercing beam damage dealt to the Warden's heavy hide (75% of base damage). */
-    public static final float WARDEN_DAMAGE = 90f;
     /** Maximum rail beam range in world units. */
     public static final float RANGE = 60f;
     /** Capacitor recharge cycle duration between consecutive rail shots, in seconds. */

@@ -100,19 +100,21 @@ public final class PlayerLoadout {
      * the Rail Lance (with the Scattergun equipped in hand by default).
      * @param stageIndex zero-based campaign stage index
      * @param difficulty difficulty tier
+     * @param tuning what each difficulty multiplies; its pickup scale sizes the starter ammunition
      * @return starter loadout for direct deployment to {@code stageIndex}
      */
-    public static PlayerLoadout forStage(int stageIndex, Difficulty difficulty) {
+    public static PlayerLoadout forStage(int stageIndex, Difficulty difficulty, DifficultyTuning tuning) {
         Difficulty safe = difficulty == null ? Difficulty.NORMAL : difficulty;
+        float pickupScale = tuning.of(safe).pickupScale;
         if (stageIndex <= 0) return fresh(safe);
         int starterShells = Math.min(Scattergun.MAX_SHELLS,
-            Math.max(1, Math.round(Scattergun.PICKUP_WEAPON_SHELLS * safe.pickupScale)));
+            Math.max(1, Math.round(Scattergun.PICKUP_WEAPON_SHELLS * pickupScale)));
         if (stageIndex < 3) {
             return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells,
                 false, 0, WeaponSlot.SCATTERGUN);
         }
         int starterSlugs = Math.min(RailLance.MAX_SLUGS,
-            Math.max(1, Math.round(RailLance.PICKUP_WEAPON_SLUGS * safe.pickupScale)));
+            Math.max(1, Math.round(RailLance.PICKUP_WEAPON_SLUGS * pickupScale)));
         return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells,
             true, starterSlugs, WeaponSlot.SCATTERGUN);
     }

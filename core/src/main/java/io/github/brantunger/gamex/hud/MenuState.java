@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.hud;
 
 import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -77,15 +78,32 @@ public final class MenuState {
     private SaveData.CompletionSummary lastSummary;
     /** Seconds left in which a second press of the quit key quits; 0 when no quit is pending. */
     private float quitConfirmTimer;
+    private final DifficultyTuning difficultyTuning;
 
     /**
+     * Builds the menus with the difficulty tuning file read here and now. This is for tests only: the game
+     * loads its tuning once at start-up and uses
+     * {@link #MenuState(GameSettings, SaveData, Screen, DifficultyTuning)}.
      * @param settings live settings model
      * @param saveData campaign & record persistence
      * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
      */
     public MenuState(GameSettings settings, SaveData saveData, Screen startScreen) {
+        this(settings, saveData, startScreen, DifficultyTuning.load());
+    }
+
+    /**
+     * @param settings live settings model
+     * @param saveData campaign & record persistence
+     * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
+     * @param difficultyTuning what each difficulty multiplies, as loaded at start-up
+     */
+    public MenuState(GameSettings settings, SaveData saveData, Screen startScreen,
+                     DifficultyTuning difficultyTuning) {
+        if (difficultyTuning == null) throw new IllegalArgumentException("Difficulty tuning must not be null");
         this.settings = settings;
         this.saveData = saveData;
+        this.difficultyTuning = difficultyTuning;
         this.activeStage = campaign.get(0);
         this.activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
         this.entryLoadout = activeLoadout;
@@ -440,7 +458,7 @@ public final class MenuState {
                 campaignCompleted = false;
                 stageIndex = Math.min(pendingStageIndex, campaign.size() - 1);
                 activeStage = campaign.get(stageIndex);
-                activeLoadout = PlayerLoadout.forStage(stageIndex, diff);
+                activeLoadout = PlayerLoadout.forStage(stageIndex, diff, difficultyTuning);
                 entryLoadout = activeLoadout;
                 // The run is saved on DEPLOY, so backing out of the briefing keeps the old CONTINUE save.
                 setScreen(Screen.BRIEFING);
@@ -613,7 +631,8 @@ public final class MenuState {
             stats, !inTrainingRange);
         campaignCompleted = !inTrainingRange && (stageIndex + 1 >= campaign.size());
         if (!inTrainingRange) {
-            PlayerLoadout nextLoadout = carryOver == null ? PlayerLoadout.forStage(stageIndex + 1, activeLoadout.difficulty)
+            PlayerLoadout nextLoadout = carryOver == null
+                ? PlayerLoadout.forStage(stageIndex + 1, activeLoadout.difficulty, difficultyTuning)
                 : carryOver;
             if (stageIndex + 1 < campaign.size()) {
                 saveData.unlockStage(stageIndex + 1);

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import com.badlogic.gdx.math.Vector2;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
@@ -314,7 +315,7 @@ class EnemyMovementTest {
 
         // A guard that never moved would also be unharmed, so it must also have come round and shot the player.
         assertTrue(firstHit > 0f, "guard never hit the player: " + where(guard));
-        assertEquals(Enemy.Kind.GUARD.maxHealth, guard.getHealth(), 0f, "guard was zapped: " + where(guard));
+        assertEquals(guard.getMaxHealth(), guard.getHealth(), 0f, "guard was zapped: " + where(guard));
     }
 
     @Test
@@ -334,7 +335,7 @@ class EnemyMovementTest {
 
         // A guard that never moved would also be unharmed, so it must also have come round and shot the player.
         assertTrue(firstHit > 0f, "guard never hit the player: " + where(guard));
-        assertEquals(Enemy.Kind.GUARD.maxHealth, guard.getHealth(), 0f, "guard was zapped: " + where(guard));
+        assertEquals(guard.getMaxHealth(), guard.getHealth(), 0f, "guard was zapped: " + where(guard));
         assertFalse(sim.targets.get(0).isDestroyed(), "the canister must still be standing");
     }
 
@@ -441,7 +442,7 @@ class EnemyMovementTest {
             }
         }
         assertTrue(strafeHit > 0f, "Guard never damaged player: " + where(strafeGuard));
-        assertEquals(Enemy.Kind.GUARD.maxHealth, strafeGuard.getHealth(), 0f,
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.GUARD).maxHealth, strafeGuard.getHealth(), 0f,
             "strafing Guard took shock grate damage: " + where(strafeGuard));
 
         // 2. Out-of-sight Guard when player hops repeatedly in place over the west ~ cell of a ~~ strip: Guard detours
@@ -479,7 +480,7 @@ class EnemyMovementTest {
         assertTrue(reachedSafeWestFlank,
             "detouring Guard never rounded safe west corridor to row 1: " + where(loopGuard));
         assertTrue(guardFiredAtPlayer, "detouring Guard never fired after rounding safe detour: " + where(loopGuard));
-        assertEquals(Enemy.Kind.GUARD.maxHealth, loopGuard.getHealth(), 0f,
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.GUARD).maxHealth, loopGuard.getHealth(), 0f,
             "detouring Guard was zapped: " + where(loopGuard));
     }
 }

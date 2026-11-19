@@ -15,11 +15,13 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Loads {@link Sound} assets from {@code assets/sounds/} via libGDX internal file handles and drives 3D spatialized
  * combat audio, centered player/menu audio, and the pitched blast-charge loop. Degrades cleanly to silent mode when
- * muted or when no audio device exists; a sound file that fails to load silences only its own cue.
+ * muted or when no audio device exists; a sound file that fails to load silences only its own cue. Each cue's
+ * playback volume comes from the {@link SoundVolumes} table it is given.
  */
 public final class SoundManager implements Disposable {
 
@@ -33,6 +35,7 @@ public final class SoundManager implements Disposable {
     public static final String CHARGE_HUM_PATH = SOUNDS_DIR + "/" + CHARGE_HUM_FILE;
 
     private final boolean muted;
+    private final SoundVolumes volumes;
     private final Map<SoundEvent.Type, Sound> sounds = new EnumMap<>(SoundEvent.Type.class);
     private final List<SoundEvent> frameEvents = new ArrayList<>();
     private final Vector3 listenerEye = new Vector3();
@@ -42,9 +45,11 @@ public final class SoundManager implements Disposable {
 
     /**
      * @param muted when true (e.g. {@code GAMEX_SCREENSHOT} runs), skips audio creation and suppresses playback
+     * @param volumes the playback volume of each cue, from {@link SoundVolumes#load()} in the game
      */
-    public SoundManager(boolean muted) {
+    public SoundManager(boolean muted, SoundVolumes volumes) {
         this.muted = muted;
+        this.volumes = Objects.requireNonNull(volumes, "volumes");
         Sound loadedCharge = null;
         if (!muted && Gdx.audio != null && Gdx.files != null) {
             for (SoundEvent.Type type : SoundEvent.Type.values()) {
@@ -190,81 +195,9 @@ public final class SoundManager implements Disposable {
             attenuation = spatial[0];
             pan = spatial[1];
         }
-        float volume = clamp(baseGain(event.type) * master * event.intensity * attenuation, 0f, 1f);
+        float volume = clamp(volumes.gain(event.type) * master * event.intensity * attenuation, 0f, 1f);
         if (volume < 0.005f) return;
         sound.play(volume, pitchFor(event), pan);
-    }
-
-    private static float baseGain(SoundEvent.Type type) {
-        switch (type) {
-            case MENU_MOVE:
-                return 0.35f;
-            case MENU_CONFIRM:
-                return 0.50f;
-            case MENU_BACK:
-                return 0.48f;
-            case WALL_IMPACT:
-                return 0.42f;
-            case TARGET_HIT:
-            case ENEMY_HIT:
-                return 0.62f;
-            case PISTOL_SHOT:
-                return 0.68f;
-            case SCATTERGUN_FIRE:
-                return 0.78f;
-            case SCATTERGUN_ALT_FIRE:
-                return 0.88f;
-            case RAIL_FIRE:
-                return 0.86f;
-            case RAIL_ZOOM_IN:
-            case RAIL_ZOOM_OUT:
-                return 0.36f;
-            case WEAPON_SWITCH:
-            case WEAPON_DRY_FIRE:
-            case PLAYER_JUMP:
-                return 0.56f;
-            case PLAYER_LAND:
-                return 0.52f;
-            case BLAST_RELEASE:
-            case ENEMY_SHOOT:
-            case DRONE_LUNGE:
-            case HAZARD_ZAP:
-            case PLAYER_DASH:
-                return 0.72f;
-            case BOSS_SLAM:
-                return 0.88f;
-            case BOSS_OVERDRIVE:
-                return 0.90f;
-            case BOSS_DESTROYED:
-                return 0.95f;
-            case PICKUP_HEALTH:
-            case PICKUP_ARMOR:
-            case PICKUP_ENERGY:
-            case PICKUP_SHELLS:
-            case PICKUP_SLUGS:
-                return 0.65f;
-            case PICKUP_KEYCARD:
-                return 0.68f;
-            case PICKUP_WEAPON:
-                return 0.74f;
-            case DOOR_LOCKED:
-                return 0.62f;
-            case DOOR_OPEN:
-                return 0.72f;
-            case CONSOLE_ACTIVATE:
-                return 0.75f;
-            case LOW_ENERGY:
-                return 0.58f;
-            case TARGET_DESTROYED:
-            case ENEMY_DESTROYED:
-            case PLAYER_HURT:
-            case PLAYER_DEATH:
-                return 0.80f;
-            case EXPLOSION:
-                return 0.90f;
-            default:
-                return 0.70f;
-        }
     }
 
     private static float pitchFor(SoundEvent event) {

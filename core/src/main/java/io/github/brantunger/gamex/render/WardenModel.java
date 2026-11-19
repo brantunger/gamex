@@ -63,8 +63,12 @@ final class WardenModel implements Disposable {
     private static final float COMBO_END_MARGIN = 1e-3f;
     /** A longer gap than this between two draws is a new or restarted game, not time to animate through. */
     private static final float MAX_STEP = 0.5f;
-    /** Where the light comes from, as in the shader of the flat-shaded models. */
-    private static final Vector3 TO_LIGHT = new Vector3(-0.3f, 0.9f, 0.4f).nor();
+    /**
+     * Where the light comes from, as in the shader of the flat-shaded models
+     * ({@code assets/shaders/model.vert.glsl}); the direction is the one {@link Shaders} holds for both.
+     */
+    private static final Vector3 TO_LIGHT =
+        new Vector3(Shaders.MODEL_LIGHT_X, Shaders.MODEL_LIGHT_Y, Shaders.MODEL_LIGHT_Z).nor();
     private static final float KEY_LIGHT = 3.0f;
     private static final float AMBIENT_LIGHT = 0.8f;
     /**

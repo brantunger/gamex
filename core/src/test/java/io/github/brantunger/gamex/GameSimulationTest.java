@@ -22,6 +22,7 @@ import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
+import io.github.brantunger.gamex.world.EnemyTuning;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Pickup;
@@ -917,10 +918,10 @@ class GameSimulationTest {
             droneSim.update(FRAME, idle);
             wardenSim.update(FRAME, idle);
         }
-        assertTrue(guardSim.enemies.get(0).getHealth() < Enemy.Kind.GUARD.maxHealth,
+        assertTrue(guardSim.enemies.get(0).getHealth() < TestTuning.ENEMIES.of(Enemy.Kind.GUARD).maxHealth,
             "Guard crossing forced ~ choke must take hazard zap damage");
-        assertEquals(Enemy.Kind.DRONE.maxHealth, droneSim.enemies.get(0).getHealth(), 1e-4f);
-        assertEquals(Enemy.Kind.WARDEN.maxHealth, wardenSim.enemies.get(0).getHealth(), 1e-4f);
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.DRONE).maxHealth, droneSim.enemies.get(0).getHealth(), 1e-4f);
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).maxHealth, wardenSim.enemies.get(0).getHealth(), 1e-4f);
     }
 
     @Test
@@ -1072,6 +1073,8 @@ class GameSimulationTest {
         assertTrue(sim.railBeams.isEmpty(), "Rail beam trail decays and removes after DURATION");
 
         // The Warden's hide reduces 120 base Rail Lance damage to 90 (75%).
+        EnemyTuning.KindStats wardenStats = TestTuning.ENEMIES.of(Enemy.Kind.WARDEN);
+        assertEquals(90f, RailLance.DAMAGE * wardenStats.railDamageScale, 0f);
         GameSimulation bossSim = new GameSimulation(
             GameMap.parse(
                 "###########",
@@ -1083,7 +1086,7 @@ class GameSimulationTest {
         PlayerInput fire = new PlayerInput();
         fire.fire = true;
         bossSim.update(FRAME, fire);
-        assertEquals(Enemy.Kind.WARDEN.maxHealth - RailLance.WARDEN_DAMAGE,
+        assertEquals(wardenStats.maxHealth - RailLance.DAMAGE * wardenStats.railDamageScale,
             bossSim.enemies.get(0).getHealth(), 1e-3f);
     }
 

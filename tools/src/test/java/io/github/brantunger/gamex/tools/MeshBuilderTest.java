@@ -318,6 +318,26 @@ class MeshBuilderTest {
             "desktop:processResources mustRunAfter generateModels and generateSounds");
     }
 
+    @Test
+    void gradleScriptsDeclareTheTextureGeneratorOutputAndOrderItsConsumersAfterIt() throws IOException {
+        String toolsScript = readProjectFile("tools", "build.gradle");
+        String coreScript = readProjectFile("core", "build.gradle");
+        String desktopScript = readProjectFile("desktop", "build.gradle");
+
+        assertTrue(Pattern.compile(
+            "tasks\\.register\\(\\s*'generateTextures'[\\s\\S]*?outputs\\.dir\\(\\s*rootProject\\.file\\(\\s*'assets/textures'\\s*\\)\\s*\\)")
+            .matcher(toolsScript).find(), "tools:generateTextures must declare outputs.dir('assets/textures')");
+        assertTrue(Pattern.compile("\\ntest \\{[\\s\\S]*?\\n  mustRunAfter\\(':tools:generateTextures'\\)")
+            .matcher(toolsScript).find(), "tools:test mustRunAfter generateTextures");
+        assertTrue(Pattern.compile("\\ntest \\{[\\s\\S]*?\\n  mustRunAfter\\(':tools:generateTextures'\\)")
+            .matcher(coreScript).find(), "core:test mustRunAfter generateTextures");
+        assertTrue(Pattern.compile(
+            "tasks\\.register\\(\\s*'generateAssetList'[\\s\\S]*?\\n  mustRunAfter\\(':tools:generateTextures'\\)")
+            .matcher(desktopScript).find(), "desktop:generateAssetList mustRunAfter generateTextures");
+        assertTrue(desktopScript.contains("\nprocessResources.mustRunAfter(':tools:generateTextures')"),
+            "desktop:processResources mustRunAfter generateTextures");
+    }
+
     private static String readProjectFile(String subproject, String fileName) throws IOException {
         for (Path candidate : new Path[] {
             Paths.get(subproject, fileName),

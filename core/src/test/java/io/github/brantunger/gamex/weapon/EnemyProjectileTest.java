@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
@@ -28,8 +29,8 @@ class EnemyProjectileTest {
             "##########",
             "#>.......#",
             "##########");
-        Enemy shooter = new Enemy(Enemy.Kind.GUARD, 1.5f, 1.5f, 90f);
-        Enemy squadmate = new Enemy(Enemy.Kind.DRONE, 3.5f, 1.5f, 90f);
+        Enemy shooter = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 1.5f, 1.5f, 90f);
+        Enemy squadmate = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 3.5f, 1.5f, 90f);
         List<Enemy> enemies = List.of(shooter, squadmate);
         List<Effect> effects = new ArrayList<>();
 
@@ -39,7 +40,7 @@ class EnemyProjectileTest {
             friendlyBolt.update(DT, hall, null, 1f, Collections.emptyList(), enemies, effects);
         }
         assertTrue(friendlyBolt.isFinished(), "bolt stops on fellow enemy");
-        assertEquals(Enemy.Kind.DRONE.maxHealth, squadmate.getHealth(), 1e-6f, "no friendly fire");
+        assertEquals(squadmate.getMaxHealth(), squadmate.getHealth(), 1e-6f, "no friendly fire");
 
         Target canister = new Target(Target.Kind.CANISTER, 5.5f, 1.5f);
         EnemyProjectile canisterBolt = new EnemyProjectile(new Vector3(2.0f, 0.35f, 1.5f),
@@ -124,7 +125,7 @@ class EnemyProjectileTest {
 
         // Purely vertical bolt falls back to shooter/origin horizontal coordinates.
         Player underShooter = new Player(4.5f, 2.5f, 0f);
-        Enemy overheadOwner = new Enemy(Enemy.Kind.DRONE, 2.5f, 2.5f, 90f);
+        Enemy overheadOwner = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 2.5f, 2.5f, 90f);
         EnemyProjectile verticalBolt = new EnemyProjectile(
             new Vector3(4.5f, 0.65f, 2.5f), new Vector3(0f, -1f, 0f), 6f, 10f, overheadOwner);
         assertTrue(verticalBolt.update(DT, room, underShooter, 1f,

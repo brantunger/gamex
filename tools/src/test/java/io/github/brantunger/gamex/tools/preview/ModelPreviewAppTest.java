@@ -17,16 +17,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -465,6 +471,74 @@ class ModelPreviewAppTest {
         assertEquals(1, throwingCount.get());
         assertEquals(1, d2Count.get());
         assertEquals(1, d3Count.get());
+    }
+
+    /**
+     * The previewer has no shader of its own: it draws with the game's model shader files, so a model is lit in it
+     * as in the game. A copy of the GLSL in a string here would let the two drift apart again.
+     */
+    @Test
+    void previewerKeepsNoShaderSourceOfItsOwn() throws IllegalAccessException {
+        for (Field field : ModelPreviewApp.class.getDeclaredFields()) {
+            if (!Modifier.isStatic(field.getModifiers()) || field.getType() != String.class) continue;
+            field.setAccessible(true);
+            String value = (String) field.get(null);
+            assertFalse(value != null && (value.contains("gl_Position") || value.contains("gl_FragColor")),
+                "ModelPreviewApp." + field.getName() + " still holds GLSL source");
+        }
+        String source = readText(findFile(
+            "src/main/java/io/github/brantunger/gamex/tools/preview/ModelPreviewApp.java", "tools"));
+        assertTrue(source.contains("Shaders.load(Shaders.MODEL_VERTEX)"), "the game's model vertex shader");
+        assertTrue(source.contains("Shaders.load(Shaders.MODEL_FRAGMENT)"), "the game's model fragment shader");
+    }
+
+    /**
+     * A uniform the previewer never sets is zero, and a zero {@code u_light} draws every model black. There is no
+     * OpenGL context here, so the names are looked for in the previewer's source.
+     */
+    @Test
+    void previewerSetsEveryUniformTheGameModelShaderDeclares() {
+        String source = readText(findFile(
+            "src/main/java/io/github/brantunger/gamex/tools/preview/ModelPreviewApp.java", "tools"));
+        String assets = System.getProperty("gamex.assets");
+        Set<String> uniforms = new HashSet<>();
+        for (String file : new String[] {"shaders/model.vert.glsl", "shaders/model.frag.glsl"}) {
+            Path path = assets != null && !assets.trim().isEmpty()
+                ? Paths.get(assets, file) : findFile(file, "assets", "../assets");
+            Matcher matcher = Pattern.compile("(?m)^\\s*uniform\\s+\\w+\\s+(\\w+)\\s*;").matcher(readText(path));
+            while (matcher.find()) {
+                uniforms.add(matcher.group(1));
+            }
+        }
+        assertTrue(uniforms.contains("u_fogColour") && uniforms.contains("u_fogRange")
+            && uniforms.contains("u_light") && uniforms.contains("u_hitFlash"), uniforms.toString());
+        assertEquals(9, uniforms.size(), uniforms.toString());
+        for (String uniform : uniforms) {
+            assertTrue(source.contains("shader.setUniformf(\"" + uniform + "\"")
+                    || source.contains("shader.setUniformMatrix(\"" + uniform + "\""),
+                "ModelPreviewApp never sets the model shader's uniform " + uniform);
+        }
+    }
+
+    private static Path findFile(String relativePath, String... folders) {
+        List<Path> candidates = new ArrayList<>();
+        candidates.add(Paths.get(relativePath));
+        for (String folder : folders) {
+            candidates.add(Paths.get(folder, relativePath));
+        }
+        for (Path candidate : candidates) {
+            if (Files.isRegularFile(candidate)) return candidate;
+        }
+        throw new IllegalStateException("Could not find " + relativePath + " from "
+            + Paths.get("").toAbsolutePath().normalize());
+    }
+
+    private static String readText(Path path) {
+        try {
+            return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not read " + path, e);
+        }
     }
 
     private static boolean containsUndirectedEdge(short[] wireIndices, int a, int b) {

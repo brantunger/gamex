@@ -840,6 +840,68 @@ class RendererSupportTest {
         assertEquals(1, d2.disposeCount);
     }
 
+    /**
+     * The renderers hand their backends the text of the shader files, and that text says what the strings in the
+     * code said before they moved into files: the game must look the same.
+     */
+    @Test
+    void renderersCompileTheShaderFilesWhoseTextIsWhatTheInlineStringsWere() {
+        Map<String, String> objCache = new HashMap<>();
+        GameMap room = GameMap.parse(
+            "#####",
+            "#>..#",
+            "#####");
+
+        HeadlessWorldBackend worldBackend = new HeadlessWorldBackend(objCache);
+        new WorldRenderer(room, graphicsStub(1280, 720), null, worldBackend).dispose();
+        assertEquals(ShaderFilesTest.BASE_WORLD_VERTEX,
+            ShaderFilesTest.withoutComments(worldBackend.worldVertexSource));
+        assertEquals(ShaderFilesTest.BASE_WORLD_FRAGMENT,
+            ShaderFilesTest.withoutComments(worldBackend.worldFragmentSource));
+        assertEquals(ShaderFilesTest.BASE_MODEL_VERTEX,
+            ShaderFilesTest.withoutComments(worldBackend.modelVertexSource));
+        assertEquals(ShaderFilesTest.BASE_MODEL_FRAGMENT,
+            ShaderFilesTest.withoutComments(worldBackend.modelFragmentSource));
+
+        HeadlessViewmodelBackend viewmodelBackend = new HeadlessViewmodelBackend(objCache);
+        new ViewmodelRenderer(graphicsStub(1280, 720), null, viewmodelBackend).dispose();
+        assertEquals(ShaderFilesTest.BASE_VIEWMODEL_VERTEX,
+            ShaderFilesTest.withoutComments(viewmodelBackend.vertexSource));
+        assertEquals(ShaderFilesTest.BASE_VIEWMODEL_FRAGMENT,
+            ShaderFilesTest.withoutComments(viewmodelBackend.fragmentSource));
+    }
+
+    /** A shader that does not compile at launch must say which files it was read from. */
+    @Test
+    void shaderCompileErrorsNameTheShaderFiles() {
+        Map<String, String> objCache = new HashMap<>();
+        GameMap room = GameMap.parse(
+            "#####",
+            "#>..#",
+            "#####");
+
+        HeadlessWorldBackend failWorldShader = new HeadlessWorldBackend(objCache);
+        failWorldShader.worldShaderCompiled = false;
+        GdxRuntimeException worldError = assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failWorldShader));
+        assertTrue(worldError.getMessage().contains("shaders/world.vert.glsl"), worldError.getMessage());
+        assertTrue(worldError.getMessage().contains("shaders/world.frag.glsl"), worldError.getMessage());
+
+        HeadlessWorldBackend failModelShader = new HeadlessWorldBackend(objCache);
+        failModelShader.modelShaderCompiled = false;
+        GdxRuntimeException modelError = assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failModelShader));
+        assertTrue(modelError.getMessage().contains("shaders/model.vert.glsl"), modelError.getMessage());
+        assertTrue(modelError.getMessage().contains("shaders/model.frag.glsl"), modelError.getMessage());
+
+        HeadlessViewmodelBackend failViewmodelShader = new HeadlessViewmodelBackend(objCache);
+        failViewmodelShader.shaderCompiled = false;
+        GdxRuntimeException viewmodelError = assertThrows(GdxRuntimeException.class,
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failViewmodelShader));
+        assertTrue(viewmodelError.getMessage().contains("shaders/viewmodel.vert.glsl"), viewmodelError.getMessage());
+        assertTrue(viewmodelError.getMessage().contains("shaders/viewmodel.frag.glsl"), viewmodelError.getMessage());
+    }
+
     @Test
     void viewmodelRendererRollsBackPartialConstructorResourcesAndDisposesNullAndExceptionSafely() {
         Map<String, String> objCache = new HashMap<>();
@@ -1168,6 +1230,8 @@ class RendererSupportTest {
         final List<RecordedDisposable> createdMeshes = new ArrayList<>();
         final List<RecordedDisposable> createdStrategies = new ArrayList<>();
         final List<RecordedDisposable> createdBatches = new ArrayList<>();
+        String vertexSource;
+        String fragmentSource;
         boolean shaderCompiled = true;
         String shaderLog = "";
         String failModelAsset;
@@ -1182,6 +1246,8 @@ class RendererSupportTest {
 
         @Override
         public Disposable createShader(String vertexShader, String fragmentShader) {
+            vertexSource = vertexShader;
+            fragmentSource = fragmentShader;
             RecordedDisposable d = new RecordedDisposable("viewmodelShader");
             createdShaders.add(d);
             return d;
@@ -1250,6 +1316,10 @@ class RendererSupportTest {
         final List<RecordedDisposable> modelMeshes = new ArrayList<>();
         final List<RecordedDisposable> strategies = new ArrayList<>();
         final List<RecordedDisposable> batches = new ArrayList<>();
+        String worldVertexSource;
+        String worldFragmentSource;
+        String modelVertexSource;
+        String modelFragmentSource;
         boolean failWardenCheck;
         boolean worldShaderCompiled = true;
         boolean modelShaderCompiled = true;
@@ -1277,6 +1347,8 @@ class RendererSupportTest {
 
         @Override
         public Disposable createWorldShader(String vertexShader, String fragmentShader) {
+            worldVertexSource = vertexShader;
+            worldFragmentSource = fragmentShader;
             RecordedDisposable d = new RecordedDisposable("worldShader");
             worldShaders.add(d);
             return d;
@@ -1294,6 +1366,8 @@ class RendererSupportTest {
 
         @Override
         public Disposable createModelShader(String vertexShader, String fragmentShader) {
+            modelVertexSource = vertexShader;
+            modelFragmentSource = fragmentShader;
             RecordedDisposable d = new RecordedDisposable("modelShader");
             modelShaders.add(d);
             return d;

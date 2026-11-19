@@ -3,6 +3,7 @@ package io.github.brantunger.gamex;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.audio.SoundEvent;
+import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
@@ -21,6 +22,7 @@ import io.github.brantunger.gamex.world.Damageable;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
+import io.github.brantunger.gamex.world.EnemyTuning;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Hitscan;
 import io.github.brantunger.gamex.world.Pathfinder;
@@ -167,7 +169,11 @@ public final class GameSimulation {
 
     private final List<Damageable> allDamageables = new ArrayList<>();
     private final Pathfinder pathfinder = new Pathfinder();
-    private final Pathfinder guardPathfinder = new Pathfinder();
+    /** The routes of the kinds that keep off shock grates. */
+    private final Pathfinder hazardPathfinder = new Pathfinder();
+    private final EnemyTuning enemyTuning;
+    /** The multipliers of the difficulty this level is played on. */
+    private final DifficultyTuning.Scales difficultyScales;
     private final Vector3 eye = new Vector3();
     private final Vector3 direction = new Vector3();
     private final Vector3 blastOrigin = new Vector3();
@@ -272,19 +278,44 @@ public final class GameSimulation {
         }
     };
 
-    /** @param map the level to play on Normal difficulty */
+    /**
+     * Builds a level on Normal difficulty with the tuning files read here and now. This is for tests only:
+     * the game loads its tuning once at start-up and uses
+     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning)}.
+     * @param map the level to play on Normal difficulty
+     */
     public GameSimulation(GameMap map) {
         this(map, PlayerLoadout.fresh(), false);
+    }
+
+    /**
+     * Builds a level with the tuning files read here and now. This is for tests only: the game loads its
+     * tuning once at start-up and uses
+     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning)}.
+     * @param map the level to play
+     * @param entryLoadout starting player health, armor and difficulty snapshot
+     * @param completeOnAllTargets whether clearing all targets ends the level
+     */
+    public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets) {
+        this(map, entryLoadout, completeOnAllTargets, EnemyTuning.load(), DifficultyTuning.load());
     }
 
     /**
      * @param map the level to play
      * @param entryLoadout starting player health, armor and difficulty snapshot
      * @param completeOnAllTargets whether clearing all targets ends the level
+     * @param enemyTuning the enemy balance, as loaded at start-up
+     * @param difficultyTuning what each difficulty multiplies, as loaded at start-up
      */
-    public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets) {
+    public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets,
+                          EnemyTuning enemyTuning, DifficultyTuning difficultyTuning) {
+        if (enemyTuning == null || difficultyTuning == null) {
+            throw new IllegalArgumentException("The simulation needs its enemy and difficulty tuning");
+        }
         this.map = map;
+        this.enemyTuning = enemyTuning;
         this.entryLoadout = entryLoadout == null ? PlayerLoadout.fresh() : entryLoadout;
+        this.difficultyScales = difficultyTuning.of(this.entryLoadout.difficulty);
         this.completeOnAllTargets = completeOnAllTargets;
         this.hasScattergun = this.entryLoadout.hasScattergun;
         this.shells = this.entryLoadout.shells;
@@ -302,7 +333,7 @@ public final class GameSimulation {
             allDamageables.add(target);
         }
         for (GameMap.EnemySpawn spawn : map.getEnemySpawns()) {
-            Enemy enemy = new Enemy(spawn.kind, map, spawn.x, spawn.z);
+            Enemy enemy = new Enemy(enemyTuning, spawn.kind, map, spawn.x, spawn.z);
             enemies.add(enemy);
             allDamageables.add(enemy);
         }
@@ -499,7 +530,7 @@ public final class GameSimulation {
         float turned = (player.getYaw() - beforeYaw + 540f) % 360f - 180f;
         viewmodel.update(dt, kickScale, walkSpeed, turned, player.getPitch() - beforePitch);
 
-        float selfScale = BlastProjectile.SELF_DAMAGE_SCALE * entryLoadout.difficulty.damageTakenScale;
+        float selfScale = BlastProjectile.SELF_DAMAGE_SCALE * difficultyScales.damageTakenScale;
         for (int i = projectiles.size() - 1; i >= 0; i--) {
             BlastProjectile projectile = projectiles.get(i);
             int aliveBefore = getTargetsRemaining() + getEnemiesRemaining();
@@ -526,25 +557,26 @@ public final class GameSimulation {
         if (!enemies.isEmpty()) {
             pathfinder.compute(map, doors, player.position.x, player.position.y);
             boolean hasHazards = !map.getHazardCells().isEmpty();
-            if (hasHazards && hasAliveGuard()) {
-                guardPathfinder.compute(map, doors, true, player.position.x, player.position.y);
+            if (hasHazards && hasAliveHazardAvoider()) {
+                hazardPathfinder.compute(map, doors, true, player.position.x, player.position.y);
             }
             for (int i = 0; i < enemies.size(); i++) {
                 Enemy enemy = enemies.get(i);
                 Enemy.State stateBefore = enemy.getState();
                 int boltsBefore = enemyProjectiles.size();
-                Pathfinder enemyPath = (hasHazards && enemy.getKind() == Enemy.Kind.GUARD)
-                    ? guardPathfinder
+                Pathfinder enemyPath = (hasHazards && enemy.getStats().avoidsHazards)
+                    ? hazardPathfinder
                     : pathfinder;
-                enemy.update(dt, map, enemyPath, player, entryLoadout.difficulty,
+                enemy.update(dt, map, enemyPath, player, difficultyScales,
                     allDamageables, doors, enemyProjectiles);
                 if (enemy.consumeOverdriveTriggered()) {
                     log.info("Boss phase 2: {} entered overdrive at {} health after {} s", enemy.getKind(),
                         enemy.getHealth(), roundedTime());
                     emitWorldSound(SoundEvent.Type.BOSS_OVERDRIVE,
-                        enemy.getX(), enemy.getHeight() * 0.55f, enemy.getZ(), 1.25f);
+                        enemy.getX(), enemy.getHeight() * 0.55f, enemy.getZ(), enemyTuning.warden.overdriveSoundGain);
                     effects.add(new Effect(Effect.Type.EXPLOSION,
-                        new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ()), Vector3.Y, 1.6f));
+                        new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ()), Vector3.Y,
+                        enemyTuning.warden.overdriveBurstSize));
                     showToast("WARDEN OVERDRIVE");
                 }
                 // Each punch of the Warden's combo is heard, whether it lands or not.
@@ -552,22 +584,22 @@ public final class GameSimulation {
                     log.debug("{} threw a punch at {} s; {} of this combo have landed", enemy.getKind(),
                         roundedTime(), enemy.getPunchesLanded());
                     emitWorldSound(SoundEvent.Type.BOSS_SLAM, enemy.getX(), enemy.getHeight() * 0.6f, enemy.getZ(),
-                        1.15f);
+                        enemyTuning.warden.punchSoundGain);
                 }
                 for (int b = boltsBefore; b < enemyProjectiles.size(); b++) {
                     EnemyProjectile bolt = enemyProjectiles.get(b);
                     emitWorldSound(SoundEvent.Type.ENEMY_SHOOT,
                         bolt.position.x, bolt.position.y, bolt.position.z, 1f);
                 }
-                if (enemy.getKind() == Enemy.Kind.DRONE && stateBefore != Enemy.State.LUNGING
-                    && enemy.getState() == Enemy.State.LUNGING) {
+                // Only the drone's attack has a lunge of its own.
+                if (stateBefore != Enemy.State.LUNGING && enemy.getState() == Enemy.State.LUNGING) {
                     emitWorldSound(SoundEvent.Type.DRONE_LUNGE, enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ(),
                         1f);
                 }
             }
         }
         for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
-            if (enemyProjectiles.get(i).update(dt, map, player, entryLoadout.difficulty.damageTakenScale,
+            if (enemyProjectiles.get(i).update(dt, map, player, difficultyScales.damageTakenScale,
                 targets, enemies, doors, consoles, effects)) {
                 enemyProjectiles.remove(i);
             }
@@ -787,11 +819,11 @@ public final class GameSimulation {
         }
     }
 
-    /** @return the active alerted live Warden for HUD display, or {@code null} when dormant or dead. */
+    /** @return the active alerted live boss for HUD display, or {@code null} when dormant or dead. */
     public Enemy getActiveBoss() {
         for (int i = 0; i < enemies.size(); i++) {
             Enemy enemy = enemies.get(i);
-            if (enemy.getKind() == Enemy.Kind.WARDEN && !enemy.isDestroyed()
+            if (enemy.getStats().boss && !enemy.isDestroyed()
                 && enemy.getState() != Enemy.State.DORMANT) {
                 return enemy;
             }
@@ -889,7 +921,7 @@ public final class GameSimulation {
         if (hasKeycard(Pickup.Kind.AMBER_KEYCARD)) state |= 1;
         if (hasKeycard(Pickup.Kind.CYAN_KEYCARD)) state |= 2;
         if (isAnyConsoleActivated()) state |= 4;
-        if (hasAliveWarden()) state |= 8;
+        if (hasAliveBoss()) state |= 8;
         int opened = 0;
         for (int i = 0; i < doors.size(); i++) {
             if (doors.get(i).isOpening()) opened++;
@@ -1034,7 +1066,7 @@ public final class GameSimulation {
     private boolean isWardenWaiting(boolean mustReach) {
         for (int i = 0; i < enemies.size(); i++) {
             Enemy enemy = enemies.get(i);
-            if (enemy.isDestroyed() || enemy.getKind() != Enemy.Kind.WARDEN) continue;
+            if (enemy.isDestroyed() || !enemy.getStats().boss) continue;
             if (!mustReach || isReachableAt(enemy.getX(), enemy.getZ())) return true;
         }
         return false;
@@ -1043,7 +1075,7 @@ public final class GameSimulation {
     private void collectPickups() {
         for (int i = 0; i < pickups.size(); i++) {
             Pickup pickup = pickups.get(i);
-            String message = pickup.tryCollect(player, energy, entryLoadout.difficulty.pickupScale,
+            String message = pickup.tryCollect(player, energy, difficultyScales.pickupScale,
                 heldKeycards, pickupArsenal);
             if (message != null) {
                 log.debug("Picked up {}: {}", pickup.getKind(), message);
@@ -1417,8 +1449,8 @@ public final class GameSimulation {
         boolean anyKilled = false;
         for (int i = 0; i < result.targetHits.size(); i++) {
             RayHit hit = result.targetHits.get(i);
-            float dmg = (hit.target instanceof Enemy && ((Enemy) hit.target).getKind() == Enemy.Kind.WARDEN)
-                ? RailLance.WARDEN_DAMAGE
+            float dmg = hit.target instanceof Enemy
+                ? RailLance.DAMAGE * ((Enemy) hit.target).getStats().railDamageScale
                 : RailLance.DAMAGE;
             hit.target.damage(dmg);
             anyHit = true;
@@ -1499,7 +1531,7 @@ public final class GameSimulation {
     }
 
     private void resolveDestroyedObjects(boolean allowPlayerHitMarker) {
-        float canisterPlayerScale = CANISTER_SELF_DAMAGE_SCALE * entryLoadout.difficulty.damageTakenScale;
+        float canisterPlayerScale = CANISTER_SELF_DAMAGE_SCALE * difficultyScales.damageTakenScale;
         boolean progressed = true;
         while (progressed) {
             progressed = false;
@@ -1535,7 +1567,8 @@ public final class GameSimulation {
                 }
                 Enemy enemy = enemies.get(i);
                 Vector3 centre = new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ());
-                boolean isBoss = enemy.getKind() == Enemy.Kind.WARDEN;
+                EnemyTuning.KindStats stats = enemy.getStats();
+                boolean isBoss = stats.boss;
                 if (isBoss) {
                     log.info("Boss destroyed: {} at ({}, {}) after {} s", enemy.getKind(), enemy.getX(), enemy.getZ(),
                         roundedTime());
@@ -1543,12 +1576,11 @@ public final class GameSimulation {
                     log.debug("Killed {} at ({}, {}); {} hostiles left", enemy.getKind(), enemy.getX(), enemy.getZ(),
                         getEnemiesRemaining());
                 }
-                effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y,
-                    isBoss ? 1.8f : enemy.getHeight() * 0.8f));
+                effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, stats.deathBurstSize));
                 emitWorldSound(isBoss ? SoundEvent.Type.BOSS_DESTROYED : SoundEvent.Type.ENEMY_DESTROYED,
-                    centre.x, centre.y, centre.z, isBoss ? 1.25f : 1.0f);
-                alertNoise(enemy.getX(), enemy.getZ(), isBoss ? 10.0f : 5.0f, isBoss ? 6.0f : 3.0f);
-                if (isBoss && !hasAliveWarden()) {
+                    centre.x, centre.y, centre.z, stats.deathSoundGain);
+                alertNoise(enemy.getX(), enemy.getZ(), stats.deathNoiseRange, stats.deathNoiseMuffledRange);
+                if (isBoss && !hasAliveBoss()) {
                     unsealBossDoors();
                 }
             }
@@ -1561,7 +1593,7 @@ public final class GameSimulation {
             && map.isHazardAt(player.position.x, player.position.y) && playerHazardTimer <= 0f) {
             float hx = (float) Math.floor(player.position.x) + 0.5f;
             float hz = (float) Math.floor(player.position.y) + 0.5f;
-            player.damage(HAZARD_DAMAGE * entryLoadout.difficulty.damageTakenScale, hx, hz);
+            player.damage(HAZARD_DAMAGE * difficultyScales.damageTakenScale, hx, hz);
             playerHazardTimer = HAZARD_INTERVAL;
             emitPlayerSound(SoundEvent.Type.HAZARD_ZAP, 0.9f);
             effects.add(new Effect(Effect.Type.IMPACT,
@@ -1571,7 +1603,7 @@ public final class GameSimulation {
         if (map.getHazardCells().isEmpty()) return;
         for (int i = 0; i < enemies.size(); i++) {
             Enemy enemy = enemies.get(i);
-            if (enemy.isDestroyed() || enemy.getKind() != Enemy.Kind.GUARD) continue;
+            if (enemy.isDestroyed() || !enemy.getStats().hazardDamage) continue;
             enemyHazardTimers[i] = Math.max(0f, enemyHazardTimers[i] - dt);
             if (map.isHazardAt(enemy.getX(), enemy.getZ()) && enemyHazardTimers[i] <= 0f) {
                 enemy.damage(HAZARD_DAMAGE);
@@ -1583,18 +1615,18 @@ public final class GameSimulation {
         }
     }
 
-    private boolean hasAliveGuard() {
+    private boolean hasAliveHazardAvoider() {
         for (int i = 0; i < enemies.size(); i++) {
             Enemy e = enemies.get(i);
-            if (!e.isDestroyed() && e.getKind() == Enemy.Kind.GUARD) return true;
+            if (!e.isDestroyed() && e.getStats().avoidsHazards) return true;
         }
         return false;
     }
 
-    private boolean hasAliveWarden() {
+    private boolean hasAliveBoss() {
         for (int i = 0; i < enemies.size(); i++) {
             Enemy e = enemies.get(i);
-            if (!e.isDestroyed() && e.getKind() == Enemy.Kind.WARDEN) return true;
+            if (!e.isDestroyed() && e.getStats().boss) return true;
         }
         return false;
     }
@@ -1687,7 +1719,7 @@ public final class GameSimulation {
 
     private void updateEnemiesWhenInactive(float dt) {
         for (int i = 0; i < enemies.size(); i++) {
-            enemies.get(i).update(dt, map, null, null, entryLoadout.difficulty, allDamageables, doors, null);
+            enemies.get(i).update(dt, map, null, null, difficultyScales, allDamageables, doors, null);
         }
         for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
             if (enemyProjectiles.get(i).update(dt, map, null, 0f,

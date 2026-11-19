@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -123,7 +124,7 @@ class MenuStateFlowTest {
         choose(menu, "EASY");
         assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
 
-        assertSavedRun(store, 1, PlayerLoadout.forStage(1, Difficulty.EASY), "after DEPLOY");
+        assertSavedRun(store, 1, PlayerLoadout.forStage(1, Difficulty.EASY, TestTuning.DIFFICULTY), "after DEPLOY");
         assertEquals(OLD_RUN_STAGE, new SaveData(store).getUnlockedStageIndex(),
             "deploying a lower stage does not lower progress");
     }
@@ -225,7 +226,8 @@ class MenuStateFlowTest {
         assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
 
         assertEquals("02_coolant_core", menu.getActiveStage().id);
-        assertLoadout(PlayerLoadout.forStage(1, Difficulty.HARD), menu.getActiveLoadout(), "the replay");
+        assertLoadout(PlayerLoadout.forStage(1, Difficulty.HARD, TestTuning.DIFFICULTY), menu.getActiveLoadout(),
+            "the replay");
         assertSavedRun(store, 2, carry, "PLAY AGAIN leaves the saved run at the next stage");
     }
 
@@ -653,7 +655,7 @@ class MenuStateFlowTest {
         assertEquals(outerBreachId, menu.getActiveStage().id);
         assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
         assertEquals("03_security_hub", menu.getActiveStage().id);
-        assertLoadout(PlayerLoadout.forStage(2, Difficulty.NORMAL), menu.getActiveLoadout(),
+        assertLoadout(PlayerLoadout.forStage(2, Difficulty.NORMAL, TestTuning.DIFFICULTY), menu.getActiveLoadout(),
             "CONTINUE resumes deployed Stage 03");
         menu.escape();
         choose(menu, "RETURN TO TITLE");

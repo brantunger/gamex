@@ -2,7 +2,7 @@ package io.github.brantunger.gamex.world;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
-import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 
@@ -18,30 +18,32 @@ import java.util.List;
  */
 public final class Enemy implements Damageable {
 
-    /** Enemy archetypes with constant hit-point breakpoints and distinct tactical roles. */
+    /**
+     * Enemy archetypes with distinct tactical roles. A kind's health, speed and the rest of its balance are in
+     * {@link EnemyTuning.KindStats}, read from {@code assets/data/enemies.txt}. Its radius and height stay here:
+     * they are its collision cylinder, which the {@code .obj} models are sculpted to, so changing one changes what
+     * can be hit and not what is drawn. The Warden is the exception: its {@code .glb} model is drawn scaled to its
+     * height ({@code WardenModel.SCALE}).
+     */
     public enum Kind {
         /** Fast close-range hover unit that rushes around cover and performs a telegraphed shock lunge. */
-        DRONE(40f, 0.21f, 0.58f, 3.5f),
-        /** Anchored dual-barrel turret with a capped swivel rate that fires telegraphed 3-bolt bursts. */
-        TURRET(80f, 0.23f, 0.68f, 0f),
+        DRONE(0.21f, 0.58f),
+        /** Anchored dual-barrel turret with a capped swivel rate that fires telegraphed bursts of bolts. */
+        TURRET(0.23f, 0.68f),
         /** Mobile armoured skirmisher that strafes at medium range and fires single aimed plasma bolts. */
-        GUARD(100f, 0.24f, 0.82f, 2.15f),
+        GUARD(0.24f, 0.82f),
         /**
          * Two-phase melee boss. It walks while it cannot see the player, runs at them once it can, and throws a
-         * three-punch combo in reach. Its speed here is its walk; see {@link #WARDEN_RUN_SPEED}.
+         * combo of punches in reach.
          */
-        WARDEN(900f, 0.32f, 0.94f, 1.30f);
+        WARDEN(0.32f, 0.94f);
 
-        public final float maxHealth;
         public final float radius;
         public final float height;
-        public final float moveSpeed;
 
-        Kind(float maxHealth, float radius, float height, float moveSpeed) {
-            this.maxHealth = maxHealth;
+        Kind(float radius, float height) {
             this.radius = radius;
             this.height = height;
-            this.moveSpeed = moveSpeed;
         }
     }
 
@@ -54,98 +56,8 @@ public final class Enemy implements Damageable {
         RECOVERING
     }
 
-    public static final float HIT_FLASH_TIME = 0.15f;
-    public static final float SIGHT_RANGE = 15f;
-    public static final float CLOSE_SENSE_RANGE = 3.2f;
-    /** Cosine of half of the 200-degree forward detection cone. */
-    public static final float FOV_COS = (float) Math.cos(Math.toRadians(100.0));
-    public static final float AGGRO_MEMORY_TIME = 6.0f;
-
-    public static final float TURRET_TURN_RATE = 150f;
-    public static final float TURRET_WINDUP_TIME = 0.35f;
-    public static final float TURRET_BURST_INTERVAL = 0.11f;
-    public static final int TURRET_BURST_COUNT = 3;
-    public static final float TURRET_COOLDOWN = 1.35f;
-    public static final float TURRET_BOLT_SPEED = 8.5f;
-    public static final float TURRET_BOLT_DAMAGE = 12f;
-
-    public static final float GUARD_WINDUP_TIME = 0.28f;
-    public static final float GUARD_COOLDOWN = 1.15f;
-    public static final float GUARD_BOLT_SPEED = 7.2f;
-    public static final float GUARD_BOLT_DAMAGE = 18f;
-    public static final float GUARD_MIN_RANGE = 3.5f;
-    public static final float GUARD_MAX_RANGE = 7.5f;
-    public static final float GUARD_ATTACK_RANGE = 15.5f;
-
-    public static final float DRONE_TRIGGER_RANGE = 0.95f;
-    public static final float DRONE_WINDUP_TIME = 0.26f;
-    public static final float DRONE_LUNGE_TIME = 0.18f;
-    public static final float DRONE_LUNGE_SPEED = 8.5f;
-    public static final float DRONE_LUNGE_DAMAGE = 22f;
-    public static final float DRONE_RECOVER_TIME = 0.50f;
-
-    /** The Warden is in overdrive, its second phase, at or below this share of its health. */
-    public static final float WARDEN_OVERDRIVE_RATIO = 0.5f;
-    /** How fast the Warden runs at a player it can see. The player moves at 3.2, so walking away does not work. */
-    public static final float WARDEN_RUN_SPEED = 3.70f;
-    /**
-     * How long the Warden keeps running after it loses sight of the player, in seconds. A sightline that grazes a
-     * pillar comes and goes from step to step, and without this the Warden would stutter between walk and run.
-     */
-    public static final float WARDEN_CHASE_MEMORY = 0.5f;
-    /** How fast the Warden turns while it chases, in degrees per second. */
-    public static final float WARDEN_TURN_RATE = 320f;
-    /** The Warden starts its combo when the player's centre is this close, in sight and in front of it. */
-    public static final float WARDEN_ATTACK_RANGE = 0.90f;
-    /** The player must be within this angle of the Warden's facing for the combo to start, in degrees. */
-    public static final float WARDEN_ATTACK_FACING_DEG = 15f;
-    /** The length of the {@code Punch_Combo} clip of the Warden's model, in seconds; the combo lasts as long. */
-    public static final float WARDEN_COMBO_TIME = 2.4666667f;
-    /**
-     * When each punch of the combo lands, in seconds of the clip. They were measured on the clip, by following the
-     * hand joints through it: a left hook that is furthest forward at 0.600 s (its speed peaks at 0.633 s), a left
-     * backhand furthest forward at 1.100 s, and a right uppercut furthest forward at 1.267 s (its speed peaks at
-     * 1.233 s, the fastest move of the clip). From 2.07 s the clip is back in its guard stance.
-     */
-    private static final float[] WARDEN_PUNCH_TIMES = {0.60f, 1.10f, 1.27f};
-    /** The damage of each punch of the combo; the uppercut that ends it is the heavy one. */
-    private static final float[] WARDEN_PUNCH_DAMAGE = {16f, 16f, 28f};
-    /**
-     * How far the Warden lunges along its facing into each punch, at most: it stops at the player. The first is
-     * long enough to catch a player who walks straight back from the start of the combo. In the 0.6 s before it
-     * lands they get 1.92 further away, and on the easy difficulty, where the combo is slower, 2.26.
-     */
-    private static final float[] WARDEN_LUNGE_DISTANCE = {2.30f, 0.70f, 0.70f};
     /** The longest piece a lunge is moved in at once. */
     private static final float WARDEN_LUNGE_MAX_STEP = 0.05f;
-    /** How long before each punch lands its lunge starts, in seconds of the clip. */
-    private static final float[] WARDEN_LUNGE_TIME = {0.30f, 0.20f, 0.14f};
-    /** A punch hits a player whose centre is within this distance of the Warden's when it lands. */
-    public static final float WARDEN_PUNCH_REACH = 1.10f;
-    /** A punch hits a player within this angle of the Warden's facing, in degrees to either side. */
-    public static final float WARDEN_PUNCH_ARC_DEG = 50f;
-    /** How fast the Warden turns during its combo, in degrees per second: slowly, so a sidestep gets round it. */
-    public static final float WARDEN_COMBO_TURN_RATE = 45f;
-    /** How long before a punch lands its telegraph builds up, in seconds of the clip. */
-    public static final float WARDEN_TELEGRAPH_TIME = 0.22f;
-    /** How long the Warden stands open after its combo before it chases again, in seconds. */
-    public static final float WARDEN_RECOVER_TIME = 0.90f;
-    /** In overdrive the Warden runs this much faster. */
-    public static final float WARDEN_OVERDRIVE_SPEED_SCALE = 1.25f;
-    /** In overdrive the Warden turns this much faster, in the chase and in the combo. */
-    public static final float WARDEN_OVERDRIVE_TURN_SCALE = 1.50f;
-    /** In overdrive every punch does this much more damage. */
-    public static final float WARDEN_OVERDRIVE_DAMAGE_SCALE = 1.35f;
-    /** In overdrive the combo plays this much faster, its punches and lunges with it. */
-    public static final float WARDEN_OVERDRIVE_COMBO_RATE = 1.15f;
-    /** In overdrive the recovery after the combo lasts this share of its time. */
-    public static final float WARDEN_OVERDRIVE_RECOVER_SCALE = 0.60f;
-
-    private static final float WAKE_COOLDOWN = 0.25f;
-    private static final float STRAFE_SWITCH_TIME = 1.8f;
-    private static final float TURRET_MAX_PITCH_DEG = 28f;
-    private static final float FORWARD_FIRE_ARC_DEG = 28f;
-    private static final float MAX_BOLT_PITCH_DEG = 35f;
     private static final float MUZZLE_WALL_MARGIN = 0.015f;
     private static final float PROJECTILE_FIRST_STEP = 0.06f;
     /** Extra clearance a straight chase needs on each side of the body, so a clear corridor is a walkable one. */
@@ -158,6 +70,9 @@ public final class Enemy implements Damageable {
     private static final float STALL_RATIO = 0.25f;
 
     private final Kind kind;
+    private final EnemyTuning tuning;
+    private final EnemyTuning.KindStats stats;
+    private final WardenTuning warden;
     private final Vector2 position = new Vector2();
     private final Vector2 steerDir = new Vector2();
     private final Vector2 gaveUpDir = new Vector2();
@@ -185,10 +100,10 @@ public final class Enemy implements Damageable {
     private int punchesHeard;
     private int punchesLanded;
     private boolean chasing;
-    private float unseenTime = WARDEN_CHASE_MEMORY;
+    private float unseenTime;
     private float groundSpeed;
     private float strafeSign = 1f;
-    private float strafeTimer = STRAFE_SWITCH_TIME;
+    private float strafeTimer;
     private float sidestepSign = 1f;
     private Damageable obstacle;
     private float obstacleSide;
@@ -200,19 +115,27 @@ public final class Enemy implements Damageable {
 
     /**
      * Spawns an enemy at {@code (x, z)} facing the longest unobstructed cardinal sightline.
+     * @param tuning the enemy balance, as loaded at start-up
      */
-    public Enemy(Kind kind, GameMap map, float x, float z) {
-        this(kind, x, z, initialYaw(map, x, z));
+    public Enemy(EnemyTuning tuning, Kind kind, GameMap map, float x, float z) {
+        this(tuning, kind, x, z, initialYaw(map, x, z));
     }
 
     /**
      * Spawns an enemy at {@code (x, z)} with an explicit initial facing yaw in degrees.
+     * @param tuning the enemy balance, as loaded at start-up
      */
-    public Enemy(Kind kind, float x, float z, float yaw) {
+    public Enemy(EnemyTuning tuning, Kind kind, float x, float z, float yaw) {
+        if (tuning == null) throw new IllegalArgumentException("Enemy tuning must not be null");
         this.kind = kind;
+        this.tuning = tuning;
+        this.stats = tuning.of(kind);
+        this.warden = tuning.warden;
         this.position.set(x, z);
         this.yaw = normalizeYaw(yaw);
-        this.health = kind.maxHealth;
+        this.health = stats.maxHealth;
+        this.unseenTime = warden.chaseMemory;
+        this.strafeTimer = tuning.guardStrafeSwitchTime;
     }
 
     /**
@@ -245,6 +168,16 @@ public final class Enemy implements Damageable {
 
     public Kind getKind() {
         return kind;
+    }
+
+    /** @return the balance of this enemy's kind: its health, speed and the rules that apply to it. */
+    public EnemyTuning.KindStats getStats() {
+        return stats;
+    }
+
+    /** @return the health this enemy started with. */
+    public float getMaxHealth() {
+        return stats.maxHealth;
     }
 
     @Override
@@ -286,7 +219,7 @@ public final class Enemy implements Damageable {
     }
 
     public float getHitFlash() {
-        return hitFlash / HIT_FLASH_TIME;
+        return hitFlash / tuning.hitFlashTime;
     }
 
     public float getWalkPhase() {
@@ -300,26 +233,29 @@ public final class Enemy implements Damageable {
 
     /**
      * @return wind-up intensity in [0, 1] during attack telegraphing or burst fire, otherwise 0. For the Warden it
-     *     builds up over the {@link #WARDEN_TELEGRAPH_TIME} before each punch of its combo lands.
+     *     builds up over the {@link WardenTuning#telegraphTime} before each punch of its combo lands.
      */
     public float getWindupProgress() {
         if (state != State.WINDUP) return 0f;
         if (kind == Kind.WARDEN) {
-            if (punchesThrown >= WARDEN_PUNCH_TIMES.length) return 0f;
-            float left = WARDEN_PUNCH_TIMES[punchesThrown] - comboTime;
-            return Math.max(0f, Math.min(1f, 1f - left / WARDEN_TELEGRAPH_TIME));
+            if (punchesThrown >= warden.punchCount()) return 0f;
+            float left = warden.punchTime(punchesThrown) - comboTime;
+            return Math.max(0f, Math.min(1f, 1f - left / warden.telegraphTime));
         }
         if (burstRemaining > 0) return 1f;
         if (stateDuration <= 0f) return 0f;
         return Math.max(0f, Math.min(1f, 1f - stateTimer / stateDuration));
     }
 
-    /** @return whether this enemy is a live Warden in overdrive, its second phase (&le; 50% HP). */
+    /**
+     * @return whether this enemy is a live Warden in overdrive, its second phase, at or below
+     *     {@link WardenTuning#overdriveHealthRatio} of its health
+     */
     public boolean isOverdrive() {
-        return kind == Kind.WARDEN && !isDestroyed() && health <= kind.maxHealth * WARDEN_OVERDRIVE_RATIO;
+        return kind == Kind.WARDEN && !isDestroyed() && health <= stats.maxHealth * warden.overdriveHealthRatio;
     }
 
-    /** @return true once when a Warden crosses 50% HP into overdrive. */
+    /** @return true once when a Warden's health falls into overdrive. */
     public boolean consumeOverdriveTriggered() {
         boolean triggered = overdriveTriggered;
         overdriveTriggered = false;
@@ -353,7 +289,7 @@ public final class Enemy implements Damageable {
 
     /**
      * @return how far into the {@code Punch_Combo} clip the Warden is, in seconds: 0 before its first combo, rising
-     *     through a combo, and {@link #WARDEN_COMBO_TIME} from then on, through the recovery and the chase that
+     *     through a combo, and {@link WardenTuning#comboTime} from then on, through the recovery and the chase that
      *     follows, until its next combo starts
      */
     public float getComboTime() {
@@ -365,10 +301,10 @@ public final class Enemy implements Damageable {
      */
     public void alert() {
         if (isDestroyed()) return;
-        aggroTimer = AGGRO_MEMORY_TIME;
+        aggroTimer = tuning.aggroMemoryTime;
         if (state == State.DORMANT) {
             state = State.PURSUING;
-            cooldown = Math.max(cooldown, WAKE_COOLDOWN);
+            cooldown = Math.max(cooldown, tuning.wakeCooldown);
         }
     }
 
@@ -377,7 +313,7 @@ public final class Enemy implements Damageable {
         if (!(amount > 0f) || Float.isNaN(amount) || isDestroyed()) return;
         boolean wasOverdrive = isOverdrive();
         health = Math.max(0f, health - amount);
-        hitFlash = HIT_FLASH_TIME;
+        hitFlash = tuning.hitFlashTime;
         if (!isDestroyed()) {
             if (!wasOverdrive && isOverdrive()) {
                 overdriveTriggered = true;
@@ -389,8 +325,9 @@ public final class Enemy implements Damageable {
     /**
      * Advances enemy perception, pathing, attack state machine and projectile firing for one step.
      */
-    public void update(float dt, GameMap map, Pathfinder pathfinder, Player player, Difficulty difficulty,
-                       List<? extends Damageable> worldBlockers, List<EnemyProjectile> outProjectiles) {
+    public void update(float dt, GameMap map, Pathfinder pathfinder, Player player,
+                       DifficultyTuning.Scales difficulty, List<? extends Damageable> worldBlockers,
+                       List<EnemyProjectile> outProjectiles) {
         update(dt, map, pathfinder, player, difficulty, worldBlockers,
             Collections.<Door>emptyList(), outProjectiles);
     }
@@ -398,10 +335,11 @@ public final class Enemy implements Damageable {
     /**
      * Advances enemy perception, pathing, attack state machine and projectile firing for one step, respecting
      * bulkhead doors for sightlines, BFS routing, and movement collision.
+     * @param difficulty the multipliers of the difficulty played; {@code null} scales nothing
      */
-    public void update(float dt, GameMap map, Pathfinder pathfinder, Player player, Difficulty difficulty,
-                       List<? extends Damageable> worldBlockers, List<Door> doors,
-                       List<EnemyProjectile> outProjectiles) {
+    public void update(float dt, GameMap map, Pathfinder pathfinder, Player player,
+                       DifficultyTuning.Scales difficulty, List<? extends Damageable> worldBlockers,
+                       List<Door> doors, List<EnemyProjectile> outProjectiles) {
         if (!Float.isFinite(dt) || dt <= 0f) return;
         hitFlash = Math.max(0f, hitFlash - dt);
         groundSpeed = 0f;
@@ -428,8 +366,8 @@ public final class Enemy implements Damageable {
                 return;
             }
         } else {
-            if (hasLos && dist <= SIGHT_RANGE * 1.25f) {
-                aggroTimer = AGGRO_MEMORY_TIME;
+            if (hasLos && dist <= tuning.sightRange * tuning.aggroSightScale) {
+                aggroTimer = tuning.aggroMemoryTime;
             } else {
                 aggroTimer = Math.max(0f, aggroTimer - dt);
                 if (aggroTimer <= 0f && state == State.PURSUING) {
@@ -462,26 +400,26 @@ public final class Enemy implements Damageable {
     }
 
     private boolean canDetect(float dx, float dz, float dist, boolean hasLos) {
-        if (!hasLos || dist > SIGHT_RANGE) return false;
-        if (dist <= CLOSE_SENSE_RANGE || dist < 1e-4f) return true;
+        if (!hasLos || dist > tuning.sightRange) return false;
+        if (dist <= tuning.closeSenseRange || dist < 1e-4f) return true;
         double yawRad = Math.toRadians(yaw);
         float fx = (float) Math.sin(yawRad);
         float fz = (float) -Math.cos(yawRad);
         float dot = (dx * fx + dz * fz) / dist;
-        return dot >= FOV_COS;
+        return dot >= tuning.fovCos;
     }
 
     private void updateTurret(float dt, GameMap map, List<Door> doors, float dx, float dz, float dist, boolean hasLos,
                               float speedScale, Player player, List<EnemyProjectile> outProjectiles) {
         if (hasLos && dist > 1e-4f) {
             float targetYaw = yawToward(dx, dz);
-            yaw = turnToward(yaw, targetYaw, TURRET_TURN_RATE * dt);
+            yaw = turnToward(yaw, targetYaw, tuning.turretTurnRate * dt);
             float targetPitch = (float) Math.toDegrees(
                 Math.atan2(player.getAimTargetY() - WorldModels.TURRET_MUZZLE_Y, Math.max(0.1f, dist)));
-            targetPitch = Math.max(-TURRET_MAX_PITCH_DEG, Math.min(TURRET_MAX_PITCH_DEG, targetPitch));
-            aimPitch = moveToward(aimPitch, targetPitch, 90f * dt);
+            targetPitch = Math.max(-tuning.turretMaxPitch, Math.min(tuning.turretMaxPitch, targetPitch));
+            aimPitch = moveToward(aimPitch, targetPitch, tuning.turretPitchRate * dt);
         } else if (state != State.WINDUP || burstRemaining == 0) {
-            aimPitch = moveToward(aimPitch, 0f, 60f * dt);
+            aimPitch = moveToward(aimPitch, 0f, tuning.turretPitchReturnRate * dt);
         }
 
         if (state == State.WINDUP) {
@@ -489,15 +427,15 @@ public final class Enemy implements Damageable {
                 if (!hasLos) {
                     state = State.PURSUING;
                     stateTimer = 0f;
-                    cooldown = 0.3f;
+                    cooldown = tuning.turretLostSightCooldown;
                     return;
                 }
                 stateTimer -= dt;
                 if (stateTimer <= 0f) {
-                    burstRemaining = TURRET_BURST_COUNT;
+                    burstRemaining = tuning.turretBurstCount;
                     fireTurretBolt(map, doors, speedScale, outProjectiles);
                     burstRemaining--;
-                    burstTimer = TURRET_BURST_INTERVAL / speedScale;
+                    burstTimer = tuning.turretBurstInterval / speedScale;
                 }
             } else {
                 burstTimer -= dt;
@@ -505,21 +443,21 @@ public final class Enemy implements Damageable {
                     fireTurretBolt(map, doors, speedScale, outProjectiles);
                     burstRemaining--;
                     if (burstRemaining > 0) {
-                        burstTimer += TURRET_BURST_INTERVAL / speedScale;
+                        burstTimer += tuning.turretBurstInterval / speedScale;
                     }
                 }
                 if (burstRemaining == 0) {
                     state = State.PURSUING;
-                    cooldown = TURRET_COOLDOWN / speedScale;
+                    cooldown = tuning.turretCooldown / speedScale;
                 }
             }
             return;
         }
 
-        boolean aligned = dist <= 1e-4f || Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= 18f;
-        if (hasLos && dist <= SIGHT_RANGE && cooldown <= 0f && aligned) {
+        boolean aligned = dist <= 1e-4f || Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= tuning.turretFireArc;
+        if (hasLos && dist <= tuning.sightRange && cooldown <= 0f && aligned) {
             state = State.WINDUP;
-            stateDuration = TURRET_WINDUP_TIME / speedScale;
+            stateDuration = tuning.turretWindupTime / speedScale;
             stateTimer = stateDuration;
             burstRemaining = 0;
         }
@@ -539,12 +477,13 @@ public final class Enemy implements Damageable {
         Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * side, WorldModels.TURRET_MUZZLE_Y,
             position.y + fz * fwd + rz * side);
         pullMuzzleClearOfWalls(map, doors, muzzle);
-        float clampedPitch = Math.max(-TURRET_MAX_PITCH_DEG, Math.min(TURRET_MAX_PITCH_DEG, aimPitch));
+        float clampedPitch = Math.max(-tuning.turretMaxPitch, Math.min(tuning.turretMaxPitch, aimPitch));
         double pitchRad = Math.toRadians(clampedPitch);
         float cosPitch = (float) Math.cos(pitchRad);
         Vector3 aim = new Vector3(fx * cosPitch, (float) Math.sin(pitchRad), fz * cosPitch);
         ensureFirstStepClearOfWalls(map, doors, muzzle, aim);
-        outProjectiles.add(new EnemyProjectile(muzzle, aim, TURRET_BOLT_SPEED * speedScale, TURRET_BOLT_DAMAGE, this));
+        outProjectiles.add(new EnemyProjectile(muzzle, aim, tuning.turretBoltSpeed * speedScale,
+            tuning.turretBoltDamage, this));
     }
 
     private void updateGuard(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
@@ -554,10 +493,10 @@ public final class Enemy implements Damageable {
         strafeTimer -= dt;
         if (strafeTimer <= 0f) {
             strafeSign = -strafeSign;
-            strafeTimer = STRAFE_SWITCH_TIME;
+            strafeTimer = tuning.guardStrafeSwitchTime;
         }
 
-        float moveScale = state == State.WINDUP ? 0.45f : 1f;
+        float moveScale = state == State.WINDUP ? tuning.guardWindupMoveScale : 1f;
         float moveX = 0f;
         float moveZ = 0f;
         if (hasLos && dist > 1e-4f) {
@@ -565,36 +504,36 @@ public final class Enemy implements Damageable {
             float dirZ = dz / dist;
             float rightX = -dirZ;
             float rightZ = dirX;
-            if (dist > GUARD_MAX_RANGE) {
-                moveX = dirX + rightX * strafeSign * 0.35f;
-                moveZ = dirZ + rightZ * strafeSign * 0.35f;
-            } else if (dist < GUARD_MIN_RANGE) {
-                moveX = -dirX * 0.8f + rightX * strafeSign * 0.6f;
-                moveZ = -dirZ * 0.8f + rightZ * strafeSign * 0.6f;
+            if (dist > tuning.guardMaxRange) {
+                moveX = dirX + rightX * strafeSign * tuning.guardAdvanceStrafe;
+                moveZ = dirZ + rightZ * strafeSign * tuning.guardAdvanceStrafe;
+            } else if (dist < tuning.guardMinRange) {
+                moveX = -dirX * tuning.guardRetreatBack + rightX * strafeSign * tuning.guardRetreatStrafe;
+                moveZ = -dirZ * tuning.guardRetreatBack + rightZ * strafeSign * tuning.guardRetreatStrafe;
             } else {
-                float rangeAdjust = (dist - 5.5f) * 0.2f;
+                float rangeAdjust = (dist - tuning.guardPreferredRange) * tuning.guardRangeAdjustGain;
                 moveX = rightX * strafeSign + dirX * rangeAdjust;
                 moveZ = rightZ * strafeSign + dirZ * rangeAdjust;
             }
-            yaw = turnToward(yaw, yawToward(dx, dz), 420f * dt);
+            yaw = turnToward(yaw, yawToward(dx, dz), tuning.guardTurnRate * dt);
         } else if (pathfinder != null
-            && pathfinder.nextDirection(map, doors, true, position.x, position.y, steerDir)) {
+            && pathfinder.nextDirection(map, doors, stats.avoidsHazards, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
-            yaw = turnToward(yaw, yawToward(moveX, moveZ), 360f * dt);
+            yaw = turnToward(yaw, yawToward(moveX, moveZ), tuning.guardPathTurnRate * dt);
         }
 
         float moveLen = (float) Math.hypot(moveX, moveZ);
         if (moveLen > 1e-4f) {
             float dirX = moveX / moveLen;
             float dirZ = moveZ / moveLen;
-            float step = kind.moveSpeed * moveScale * dt;
+            float step = stats.moveSpeed * moveScale * dt;
             boolean currentlyOnHazard = map != null && map.isHazardAt(position.x, position.y);
-            boolean nextOnHazard = !currentlyOnHazard
+            boolean nextOnHazard = stats.avoidsHazards && !currentlyOnHazard
                 && probesHazardAhead(map, position.x, position.y, dirX, dirZ, step);
             if (hasLos && nextOnHazard) {
                 strafeSign = -strafeSign;
-                strafeTimer = STRAFE_SWITCH_TIME;
+                strafeTimer = tuning.guardStrafeSwitchTime;
                 step = 0f;
             }
             if (step > 0f) {
@@ -603,7 +542,8 @@ public final class Enemy implements Damageable {
                 boolean revertedHazard = false;
                 if (hasLos) {
                     moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
-                    if (!currentlyOnHazard && map != null && map.isHazardAt(position.x, position.y)) {
+                    if (stats.avoidsHazards && !currentlyOnHazard && map != null
+                        && map.isHazardAt(position.x, position.y)) {
                         position.set(beforeX, beforeZ);
                         revertedHazard = true;
                     }
@@ -611,10 +551,10 @@ public final class Enemy implements Damageable {
                     stepRoundSolids(map, worldBlockers, doors, player, dirX, dirZ, step);
                 }
                 float moved = Vector2.dst(beforeX, beforeZ, position.x, position.y);
-                walkPhase += moved * 7.5f;
+                walkPhase += moved * tuning.guardWalkPhaseRate;
                 if (revertedHazard || moved < step * STALL_RATIO) {
                     strafeSign = -strafeSign;
-                    strafeTimer = STRAFE_SWITCH_TIME;
+                    strafeTimer = tuning.guardStrafeSwitchTime;
                 }
             }
         }
@@ -626,7 +566,7 @@ public final class Enemy implements Damageable {
                     fireGuardBolt(map, doors, speedScale, player, outProjectiles);
                 }
                 state = State.PURSUING;
-                cooldown = GUARD_COOLDOWN / speedScale;
+                cooldown = tuning.guardCooldown / speedScale;
             }
             return;
         }
@@ -635,10 +575,10 @@ public final class Enemy implements Damageable {
         float nowDz = player.position.y - position.y;
         float nowDist = (float) Math.hypot(nowDx, nowDz);
         boolean facingPlayer = nowDist <= 1e-4f
-            || Math.abs(angleDiff(yaw, yawToward(nowDx, nowDz))) <= FORWARD_FIRE_ARC_DEG;
-        if (hasLos && nowDist <= GUARD_ATTACK_RANGE && cooldown <= 0f && facingPlayer) {
+            || Math.abs(angleDiff(yaw, yawToward(nowDx, nowDz))) <= tuning.guardFireArc;
+        if (hasLos && nowDist <= tuning.guardAttackRange && cooldown <= 0f && facingPlayer) {
             state = State.WINDUP;
-            stateDuration = GUARD_WINDUP_TIME / speedScale;
+            stateDuration = tuning.guardWindupTime / speedScale;
             stateTimer = stateDuration;
         }
     }
@@ -657,24 +597,25 @@ public final class Enemy implements Damageable {
         pullMuzzleClearOfWalls(map, doors, muzzle);
         Vector3 aim = clampedAimVector(muzzle.x, muzzle.y, muzzle.z,
             player.position.x, player.getAimTargetY(), player.position.y,
-            FORWARD_FIRE_ARC_DEG, MAX_BOLT_PITCH_DEG);
+            tuning.guardFireArc, tuning.guardBoltMaxPitch);
         if (ensureFirstStepClearOfWalls(map, doors, muzzle, aim)) {
             aim = clampedAimVector(muzzle.x, muzzle.y, muzzle.z,
                 player.position.x, player.getAimTargetY(), player.position.y,
-                FORWARD_FIRE_ARC_DEG, MAX_BOLT_PITCH_DEG);
+                tuning.guardFireArc, tuning.guardBoltMaxPitch);
         }
-        outProjectiles.add(new EnemyProjectile(muzzle, aim, GUARD_BOLT_SPEED * speedScale, GUARD_BOLT_DAMAGE, this));
+        outProjectiles.add(new EnemyProjectile(muzzle, aim, tuning.guardBoltSpeed * speedScale,
+            tuning.guardBoltDamage, this));
     }
 
     private void updateWarden(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
                               boolean hasLos, float speedScale, float damageScale, Player player,
                               List<? extends Damageable> worldBlockers, List<Door> doors) {
         boolean overdrive = isOverdrive();
-        float turnScale = overdrive ? WARDEN_OVERDRIVE_TURN_SCALE : 1f;
+        float turnScale = overdrive ? warden.overdriveTurnScale : 1f;
 
         if (state == State.WINDUP) {
-            float rate = speedScale * (overdrive ? WARDEN_OVERDRIVE_COMBO_RATE : 1f);
-            float damage = damageScale * (overdrive ? WARDEN_OVERDRIVE_DAMAGE_SCALE : 1f);
+            float rate = speedScale * (overdrive ? warden.overdriveComboRate : 1f);
+            float damage = damageScale * (overdrive ? warden.overdriveDamageScale : 1f);
             stepWardenCombo(dt * rate, dt, turnScale, damage, speedScale, map, player, worldBlockers, doors);
             return;
         }
@@ -688,14 +629,14 @@ public final class Enemy implements Damageable {
         }
 
         // It runs at a player it can see, or saw a moment ago, and walks along the way to one it cannot.
-        unseenTime = hasLos ? 0f : Math.min(WARDEN_CHASE_MEMORY, unseenTime + dt);
-        chasing = unseenTime < WARDEN_CHASE_MEMORY;
-        float speed = chasing ? WARDEN_RUN_SPEED * (overdrive ? WARDEN_OVERDRIVE_SPEED_SCALE : 1f) : kind.moveSpeed;
+        unseenTime = hasLos ? 0f : Math.min(warden.chaseMemory, unseenTime + dt);
+        chasing = unseenTime < warden.chaseMemory;
+        float speed = chasing ? warden.runSpeed * (overdrive ? warden.overdriveSpeedScale : 1f) : stats.moveSpeed;
         float moveX = 0f;
         float moveZ = 0f;
         if (hasLos && dist > 1e-4f) {
-            yaw = turnToward(yaw, yawToward(dx, dz), WARDEN_TURN_RATE * turnScale * dt);
-            if (dist > WARDEN_ATTACK_RANGE) {
+            yaw = turnToward(yaw, yawToward(dx, dz), warden.turnRate * turnScale * dt);
+            if (dist > warden.attackRange) {
                 steerTowardVisiblePlayer(map, pathfinder, doors, dx, dz, dist);
                 moveX = steerDir.x;
                 moveZ = steerDir.y;
@@ -703,7 +644,7 @@ public final class Enemy implements Damageable {
         } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
-            yaw = turnToward(yaw, yawToward(moveX, moveZ), 280f * turnScale * dt);
+            yaw = turnToward(yaw, yawToward(moveX, moveZ), warden.pathTurnRate * turnScale * dt);
         }
 
         if (Math.hypot(moveX, moveZ) > 1e-4f) {
@@ -711,8 +652,8 @@ public final class Enemy implements Damageable {
             groundSpeed = speed;
         }
 
-        if (hasLos && cooldown <= 0f && dist <= WARDEN_ATTACK_RANGE
-            && (dist < 1e-4f || Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= WARDEN_ATTACK_FACING_DEG)) {
+        if (hasLos && cooldown <= 0f && dist <= warden.attackRange
+            && (dist < 1e-4f || Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= warden.attackFacing)) {
             state = State.WINDUP;
             comboTime = 0f;
             punchesThrown = 0;
@@ -732,14 +673,14 @@ public final class Enemy implements Damageable {
         float dx = player.position.x - position.x;
         float dz = player.position.y - position.y;
         if (Math.hypot(dx, dz) > 1e-4f) {
-            yaw = turnToward(yaw, yawToward(dx, dz), WARDEN_COMBO_TURN_RATE * turnScale * dt);
+            yaw = turnToward(yaw, yawToward(dx, dz), warden.comboTurnRate * turnScale * dt);
         }
 
         float from = comboTime;
-        comboTime = Math.min(WARDEN_COMBO_TIME, comboTime + clipDt);
+        comboTime = Math.min(warden.comboTime, comboTime + clipDt);
         float lunge = 0f;
-        for (int i = 0; i < WARDEN_PUNCH_TIMES.length; i++) {
-            lunge += WARDEN_LUNGE_DISTANCE[i] * lungeShare(i, from, comboTime);
+        for (int i = 0; i < warden.punchCount(); i++) {
+            lunge += warden.lungeDistance(i) * lungeShare(i, from, comboTime);
         }
         if (lunge > 0f) {
             double rad = Math.toRadians(yaw);
@@ -761,28 +702,28 @@ public final class Enemy implements Damageable {
         }
 
         // A long step can pass more than one punch; each still lands.
-        while (punchesThrown < WARDEN_PUNCH_TIMES.length && comboTime >= WARDEN_PUNCH_TIMES[punchesThrown]) {
+        while (punchesThrown < warden.punchCount() && comboTime >= warden.punchTime(punchesThrown)) {
             if (isInPunchReach(map, doors, player)
-                && player.damage(WARDEN_PUNCH_DAMAGE[punchesThrown] * damage, position.x, position.y) > 0f) {
+                && player.damage(warden.punchDamage(punchesThrown) * damage, position.x, position.y) > 0f) {
                 punchesLanded++;
             }
             punchesThrown++;
         }
 
-        if (comboTime >= WARDEN_COMBO_TIME) {
+        if (comboTime >= warden.comboTime) {
             state = State.RECOVERING;
-            float recover = WARDEN_RECOVER_TIME * (isOverdrive() ? WARDEN_OVERDRIVE_RECOVER_SCALE : 1f);
+            float recover = warden.recoverTime * (isOverdrive() ? warden.overdriveRecoverScale : 1f);
             stateDuration = recover / speedScale;
             stateTimer = stateDuration;
         }
     }
 
     /** @return the share of punch {@code i}'s lunge that falls between two times of the clip */
-    private static float lungeShare(int i, float from, float to) {
-        float end = WARDEN_PUNCH_TIMES[i];
-        float start = end - WARDEN_LUNGE_TIME[i];
+    private float lungeShare(int i, float from, float to) {
+        float end = warden.punchTime(i);
+        float start = end - warden.lungeTime(i);
         float overlap = Math.min(to, end) - Math.max(from, start);
-        return overlap <= 0f ? 0f : overlap / WARDEN_LUNGE_TIME[i];
+        return overlap <= 0f ? 0f : overlap / warden.lungeTime(i);
     }
 
     /** @return whether a punch landing now hits the player: in sight, within reach and within the frontal arc */
@@ -790,9 +731,9 @@ public final class Enemy implements Damageable {
         float dx = player.position.x - position.x;
         float dz = player.position.y - position.y;
         float dist = (float) Math.hypot(dx, dz);
-        if (dist > WARDEN_PUNCH_REACH) return false;
+        if (dist > warden.punchReach) return false;
         if (dist < 1e-4f) return true;
-        if (Math.abs(angleDiff(yaw, yawToward(dx, dz))) > WARDEN_PUNCH_ARC_DEG) return false;
+        if (Math.abs(angleDiff(yaw, yawToward(dx, dz))) > warden.punchArc) return false;
         return Hitscan.hasLineOfSight(map, doors, position.x, position.y, player.position.x, player.position.y);
     }
 
@@ -803,7 +744,7 @@ public final class Enemy implements Damageable {
             stateTimer -= dt;
             if (stateTimer <= 0f) {
                 state = State.LUNGING;
-                stateDuration = DRONE_LUNGE_TIME;
+                stateDuration = tuning.droneLungeTime;
                 stateTimer = stateDuration;
                 lungeHitDealt = false;
             }
@@ -812,12 +753,12 @@ public final class Enemy implements Damageable {
 
         if (state == State.LUNGING) {
             stateTimer -= dt;
-            float step = DRONE_LUNGE_SPEED * dt;
+            float step = tuning.droneLungeSpeed * dt;
             moveSolid(map, worldBlockers, doors, player, lungeDirX * step, lungeDirZ * step, false);
             float nowDist = Vector2.dst(position.x, position.y, player.position.x, player.position.y);
-            float contactDist = Player.RADIUS + kind.radius + 0.12f;
+            float contactDist = Player.RADIUS + kind.radius + tuning.droneContactMargin;
             if (!lungeHitDealt && nowDist <= contactDist) {
-                player.damage(DRONE_LUNGE_DAMAGE * damageScale, position.x, position.y);
+                player.damage(tuning.droneLungeDamage * damageScale, position.x, position.y);
                 lungeHitDealt = true;
                 keepOutsidePlayer(map, worldBlockers, doors, player);
                 enterRecovering(speedScale);
@@ -834,12 +775,12 @@ public final class Enemy implements Damageable {
             stateTimer -= dt;
             if (stateTimer <= 0f) {
                 state = State.PURSUING;
-                cooldown = 0.25f;
+                cooldown = tuning.droneCooldown;
             }
             return;
         }
 
-        if (hasLos && dist <= DRONE_TRIGGER_RANGE && cooldown <= 0f) {
+        if (hasLos && dist <= tuning.droneTriggerRange && cooldown <= 0f) {
             if (dist > 1e-4f) {
                 lungeDirX = dx / dist;
                 lungeDirZ = dz / dist;
@@ -850,7 +791,7 @@ public final class Enemy implements Damageable {
             }
             yaw = yawToward(lungeDirX, lungeDirZ);
             state = State.WINDUP;
-            stateDuration = DRONE_WINDUP_TIME / speedScale;
+            stateDuration = tuning.droneWindupTime / speedScale;
             stateTimer = stateDuration;
             return;
         }
@@ -866,15 +807,15 @@ public final class Enemy implements Damageable {
             moveZ = steerDir.y;
         }
         if (Math.hypot(moveX, moveZ) > 1e-4f) {
-            yaw = turnToward(yaw, yawToward(moveX, moveZ), 540f * dt);
-            float step = kind.moveSpeed * dt;
+            yaw = turnToward(yaw, yawToward(moveX, moveZ), tuning.droneTurnRate * dt);
+            float step = stats.moveSpeed * dt;
             stepRoundSolids(map, worldBlockers, doors, player, moveX, moveZ, step);
         }
     }
 
     private void enterRecovering(float speedScale) {
         state = State.RECOVERING;
-        stateDuration = DRONE_RECOVER_TIME / speedScale;
+        stateDuration = tuning.droneRecoverTime / speedScale;
         stateTimer = stateDuration;
     }
 
@@ -928,7 +869,7 @@ public final class Enemy implements Damageable {
         }
         float beforeX = position.x;
         float beforeZ = position.y;
-        boolean avoidSlideOntoHazard = kind == Kind.GUARD && map != null
+        boolean avoidSlideOntoHazard = stats.avoidsHazards && map != null
             && !map.isHazardAt(beforeX, beforeZ)
             && !probesHazardAhead(map, beforeX, beforeZ, dirX, dirZ, step);
         moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
@@ -970,13 +911,13 @@ public final class Enemy implements Damageable {
         float sideZ = dirX * sidestepSign;
         float fromX = position.x;
         float fromZ = position.y;
-        boolean currentlyOnHazard = kind == Kind.GUARD && map != null && map.isHazardAt(fromX, fromZ);
+        boolean currentlyOnHazard = stats.avoidsHazards && map != null && map.isHazardAt(fromX, fromZ);
         // A grounded guard does not sidestep onto a shock grate.
-        boolean ontoHazard = kind == Kind.GUARD && map != null && !currentlyOnHazard
+        boolean ontoHazard = stats.avoidsHazards && map != null && !currentlyOnHazard
             && probesHazardAhead(map, fromX, fromZ, sideX, sideZ, step);
         if (!ontoHazard) {
             moveSolid(map, worldBlockers, doors, player, sideX * step, sideZ * step, true);
-            if (kind == Kind.GUARD && map != null && !currentlyOnHazard && map.isHazardAt(position.x, position.y)) {
+            if (stats.avoidsHazards && map != null && !currentlyOnHazard && map.isHazardAt(position.x, position.y)) {
                 position.set(fromX, fromZ);
             }
         }
@@ -1045,8 +986,8 @@ public final class Enemy implements Damageable {
             float sideZ = curDirX * sign;
             float fromX = simPos.x;
             float fromZ = simPos.y;
-            boolean fromOnHazard = kind == Kind.GUARD && map != null && map.isHazardAt(fromX, fromZ);
-            if (kind == Kind.GUARD && map != null && !fromOnHazard
+            boolean fromOnHazard = stats.avoidsHazards && map != null && map.isHazardAt(fromX, fromZ);
+            if (stats.avoidsHazards && map != null && !fromOnHazard
                 && probesHazardAhead(map, fromX, fromZ, sideX, sideZ, stepLen)) {
                 return false;
             }
@@ -1065,7 +1006,7 @@ public final class Enemy implements Damageable {
                     resolveOutsidePlayer(map, blockers, doors, player, simPos, false);
                 }
             }
-            if (kind == Kind.GUARD && map != null && !fromOnHazard && map.isHazardAt(simPos.x, simPos.y)) {
+            if (stats.avoidsHazards && map != null && !fromOnHazard && map.isHazardAt(simPos.x, simPos.y)) {
                 return false;
             }
             if (map != null && Collision.overlapsWall(map, doors, simPos.x, simPos.y, kind.radius)) {
@@ -1105,8 +1046,8 @@ public final class Enemy implements Damageable {
             }
             float fromX = simPos.x;
             float fromZ = simPos.y;
-            boolean fromOnHazard = kind == Kind.GUARD && map != null && map.isHazardAt(fromX, fromZ);
-            if (kind == Kind.GUARD && map != null && !fromOnHazard
+            boolean fromOnHazard = stats.avoidsHazards && map != null && map.isHazardAt(fromX, fromZ);
+            if (stats.avoidsHazards && map != null && !fromOnHazard
                 && probesHazardAhead(map, fromX, fromZ, curDirX, curDirZ, simStep)) {
                 return false;
             }
@@ -1118,7 +1059,7 @@ public final class Enemy implements Damageable {
                     simPos.set(fromX, fromZ);
                 }
             }
-            if (kind == Kind.GUARD && map != null && !fromOnHazard && map.isHazardAt(simPos.x, simPos.y)) {
+            if (stats.avoidsHazards && map != null && !fromOnHazard && map.isHazardAt(simPos.x, simPos.y)) {
                 return false;
             }
             if (player != null && !player.isDead()
@@ -1243,7 +1184,7 @@ public final class Enemy implements Damageable {
             radZ = (float) Math.cos(rad);
         }
 
-        boolean avoidHazard = kind == Kind.GUARD && map != null && !map.isHazardAt(beforeX, beforeZ);
+        boolean avoidHazard = stats.avoidsHazards && map != null && !map.isHazardAt(beforeX, beforeZ);
         float pushX = player.position.x + radX * minDist;
         float pushZ = player.position.y + radZ * minDist;
         if (isClearSeparationSpot(map, blockers, doors, player, pushX, pushZ, avoidHazard)) {

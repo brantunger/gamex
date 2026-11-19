@@ -39,6 +39,15 @@ tasks.register('generateSounds', JavaExec) {
   outputs.dir(rootProject.file('assets/sounds'))
 }
 
+tasks.register('generateTextures', JavaExec) {
+  group = 'gamex'
+  description = 'Regenerates all painted .png textures in assets/textures/'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.brantunger.gamex.tools.GenerateAllTextures'
+  args = [rootProject.file('assets/textures').path]
+  outputs.dir(rootProject.file('assets/textures'))
+}
+
 def previewJvmArgs = [
   '--enable-native-access=ALL-UNNAMED',
   '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
@@ -93,6 +102,7 @@ class ToolsAssetsLocation implements CommandLineArgumentProvider {
 test {
   useJUnitPlatform()
   mustRunAfter(':tools:generateModels', ':tools:generateSounds')
+  mustRunAfter(':tools:generateTextures')
   inputs.files(
     rootProject.file('tools/build.gradle'),
     rootProject.file('core/build.gradle'),

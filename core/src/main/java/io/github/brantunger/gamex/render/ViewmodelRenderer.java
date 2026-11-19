@@ -76,51 +76,6 @@ public final class ViewmodelRenderer implements Disposable {
     /** How far the slide travels back, in view units. */
     private static final float SLIDE_TRAVEL = 0.034f;
 
-    private static final String VERTEX_SHADER =
-        "attribute vec3 a_position;\n"
-            + "attribute vec3 a_normal;\n"
-            + "attribute vec3 a_colour;\n"
-            + "attribute float a_gloss;\n"
-            + "attribute float a_accent;\n"
-            + "uniform mat4 u_projTrans;\n"
-            + "uniform mat4 u_model;\n"
-            + "uniform mat3 u_normalMatrix;\n"
-            + "uniform mat4 u_viewToWorld;\n"
-            + "uniform vec4 u_accentColour;\n"
-            + "uniform float u_light;\n"
-            + "uniform float u_charge;\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    vec3 viewNormal = normalize(u_normalMatrix * a_normal);\n"
-            + "    vec3 worldNormal = (u_viewToWorld * vec4(viewNormal, 0.0)).xyz;\n"
-            // The same shades as the world's faces: north-south 1.0, east-west 0.72, floor 0.9, ceiling 0.62.
-            + "    vec3 weight = worldNormal * worldNormal;\n"
-            + "    float shade = weight.z + weight.x * 0.72 + weight.y * (worldNormal.y > 0.0 ? 0.9 : 0.62);\n"
-            // A fixed light from above the left shoulder, so the form reads whichever way the player faces.
-            + "    float key = 0.5 + 0.75 * max(dot(viewNormal, normalize(vec3(-0.3, 0.9, 0.3))), 0.0);\n"
-            // The blast charge glows violet towards the muzzle, which is at negative z in gun space.
-            + "    float front = clamp((-a_position.z - 0.01) / 0.1, 0.0, 1.0);\n"
-            + "    vec3 baseColour = mix(a_colour, u_accentColour.rgb, a_accent);\n"
-            + "    float baseGloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
-            // Glossy faces that sit halfway between the light and the eye pick up a sheen.
-            + "    float facing = max(dot(viewNormal, normalize(vec3(-0.3, 0.9, 1.3))), 0.0);\n"
-            + "    float sheen = baseGloss * pow(facing, 10.0) * 0.3;\n"
-            // Faces seen nearly edge-on catch a faint rim of light, which lifts dark shapes off a dark background.
-            + "    float rim = pow(1.0 - abs(viewNormal.z), 2.0) * 0.09;\n"
-            + "    v_colour = (baseColour * shade * key + vec3(sheen + rim)) * u_light\n"
-            + "        + vec3(0.5, 0.22, 1.0) * u_charge * front * 0.55;\n"
-            + "    gl_Position = u_projTrans * u_model * vec4(a_position, 1.0);\n"
-            + "}\n";
-
-    private static final String FRAGMENT_SHADER =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    gl_FragColor = vec4(v_colour, 1.0);\n"
-            + "}\n";
-
     private PerspectiveCamera camera;
     private ShaderProgram shader;
     private Mesh body;
@@ -184,11 +139,14 @@ public final class ViewmodelRenderer implements Disposable {
             camera = createViewmodelCamera(graphics);
             resize(initialWidth, initialHeight);
 
-            Disposable shaderHandle = active.createShader(VERTEX_SHADER, FRAGMENT_SHADER);
+            // The shader text is read from assets/shaders/; a missing file stops the start here, by name.
+            Disposable shaderHandle = active.createShader(
+                Shaders.load(Shaders.VIEWMODEL_VERTEX), Shaders.load(Shaders.VIEWMODEL_FRAGMENT));
             shader = trackResource(shaderHandle, ShaderProgram.class);
             if (!active.isShaderCompiled(shaderHandle)) {
                 throw new GdxRuntimeException(
-                    "The viewmodel shader did not compile: " + active.getShaderLog(shaderHandle));
+                    "The viewmodel shader did not compile: " + active.getShaderLog(shaderHandle)
+                        + Shaders.describe(Shaders.VIEWMODEL_VERTEX, Shaders.VIEWMODEL_FRAGMENT));
             }
             int modelsBefore = ModelMesh.getLoadedCount();
             ObjModel pistolObj = active.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");

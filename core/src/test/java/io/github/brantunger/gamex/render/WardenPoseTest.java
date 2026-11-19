@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.render;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.world.Enemy;
 import org.junit.jupiter.api.Test;
 
@@ -52,19 +53,20 @@ class WardenPoseTest {
     @Test
     void walkAndRunPlayAsFastAsTheWardenMovesSoTheFeetDoNotSlide() {
         // Played at this speed, a planted foot moves back over the ground exactly as fast as the body moves on.
-        float walk = WardenPose.WALK.playbackSpeed(Enemy.Kind.WARDEN.moveSpeed);
-        assertEquals(Enemy.Kind.WARDEN.moveSpeed, walk * WardenPose.WALK.strideSpeed, 1e-4f);
-        float run = WardenPose.RUN.playbackSpeed(Enemy.WARDEN_RUN_SPEED);
-        assertEquals(Enemy.WARDEN_RUN_SPEED, run * WardenPose.RUN.strideSpeed, 1e-4f);
+        float walk = WardenPose.WALK.playbackSpeed(TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).moveSpeed);
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).moveSpeed, walk * WardenPose.WALK.strideSpeed, 1e-4f);
+        float run = WardenPose.RUN.playbackSpeed(TestTuning.WARDEN.runSpeed);
+        assertEquals(TestTuning.WARDEN.runSpeed, run * WardenPose.RUN.strideSpeed, 1e-4f);
         assertTrue(walk > 1f && walk < 2f, "the walk is a brisk one, not a blur: " + walk);
         assertTrue(run > 1f && run < 1.5f, "the run is close to the clip's own speed: " + run);
     }
 
     @Test
     void overdriveSpeedsTheRunClipUpInStepWithTheRun() {
-        float run = WardenPose.RUN.playbackSpeed(Enemy.WARDEN_RUN_SPEED);
-        float overdrive = WardenPose.RUN.playbackSpeed(Enemy.WARDEN_RUN_SPEED * Enemy.WARDEN_OVERDRIVE_SPEED_SCALE);
-        assertEquals(Enemy.WARDEN_OVERDRIVE_SPEED_SCALE, overdrive / run, 1e-4f);
+        float run = WardenPose.RUN.playbackSpeed(TestTuning.WARDEN.runSpeed);
+        float overdrive = WardenPose.RUN.playbackSpeed(
+            TestTuning.WARDEN.runSpeed * TestTuning.WARDEN.overdriveSpeedScale);
+        assertEquals(TestTuning.WARDEN.overdriveSpeedScale, overdrive / run, 1e-4f);
         assertTrue(overdrive < WardenPose.MAX_PLAYBACK, "inside the limit, so still in step: " + overdrive);
     }
 
