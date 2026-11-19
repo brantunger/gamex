@@ -35,6 +35,7 @@ import java.util.List;
 class PixelFontTest {
 
     private static final PixelFont FONT = TestTuning.FONT;
+    private static final UiStrings STRINGS = TestTuning.STRINGS;
 
     @Test
     void everySupportedCharacterHasAValidThreeByFiveGlyph() {
@@ -73,9 +74,9 @@ class PixelFontTest {
         stages.add(Levels.trainingRange());
         for (Levels.Stage stage : stages) {
             texts.add(stage.title);
-            texts.addAll(stage.briefing);
+            for (String line : stage.briefing) texts.add(STRINGS.fill(line, "a briefing of " + stage.id));
         }
-        for (Difficulty difficulty : Difficulty.values()) texts.add(difficulty.label);
+        for (Difficulty difficulty : Difficulty.values()) texts.add(STRINGS.label(difficulty));
         SaveData save = new SaveData(new MapKeyValueStore());
         save.saveCampaignRun(0, PlayerLoadout.fresh());
         for (MenuState.Screen screen : MenuState.Screen.values()) {
@@ -93,16 +94,10 @@ class PixelFontTest {
     @Test
     void everyCharacterOfObjectiveMedalAndRecordTextHasAGlyph() {
         List<String> texts = new ArrayList<>();
-        texts.add(HudRenderer.OBJECTIVE_PREFIX);
-        texts.add(GameSimulation.OBJECTIVE_AMBER_KEYCARD);
-        texts.add(GameSimulation.OBJECTIVE_CYAN_KEYCARD);
-        texts.add(GameSimulation.OBJECTIVE_CONSOLE);
-        texts.add(GameSimulation.OBJECTIVE_WARDEN);
-        texts.add(GameSimulation.OBJECTIVE_EXIT);
-        texts.add(GameSimulation.OBJECTIVE_ALL_TARGETS);
-        texts.add(GameSimulation.OBJECTIVE_ALL_HOSTILES);
-        texts.add(GameSimulation.OBJECTIVE_ALL_TARGETS_AND_HOSTILES);
-        for (Medal medal : Medal.values()) texts.add(medal.label);
+        for (GameSimulation.Objective objective : GameSimulation.Objective.values()) {
+            texts.add(STRINGS.objectiveLine(objective));
+        }
+        for (Medal medal : Medal.values()) texts.add(STRINGS.label(medal));
 
         // A save with a time and medals on every difficulty, so Select Stage shows every suffix it can.
         SaveData save = new SaveData(new MapKeyValueStore());
@@ -112,19 +107,19 @@ class PixelFontTest {
             RunStats perfect = new RunStats(41.5f + difficulty.ordinal(), 8, 8, 0f, 9, 9, 10, 10);
             SaveData.CompletionSummary summary = save.recordCompletion(campaign.get(difficulty.ordinal()).id,
                 difficulty, 50f, perfect, true);
-            texts.add(HudRenderer.tallyTimeLine(summary, 50f));
-            texts.add(HudRenderer.tallyBestLine(summary, difficulty.label));
-            texts.add(HudRenderer.tallyClearedLine(summary, true));
-            texts.add(HudRenderer.tallyClearedLine(summary, false));
-            texts.add(HudRenderer.tallyStatsLine(summary));
-            texts.add(HudRenderer.tallyMedalLine(summary));
+            texts.add(HudRenderer.tallyTimeLine(STRINGS, summary, 50f));
+            texts.add(HudRenderer.tallyBestLine(STRINGS, summary, difficulty));
+            texts.add(HudRenderer.tallyClearedLine(STRINGS, summary, true));
+            texts.add(HudRenderer.tallyClearedLine(STRINGS, summary, false));
+            texts.add(HudRenderer.tallyStatsLine(STRINGS, summary));
+            texts.add(HudRenderer.tallyMedalLine(STRINGS, summary));
             SaveData.CompletionSummary repeat = save.recordCompletion(campaign.get(difficulty.ordinal()).id,
                 difficulty, 50f, new RunStats(90f, 0, 8, 40f, 0, 9, 0, 0), true);
-            texts.add(HudRenderer.tallyBestLine(repeat, difficulty.label));
-            texts.add(HudRenderer.tallyStatsLine(repeat));
-            texts.add(HudRenderer.tallyMedalLine(repeat));
+            texts.add(HudRenderer.tallyBestLine(STRINGS, repeat, difficulty));
+            texts.add(HudRenderer.tallyStatsLine(STRINGS, repeat));
+            texts.add(HudRenderer.tallyMedalLine(STRINGS, repeat));
         }
-        texts.add(HudRenderer.tallyMedalLine(save.recordCompletion("range", Difficulty.NORMAL, 45f,
+        texts.add(HudRenderer.tallyMedalLine(STRINGS, save.recordCompletion("range", Difficulty.NORMAL, 45f,
             new RunStats(30f, 11, 11, 0f, 0, 0, 5, 5), false)));
         MenuState stageSelect = new MenuState(new GameSettings(), save, MenuState.Screen.STAGE_SELECT);
         texts.addAll(stageSelect.getOptions());
@@ -142,13 +137,7 @@ class PixelFontTest {
     }
 
     @Test
-    void quitPromptAndTildeHaveGlyphs() {
-        for (int i = 0; i < MenuState.QUIT_PROMPT.length(); i++) {
-            char c = MenuState.QUIT_PROMPT.charAt(i);
-            if (c == ' ') continue;
-            assertNotNull(FONT.glyphFor(c), "no glyph for '" + c + "' in the quit prompt");
-        }
-        assertEquals("PRESS Q AGAIN TO QUIT", MenuState.QUIT_PROMPT);
+    void tildeHasAGlyph() {
         assertEquals("000011110000000", FONT.glyphFor('~'), "a tilde two rows high, in the upper half");
     }
 

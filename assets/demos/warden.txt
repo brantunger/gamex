@@ -1,0 +1,15 @@
+// GAMEX_DEMO=warden: the Warden fight in Warden Core, across the live shock grates. The player pulls the
+// Scattergun trigger twice, which fires one blast, and steps forward.
+screen: playing
+stage: 06_warden_core
+loadout: custom
+loadout.health: 100
+loadout.armor: 50
+loadout.shells: 16
+loadout.weapon: scattergun
+position: 23.5, 13.6
+look: -90, -4
+
+1: fire
+3: fire
+5-14: move_forward 0.5

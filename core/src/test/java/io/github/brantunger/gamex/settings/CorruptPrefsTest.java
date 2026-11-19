@@ -66,11 +66,11 @@ class CorruptPrefsTest {
         store.putFloat("fov", Float.NaN);
         store.putFloat("masterVolume", Float.NaN);
 
-        GameSettings settings = GameSettings.load(store);
+        GameSettings settings = GameSettings.load(store, SettingsDefaults.load());
 
-        assertEquals(GameSettings.DEFAULT_SENSITIVITY, settings.getMouseSensitivity(), 1e-4f, "sensitivity");
-        assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), 1e-4f, "field of view");
-        assertEquals(GameSettings.DEFAULT_MASTER_VOLUME, settings.getMasterVolume(), 1e-4f, "master volume");
+        assertEquals(settings.defaults().sensitivity.initial, settings.getMouseSensitivity(), 1e-4f, "sensitivity");
+        assertEquals(settings.defaults().fov.initial, settings.getFov(), 1e-4f, "field of view");
+        assertEquals(settings.defaults().volume.initial, settings.getMasterVolume(), 1e-4f, "master volume");
     }
 
     @Test
@@ -81,11 +81,12 @@ class CorruptPrefsTest {
             store.putFloat("fov", stored);
             store.putFloat("masterVolume", stored);
 
-            GameSettings settings = GameSettings.load(store);
+            GameSettings settings = GameSettings.load(store, SettingsDefaults.load());
 
-            assertEquals(GameSettings.DEFAULT_SENSITIVITY, settings.getMouseSensitivity(), 1e-4f, "sens " + stored);
-            assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), 1e-4f, "fov " + stored);
-            assertEquals(GameSettings.DEFAULT_MASTER_VOLUME, settings.getMasterVolume(), 1e-4f, "vol " + stored);
+            assertEquals(settings.defaults().sensitivity.initial, settings.getMouseSensitivity(), 1e-4f,
+                "sens " + stored);
+            assertEquals(settings.defaults().fov.initial, settings.getFov(), 1e-4f, "fov " + stored);
+            assertEquals(settings.defaults().volume.initial, settings.getMasterVolume(), 1e-4f, "vol " + stored);
         }
     }
 
@@ -161,11 +162,12 @@ class CorruptPrefsTest {
         values.put("masterVolume", "NaN");
         values.put("fullscreen", "true");
 
-        GameSettings settings = GameSettings.load(new GdxPreferencesStore(textPreferences(values)));
+        GameSettings settings = GameSettings.load(new GdxPreferencesStore(textPreferences(values)),
+            SettingsDefaults.load());
 
-        assertEquals(GameSettings.DEFAULT_SENSITIVITY, settings.getMouseSensitivity(), 1e-4f);
-        assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), 1e-4f);
-        assertEquals(GameSettings.DEFAULT_MASTER_VOLUME, settings.getMasterVolume(), 1e-4f);
+        assertEquals(settings.defaults().sensitivity.initial, settings.getMouseSensitivity(), 1e-4f);
+        assertEquals(settings.defaults().fov.initial, settings.getFov(), 1e-4f);
+        assertEquals(settings.defaults().volume.initial, settings.getMasterVolume(), 1e-4f);
         assertTrue(settings.isFullscreen(), "the undamaged keys are still read");
     }
 
@@ -182,7 +184,7 @@ class CorruptPrefsTest {
         SaveData save = new SaveData(new GdxPreferencesStore(textPreferences(values)));
         MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
 
-        assertEquals("CONTINUE CAMPAIGN", menu.getOptions().get(0));
+        assertEquals(MenuState.OptionId.CONTINUE, menu.getMenuOptions().get(0).id);
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm());
         assertEquals("01_outer_breach", menu.getActiveStage().id, "a bad stage index continues at stage 01");
         assertEquals(Player.MAX_HEALTH, menu.getActiveLoadout().health, 1e-4f);

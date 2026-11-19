@@ -5,7 +5,7 @@ complete_on_all_targets: false
 loadout: scattergun
 briefing: CENTRAL SECURITY HUB ALERT LEVEL MAXIMUM.
 briefing: COLLECT THE RAIL LANCE AND PIERCE LINED-UP SQUADS.
-briefing: HOLD RMB FOR THE 1.8X ZOOM OPTIC AND BREACH TO EXTRACTION.
+briefing: HOLD {key:alt_fire} FOR THE {rail.zoom_factor}X ZOOM OPTIC, THEN EXTRACT.
 
 #############&&&&&&&&&&&&&&&&&&&
 #........####..................&

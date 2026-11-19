@@ -1,0 +1,8 @@
+// GAMEX_DEMO=targets: in the original first level, the player turns towards the canister in the spawn hall and
+// keeps firing the pistol at it.
+screen: playing
+stage: first_level
+loadout: fresh
+
+1: turn 71.57
+30-: fire

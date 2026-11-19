@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ch.qos.logback.classic.Level;
@@ -23,6 +24,8 @@ import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.settings.SettingsDefaults;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -122,7 +125,7 @@ class MainGameViewportTest {
         GameSettings settings = new GameSettings();
         settings.setFullscreen(fullscreen);
         settings.save(store);
-        return GameSettings.load(store);
+        return GameSettings.load(store, SettingsDefaults.load());
     }
 
     private static final class ViewportRecorder {
@@ -258,7 +261,7 @@ class MainGameViewportTest {
         MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.TITLE);
         assertTrue(MainGame.showsBackdrop(menu), "Title");
-        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
 
@@ -272,7 +275,7 @@ class MainGameViewportTest {
         assertFalse(MainGame.showsBackdrop(menu), "in play");
         menu.escape();
         assertFalse(MainGame.showsBackdrop(menu), "Pause");
-        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
 
@@ -294,15 +297,52 @@ class MainGameViewportTest {
     void minimizedZeroStartupPreservesWindowedFallbackDimensions() {
         Gdx.graphics = graphicsStub(0, 0, 0, 0, false);
 
+        WindowDefaults shipped = WindowDefaults.load();
         MainGame defaultGame = new MainGame();
         defaultGame.applyStartupDisplayMode(savedSettings(false));
-        assertEquals(1280, defaultGame.getWindowedWidth(), "0x0 minimized startup must not clobber width to 160");
-        assertEquals(720, defaultGame.getWindowedHeight(), "0x0 minimized startup must not clobber height to 120");
+        assertEquals(shipped.width, defaultGame.getWindowedWidth(),
+            "0x0 minimized startup must not clobber width to 160");
+        assertEquals(shipped.height, defaultGame.getWindowedHeight(),
+            "0x0 minimized startup must not clobber height to 120");
 
         MainGame customGame = new MainGame(960, 540, true);
         customGame.applyStartupDisplayMode(savedSettings(true));
         assertEquals(960, customGame.getWindowedWidth());
         assertEquals(540, customGame.getWindowedHeight());
+    }
+
+    @Test
+    void theWindowedFallbackSizeIsTheWindowDefaultsWhenNoSizeIsGiven() {
+        SettingsDefaults settingsDefaults = SettingsDefaults.load();
+        WindowDefaults shipped = WindowDefaults.load();
+        assertEquals(shipped.width, new MainGame().getWindowedWidth());
+        assertEquals(shipped.height, new MainGame().getWindowedHeight());
+
+        WindowDefaults other = WindowDefaults.parse("window.txt", "window.width: 1024\nwindow.height: 768\n");
+        MainGame game = new MainGame(other, settingsDefaults);
+        assertEquals(1024, game.getWindowedWidth());
+        assertEquals(768, game.getWindowedHeight());
+
+        // Leaving fullscreen goes back to that size.
+        DisplayRecorder fullscreen = new DisplayRecorder(true);
+        Gdx.graphics = fullscreen.graphics;
+        game.applyStartupDisplayMode(savedSettings(false));
+        assertEquals(List.of("windowed 1024x768"), fullscreen.switches);
+
+        // A size the launcher gives is kept over the one in the file.
+        MainGame sized = new MainGame(800, 600, false, other, settingsDefaults);
+        assertEquals(800, sized.getWindowedWidth());
+        assertEquals(600, sized.getWindowedHeight());
+    }
+
+    @Test
+    void theGameNeedsTheDefaultsTheLauncherLoaded() {
+        WindowDefaults window = WindowDefaults.load();
+        SettingsDefaults settingsDefaults = SettingsDefaults.load();
+        assertThrows(IllegalArgumentException.class, () -> new MainGame(800, 600, false, null, settingsDefaults));
+        assertThrows(IllegalArgumentException.class, () -> new MainGame(800, 600, false, window, null));
+        assertEquals(WindowDefaults.MIN_WIDTH, MainGame.MIN_WINDOW_WIDTH);
+        assertEquals(WindowDefaults.MIN_HEIGHT, MainGame.MIN_WINDOW_HEIGHT);
     }
 
     @Test

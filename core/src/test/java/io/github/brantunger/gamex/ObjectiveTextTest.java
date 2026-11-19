@@ -78,7 +78,7 @@ class ObjectiveTextTest {
     void stagesWithAnOpenRouteOnlyAskForTheExit() {
         List<Levels.Stage> campaign = Levels.campaign();
         for (int i = 0; i < 3; i++) {
-            assertEquals(GameSimulation.OBJECTIVE_EXIT, play(campaign.get(i)).getObjectiveText(),
+            assertEquals(GameSimulation.Objective.EXIT, play(campaign.get(i)).getObjective(),
                 campaign.get(i).title);
         }
     }
@@ -87,50 +87,50 @@ class ObjectiveTextTest {
     void lockdownWingAsksForTheAmberKeycardThenTheConsoleThenTheExit() {
         GameSimulation sim = play(Levels.campaign().get(3));
         assertEquals("04_lockdown_wing", Levels.campaign().get(3).id);
-        assertEquals(GameSimulation.OBJECTIVE_AMBER_KEYCARD, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.AMBER_KEYCARD, sim.getObjective());
 
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
         assertFalse(anyDoorOpening(sim, Door.LockKind.AMBER_KEY), "the Amber bulkhead is not opened yet");
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "holding the card is enough");
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective(), "holding the card is enough");
 
         overrideConsole(sim);
-        assertEquals(GameSimulation.OBJECTIVE_EXIT, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.EXIT, sim.getObjective());
     }
 
     @Test
     void commandVaultAsksForAmberThenCyanThenTheConsoleThenTheExit() {
         GameSimulation sim = play(Levels.campaign().get(4));
         assertEquals("05_command_vault", Levels.campaign().get(4).id);
-        assertEquals(GameSimulation.OBJECTIVE_AMBER_KEYCARD, sim.getObjectiveText(),
+        assertEquals(GameSimulation.Objective.AMBER_KEYCARD, sim.getObjective(),
             "the Cyan keycard lies behind the Amber bulkhead, so Amber comes first");
 
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
-        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText(),
+        assertEquals(GameSimulation.Objective.CYAN_KEYCARD, sim.getObjective(),
             "the console lies behind the Cyan bulkhead, so Cyan comes before it");
 
         collectKeycard(sim, Pickup.Kind.CYAN_KEYCARD);
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective());
 
         overrideConsole(sim);
-        assertEquals(GameSimulation.OBJECTIVE_EXIT, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.EXIT, sim.getObjective());
     }
 
     @Test
     void wardenCoreAsksForAmberThenTheConsoleThenTheWardenThenTheExit() {
         GameSimulation sim = play(Levels.campaign().get(5));
         assertEquals("06_warden_core", Levels.campaign().get(5).id);
-        assertEquals(GameSimulation.OBJECTIVE_AMBER_KEYCARD, sim.getObjectiveText(),
+        assertEquals(GameSimulation.Objective.AMBER_KEYCARD, sim.getObjective(),
             "the Warden is alive, but sealed away behind the lockdown");
 
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective());
 
         overrideConsole(sim);
-        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.WARDEN, sim.getObjective());
 
         destroyWarden(sim);
         assertTrue(anyDoorOpening(sim, Door.LockKind.BOSS), "extraction unsealed");
-        assertEquals(GameSimulation.OBJECTIVE_EXIT, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.EXIT, sim.getObjective());
     }
 
     @Test
@@ -140,13 +140,13 @@ class ObjectiveTextTest {
             "###########",
             "#>.B.MkA.X#",
             "###########"));
-        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.WARDEN, sim.getObjective());
 
         destroyWarden(sim);
-        assertEquals(GameSimulation.OBJECTIVE_AMBER_KEYCARD, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.AMBER_KEYCARD, sim.getObjective());
 
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
-        assertEquals(GameSimulation.OBJECTIVE_EXIT, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.EXIT, sim.getObjective());
     }
 
     @Test
@@ -158,35 +158,35 @@ class ObjectiveTextTest {
             "###A###",
             "#.....#",
             "#######"));
-        assertEquals(GameSimulation.OBJECTIVE_EXIT, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.EXIT, sim.getObjective());
     }
 
     @Test
     void trainingRangeAsksForEveryTargetAndAStageWithNoGoalHasNoLine() {
         Levels.Stage range = Levels.trainingRange();
         assertFalse(range.map.hasExit());
-        assertEquals(GameSimulation.OBJECTIVE_ALL_TARGETS, play(range).getObjectiveText());
+        assertEquals(GameSimulation.Objective.ALL_TARGETS, play(range).getObjective());
 
         GameMap hostilesOnly = GameMap.parse("#######", "#>..D.#", "#######");
-        assertEquals(GameSimulation.OBJECTIVE_ALL_HOSTILES,
-            new GameSimulation(hostilesOnly, PlayerLoadout.fresh(), true).getObjectiveText());
+        assertEquals(GameSimulation.Objective.ALL_HOSTILES,
+            new GameSimulation(hostilesOnly, PlayerLoadout.fresh(), true).getObjective());
         GameMap both = GameMap.parse("#######", "#>.oD.#", "#######");
-        assertEquals(GameSimulation.OBJECTIVE_ALL_TARGETS_AND_HOSTILES,
-            new GameSimulation(both, PlayerLoadout.fresh(), true).getObjectiveText());
+        assertEquals(GameSimulation.Objective.ALL_TARGETS_AND_HOSTILES,
+            new GameSimulation(both, PlayerLoadout.fresh(), true).getObjective());
 
-        assertNull(new GameSimulation(Levels.first()).getObjectiveText(), "no exit and no clear on all targets");
+        assertNull(new GameSimulation(Levels.first()).getObjective(), "no exit and no clear on all targets");
     }
 
     @Test
     void objectiveLineIsTheSameConstantFrameAfterFrame() {
         GameSimulation sim = play(Levels.campaign().get(4));
-        String first = sim.getObjectiveText();
+        GameSimulation.Objective first = sim.getObjective();
         PlayerInput input = new PlayerInput();
         for (int i = 0; i < 30; i++) {
             sim.update(FRAME, input);
-            assertSame(first, sim.getObjectiveText());
+            assertSame(first, sim.getObjective());
         }
-        assertSame(GameSimulation.OBJECTIVE_AMBER_KEYCARD, first);
+        assertSame(GameSimulation.Objective.AMBER_KEYCARD, first);
     }
 
     @Test
@@ -194,17 +194,17 @@ class ObjectiveTextTest {
         GameSimulation sim = play(Levels.campaign().get(3));
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
         sim.player.position.set(19.5f, 15.5f);
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective());
 
         // East into the lockdown bulkhead at column 20, row 15, until the slab stops the player.
         walk(sim, 90f, 1f, 30);
         assertTrue(sim.player.position.x > 20f, "the player's centre is in the bulkhead's cell");
         assertFalse(anyDoorOpening(sim, Door.LockKind.LOCKDOWN));
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "leaning on the bulkhead");
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective(), "leaning on the bulkhead");
 
         walk(sim, 90f, -1f, 30);
         assertTrue(sim.player.position.x < 19.5f, "stepped back");
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "after stepping back");
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective(), "after stepping back");
     }
 
     @Test
@@ -212,16 +212,16 @@ class ObjectiveTextTest {
         GameSimulation sim = play(Levels.campaign().get(4));
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
         sim.player.position.set(11.5f, 13.5f);
-        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.CYAN_KEYCARD, sim.getObjective());
 
         // South into the lockdown bulkhead at column 11, row 14.
         walk(sim, 180f, 1f, 30);
         assertTrue(sim.player.position.y > 14f, "the player's centre is in the bulkhead's cell");
-        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText(), "leaning on the bulkhead");
+        assertEquals(GameSimulation.Objective.CYAN_KEYCARD, sim.getObjective(), "leaning on the bulkhead");
 
         walk(sim, 180f, -1f, 30);
         assertTrue(sim.player.position.y < 13.5f, "stepped back");
-        assertEquals(GameSimulation.OBJECTIVE_CYAN_KEYCARD, sim.getObjectiveText(), "after stepping back");
+        assertEquals(GameSimulation.Objective.CYAN_KEYCARD, sim.getObjective(), "after stepping back");
     }
 
     @Test
@@ -230,7 +230,7 @@ class ObjectiveTextTest {
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
         overrideConsole(sim);
         sim.player.position.set(23.5f, 14.5f);
-        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.WARDEN, sim.getObjective());
 
         // South into the extraction bulkhead at column 23, row 15.
         walk(sim, 180f, 1f, 30);
@@ -238,10 +238,10 @@ class ObjectiveTextTest {
         assertFalse(sim.enemies.stream().noneMatch(
             enemy -> enemy.getKind() == Enemy.Kind.WARDEN && !enemy.isDestroyed()), "the Warden still stands");
         assertFalse(anyDoorOpening(sim, Door.LockKind.BOSS));
-        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText(), "leaning on the bulkhead");
+        assertEquals(GameSimulation.Objective.WARDEN, sim.getObjective(), "leaning on the bulkhead");
 
         walk(sim, 180f, -1f, 30);
-        assertEquals(GameSimulation.OBJECTIVE_WARDEN, sim.getObjectiveText(), "after stepping back");
+        assertEquals(GameSimulation.Objective.WARDEN, sim.getObjective(), "after stepping back");
     }
 
     @Test
@@ -252,20 +252,20 @@ class ObjectiveTextTest {
             "#########");
         GameSimulation sim = new GameSimulation(corridor);
         sim.player.position.set(4.5f, 1.5f);
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText());
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective());
 
         walk(sim, 90f, 1f, 30);
         assertTrue(sim.player.position.x > 5f, "the player's centre is in the bulkhead's cell");
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "leaning on the west face");
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective(), "leaning on the west face");
         walk(sim, 90f, -1f, 30);
-        assertEquals(GameSimulation.OBJECTIVE_CONSOLE, sim.getObjectiveText(), "after stepping back");
+        assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective(), "after stepping back");
 
         // From the exit's side the same bulkhead is behind the player, so the exit is all that is left.
         GameSimulation beyond = new GameSimulation(corridor);
         beyond.player.position.set(6.5f, 1.5f);
         walk(beyond, 270f, 1f, 30);
         assertTrue(beyond.player.position.x < 6f, "the player's centre is in the bulkhead's cell");
-        assertEquals(GameSimulation.OBJECTIVE_EXIT, beyond.getObjectiveText(), "leaning on the east face");
+        assertEquals(GameSimulation.Objective.EXIT, beyond.getObjective(), "leaning on the east face");
     }
 
     @Test
@@ -277,19 +277,19 @@ class ObjectiveTextTest {
         sim.player.position.set(4.5f, 1.5f);
         walk(sim, 90f, 1f, 30);
         assertTrue(sim.player.position.x > 5f, "the player's centre is in the bulkhead's cell");
-        String leaning = sim.getObjectiveText();
+        GameSimulation.Objective leaning = sim.getObjective();
         int floods = sim.getObjectiveFloodCount();
 
         PlayerInput input = new PlayerInput();
         input.moveForward = 1f;
         for (int i = 0; i < 30; i++) {
             sim.update(FRAME, input);
-            assertSame(leaning, sim.getObjectiveText());
+            assertSame(leaning, sim.getObjective());
         }
         assertEquals(floods, sim.getObjectiveFloodCount(), "no flood while the player keeps leaning");
 
         walk(sim, 90f, -1f, 30);
-        assertSame(leaning, sim.getObjectiveText());
+        assertSame(leaning, sim.getObjective());
         assertEquals(floods, sim.getObjectiveFloodCount(), "no flood on stepping back either");
     }
 }

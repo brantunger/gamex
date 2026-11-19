@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.hud;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.TestTuning;
@@ -18,6 +19,7 @@ import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 class MenuStateTest {
@@ -51,10 +53,10 @@ class MenuStateTest {
         // Esc pauses; open Settings from Pause and adjust FOV.
         menu.escape();
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
-        menu.setSelectedIndex(2); // SETTINGS
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
-        menu.setSelectedIndex(2); // FIELD OF VIEW
+        assertTrue(menu.selectId(MenuState.OptionId.SET_FOV));
         menu.adjustHorizontal(1);
         assertEquals(75f, settings.getFov(), 1e-4f);
         menu.escape();
@@ -115,8 +117,7 @@ class MenuStateTest {
         save.recordCompletion("01_outer_breach", Difficulty.NORMAL, 40f, 50f, 8, 8, 0f);
         MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
 
-        // Select SELECT STAGE (index 1 on fresh Title without Continue).
-        menu.setSelectedIndex(1);
+        assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
         assertEquals(MenuState.Command.NONE, menu.confirm());
         assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
         assertTrue(menu.getOptions().get(0).contains("[BEST: S]"));
@@ -209,5 +210,49 @@ class MenuStateTest {
         menu.escape();
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertEquals("01_outer_breach", menu.getActiveStage().id);
+    }
+
+    @Test
+    void everyOptionCarriesTheIdOfWhatItDoesAndSettingsRowsAreToldApartById() {
+        SaveData save = new SaveData(new MapKeyValueStore());
+        save.saveCampaignRun(0, PlayerLoadout.fresh());
+        MenuState title = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
+        List<MenuState.OptionId> ids = new ArrayList<>();
+        for (MenuState.Option option : title.getMenuOptions()) {
+            ids.add(option.id);
+            assertEquals(MenuState.Option.NO_PAYLOAD, option.payload, option.label);
+        }
+        assertEquals(List.of(MenuState.OptionId.CONTINUE, MenuState.OptionId.START_CAMPAIGN,
+            MenuState.OptionId.SELECT_STAGE, MenuState.OptionId.TRAINING_RANGE, MenuState.OptionId.SETTINGS,
+            MenuState.OptionId.QUIT), ids);
+        List<String> labels = new ArrayList<>();
+        for (MenuState.Option option : title.getMenuOptions()) labels.add(option.label);
+        assertEquals(labels, title.getOptions(), "the labels are those of the options, in their order");
+
+        assertFalse(title.selectId(MenuState.OptionId.DEPLOY), "the Title has no such option");
+        assertEquals(0, title.getSelectedIndex(), "and the highlight stays");
+        assertTrue(title.selectId(MenuState.OptionId.SETTINGS));
+        assertEquals(MenuState.OptionId.SETTINGS, title.getSelectedOption().id);
+        title.confirm();
+
+        List<MenuState.Option> rows = title.getMenuOptions();
+        assertEquals(7, rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            assertEquals(i < rows.size() - 1, rows.get(i).id.isSetting(), rows.get(i).label);
+        }
+        assertEquals(MenuState.OptionId.BACK, rows.get(6).id);
+        assertFalse(MenuState.OptionId.SETTINGS.isSetting(), "the option that opens Settings is not one of its rows");
+
+        // Select Difficulty and Select Stage rows say which difficulty or stage they stand for.
+        MenuState difficulty = new MenuState(new GameSettings(), save, MenuState.Screen.DIFFICULTY_SELECT);
+        for (Difficulty each : Difficulty.values()) {
+            MenuState.Option row = difficulty.getMenuOptions().get(each.ordinal());
+            assertEquals(MenuState.OptionId.DIFFICULTY, row.id);
+            assertEquals(each.ordinal(), row.payload);
+        }
+        assertTrue(difficulty.selectId(MenuState.OptionId.DIFFICULTY, Difficulty.HARD.ordinal()));
+        assertEquals(2, difficulty.getSelectedIndex());
+        assertFalse(difficulty.selectId(MenuState.OptionId.DIFFICULTY, 7));
+        assertNull(new MenuState(new GameSettings(), save, MenuState.Screen.PLAYING).getSelectedOption());
     }
 }

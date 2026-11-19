@@ -1,7 +1,7 @@
 // What each difficulty multiplies. Read once when the game starts. Every key must be present.
 // The three difficulties themselves (EASY, NORMAL, HARD) are fixed in code: saved games store those names.
-// The menu's lines for EASY and HARD ("70% DAMAGE / +25% PICKUPS") are fixed text in code too, and do not follow
-// a value changed here.
+// The Select Difficulty rows ("EASY - 70% DAMAGE / +25% PICKUPS") are made from damage_taken and pickup below,
+// with the wording of menu.difficulty.row in strings.txt; enemy_speed is not shown there.
 //   damage_taken  damage the player takes: from enemies, exploding canisters, their own blasts and shock grates
 //   pickup        what health, armor, energy and ammunition pickups give, and the ammunition a stage entered
 //                 from Select Stage starts with

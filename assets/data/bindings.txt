@@ -1,0 +1,41 @@
+// The keys, mouse buttons and wheel directions of every action. Every action needs exactly one line, with one
+// input or several separated by commas. Edit and relaunch; there is no rebuild.
+//
+// Keys have the names libGDX gives them, and the case matters: A to Z, 0 to 9, Space, Enter, Escape, Tab,
+// Up, Down, Left, Right, L-Shift, R-Shift, L-Ctrl, R-Ctrl, L-Alt, R-Alt, F1 to F12, Numpad 0 to Numpad 9, ...
+// The comma key is written Comma. Mouse buttons: Mouse-Left, Mouse-Right, Mouse-Middle, Mouse-Back,
+// Mouse-Forward. Wheel: Wheel-Up, Wheel-Down.
+//
+// An input can serve one action during play and another on the menu screens (Q below), not two actions that act
+// at the same time; pause and retry act in both. The wheel works during play only, and menu_click takes mouse
+// buttons only. On-screen hints name the first input of a line, so the font must be able to draw its name.
+
+// During play and on the menu screens
+pause: Escape
+retry: R
+
+// During play
+move_forward: W
+move_back: S
+move_left: A
+move_right: D
+dash: L-Shift, R-Shift
+jump: Space
+interact: E
+weapon_1: 1
+weapon_2: 2
+weapon_3: 3
+quick_swap: Q
+weapon_next: Wheel-Down
+weapon_prev: Wheel-Up
+fire: Mouse-Left
+alt_fire: Mouse-Right
+
+// On the menu screens. quit closes the game on a second press.
+menu_up: Up, W
+menu_down: Down, S
+menu_left: Left, A
+menu_right: Right, D
+menu_confirm: Enter, Space
+quit: Q
+menu_click: Mouse-Left

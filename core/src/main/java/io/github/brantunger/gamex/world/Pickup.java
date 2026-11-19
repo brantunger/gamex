@@ -34,30 +34,23 @@ public final class Pickup {
     /** The kinds of floor pickup. */
     public enum Kind {
         /** Restores player health. */
-        MEDKIT("HEALTH"),
+        MEDKIT,
         /** Adds damage-absorbing armor. */
-        ARMOR("ARMOR"),
+        ARMOR,
         /** Immediately refills blast/dash energy. */
-        ENERGY_CELL("ENERGY"),
+        ENERGY_CELL,
         /** Grants access to amber-locked bulkheads in the current stage. */
-        AMBER_KEYCARD("AMBER KEYCARD"),
+        AMBER_KEYCARD,
         /** Grants access to cyan-locked bulkheads in the current stage. */
-        CYAN_KEYCARD("CYAN KEYCARD"),
+        CYAN_KEYCARD,
         /** Grants the Combat Scattergun plus starter shells. */
-        SCATTERGUN("SCATTERGUN"),
+        SCATTERGUN,
         /** Restores shells for the Combat Scattergun. */
-        SHELLS("SHELLS"),
+        SHELLS,
         /** Grants the Slot 3 Rail Lance plus starter slugs. */
-        RAIL_LANCE("RAIL LANCE"),
+        RAIL_LANCE,
         /** Restores slugs for the Rail Lance. */
-        RAIL_SLUGS("SLUGS");
-
-        /** Short HUD noun shown in pickup notifications. */
-        public final String label;
-
-        Kind(String label) {
-            this.label = label;
-        }
+        RAIL_SLUGS;
 
         /** @return whether this pickup grants a stage security keycard rather than restoring a vital stat. */
         public boolean isKeycard() {
@@ -67,6 +60,33 @@ public final class Pickup {
         /** @return whether this pickup unlocks or supplies a finite-ammunition weapon. */
         public boolean isArsenal() {
             return this == SCATTERGUN || this == SHELLS || this == RAIL_LANCE || this == RAIL_SLUGS;
+        }
+    }
+
+    /**
+     * What collecting a pickup gave, for the HUD's notification. The words are the HUD's: it has a label for each
+     * kind. Immutable.
+     */
+    public static final class Collected {
+        /**
+         * The kind whose label the notification shows. It is the pickup's own kind, except that a weapon pickup
+         * collected with the weapon already held shows the kind of its ammunition.
+         */
+        public final Kind shown;
+        /** How much health, armor, energy or ammunition was gained; 0 for a keycard. */
+        public final int amount;
+        /** Whether a keycard or a weapon was gained, so the notification names it and gives no amount. */
+        public final boolean granted;
+
+        Collected(Kind shown, int amount, boolean granted) {
+            this.shown = shown;
+            this.amount = amount;
+            this.granted = granted;
+        }
+
+        @Override
+        public String toString() {
+            return granted ? "+ " + shown : "+" + amount + " " + shown;
         }
     }
 
@@ -153,9 +173,9 @@ public final class Pickup {
      * @param player the player
      * @param energy the player's energy meter
      * @param pickupScale difficulty multiplier applied to what the pickup gives on Normal
-     * @return a HUD toast string such as {@code "+25 HEALTH"} when collected, or null if untouched
+     * @return what was gained when collected, or null if untouched
      */
-    public String tryCollect(Player player, EnergyMeter energy, float pickupScale) {
+    public Collected tryCollect(Player player, EnergyMeter energy, float pickupScale) {
         return tryCollect(player, energy, pickupScale, null);
     }
 
@@ -165,9 +185,9 @@ public final class Pickup {
      * @param energy the player's energy meter
      * @param pickupScale difficulty multiplier applied to what the pickup gives on Normal
      * @param heldKeycards optional set updated when collecting a keycard
-     * @return a HUD toast string such as {@code "+25 HEALTH"} or {@code "+ AMBER KEYCARD"}, or null if untouched
+     * @return what was gained (an amount of health, or a keycard), or null if untouched
      */
-    public String tryCollect(Player player, EnergyMeter energy, float pickupScale, Set<Kind> heldKeycards) {
+    public Collected tryCollect(Player player, EnergyMeter energy, float pickupScale, Set<Kind> heldKeycards) {
         return tryCollect(player, energy, pickupScale, heldKeycards, null);
     }
 
@@ -179,10 +199,10 @@ public final class Pickup {
      * @param pickupScale difficulty multiplier applied to what the pickup gives on Normal
      * @param heldKeycards optional set updated when collecting a keycard
      * @param arsenal optional mutable weapon/shell holder updated when collecting weapons or ammo
-     * @return a HUD toast string such as {@code "+25 HEALTH"}, {@code "+ AMBER KEYCARD"}, {@code "+ SCATTERGUN"} or
-     *     {@code "+6 SHELLS"}, or null if untouched
+     * @return what was gained (an amount of health, a keycard, a weapon or an amount of shells), or null if
+     *     untouched
      */
-    public String tryCollect(Player player, EnergyMeter energy, float pickupScale, Set<Kind> heldKeycards,
+    public Collected tryCollect(Player player, EnergyMeter energy, float pickupScale, Set<Kind> heldKeycards,
                              Arsenal arsenal) {
         if (collected || player.isDead()) return null;
         float reach = Player.RADIUS + RADIUS;
@@ -190,7 +210,7 @@ public final class Pickup {
         if (kind.isKeycard()) {
             if (heldKeycards == null || !heldKeycards.add(kind)) return null;
             collected = true;
-            return "+ " + kind.label;
+            return new Collected(kind, 0, true);
         }
         if (kind.isArsenal()) {
             return tryCollectArsenal(pickupScale, arsenal);
@@ -211,10 +231,10 @@ public final class Pickup {
         }
         if (applied <= 0f) return null;
         collected = true;
-        return "+" + Math.max(1, Math.round(applied)) + " " + kind.label;
+        return new Collected(kind, Math.max(1, Math.round(applied)), false);
     }
 
-    private String tryCollectArsenal(float pickupScale, Arsenal arsenal) {
+    private Collected tryCollectArsenal(float pickupScale, Arsenal arsenal) {
         if (arsenal == null) return null;
         int scaled = Math.max(1, Math.round(baseAmount * pickupScale));
         if (kind == Kind.SCATTERGUN || kind == Kind.SHELLS) {
@@ -225,12 +245,12 @@ public final class Pickup {
                 if (hadWeapon && gain <= 0) return null;
                 arsenal.grantScattergun(gain);
                 collected = true;
-                return hadWeapon ? "+" + gain + " SHELLS" : "+ SCATTERGUN";
+                return hadWeapon ? new Collected(Kind.SHELLS, gain, false) : new Collected(kind, gain, true);
             }
             if (gain <= 0) return null;
             arsenal.addShells(gain);
             collected = true;
-            return "+" + gain + " SHELLS";
+            return new Collected(kind, gain, false);
         }
         int space = Math.max(0, ammoCapacity - arsenal.getSlugs());
         int gain = Math.min(space, scaled);
@@ -239,11 +259,11 @@ public final class Pickup {
             if (hadWeapon && gain <= 0) return null;
             arsenal.grantRailLance(gain);
             collected = true;
-            return hadWeapon ? "+" + gain + " SLUGS" : "+ RAIL LANCE";
+            return hadWeapon ? new Collected(Kind.RAIL_SLUGS, gain, false) : new Collected(kind, gain, true);
         }
         if (gain <= 0) return null;
         arsenal.addSlugs(gain);
         collected = true;
-        return "+" + gain + " SLUGS";
+        return new Collected(kind, gain, false);
     }
 }

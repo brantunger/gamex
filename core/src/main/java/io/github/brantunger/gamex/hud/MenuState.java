@@ -1,6 +1,7 @@
 package io.github.brantunger.gamex.hud;
 
 import io.github.brantunger.gamex.audio.SoundEvent;
+import io.github.brantunger.gamex.input.KeyBindings;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.Player;
@@ -11,13 +12,16 @@ import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.WeaponTuning;
 import io.github.brantunger.gamex.world.Levels;
+import io.github.brantunger.gamex.world.WorldTuning;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Pure-Java screen and menu state machine driving Title, Difficulty Select, Briefing, Pause, Settings, Death and
@@ -51,8 +55,62 @@ public final class MenuState {
         QUIT
     }
 
-    /** Prompt shown on the Title and Pause screens after a first press of the quit key. */
-    public static final String QUIT_PROMPT = "PRESS Q AGAIN TO QUIT";
+    /**
+     * What a menu option does. An option is told apart by its id alone: its label is only what is shown, and comes
+     * from {@code assets/data/strings.txt}.
+     */
+    public enum OptionId {
+        CONTINUE,
+        START_CAMPAIGN,
+        SELECT_STAGE,
+        TRAINING_RANGE,
+        SETTINGS,
+        QUIT,
+        /** A stage row on Select Stage; {@link Option#payload} is the stage's place in the campaign, from 0. */
+        STAGE,
+        BACK,
+        /** A row on Select Difficulty; {@link Option#payload} is the ordinal of its {@link Difficulty}. */
+        DIFFICULTY,
+        DEPLOY,
+        RETURN_TO_TITLE,
+        RESUME,
+        RESTART,
+        SET_SENSITIVITY,
+        SET_INVERT_Y,
+        SET_FOV,
+        SET_VIEW_BOB,
+        SET_VOLUME,
+        SET_FULLSCREEN,
+        RETRY,
+        NEXT_STAGE,
+        PLAY_AGAIN;
+
+        /** @return whether this is a Settings row whose value the left and right keys and a click change. */
+        public boolean isSetting() {
+            return this == SET_SENSITIVITY || this == SET_INVERT_Y || this == SET_FOV || this == SET_VIEW_BOB
+                || this == SET_VOLUME || this == SET_FULLSCREEN;
+        }
+    }
+
+    /** One row of a menu: what it does and what it shows. Immutable. */
+    public static final class Option {
+        /** Value of {@link #payload} for an option that carries none. */
+        public static final int NO_PAYLOAD = -1;
+
+        /** What the option does. */
+        public final OptionId id;
+        /** The text shown on the row. */
+        public final String label;
+        /** Which stage or difficulty the row stands for (see {@link OptionId}); otherwise {@link #NO_PAYLOAD}. */
+        public final int payload;
+
+        Option(OptionId id, String label, int payload) {
+            this.id = id;
+            this.label = label;
+            this.payload = payload;
+        }
+    }
+
     /** How long a first press of the quit key stays armed, in seconds. */
     public static final float QUIT_CONFIRM_SECONDS = 2f;
 
@@ -81,11 +139,14 @@ public final class MenuState {
     private float quitConfirmTimer;
     private final DifficultyTuning difficultyTuning;
     private final WeaponTuning weaponTuning;
+    private final UiStrings strings;
+    /** The briefing of each stage as shown, with its placeholders filled in. */
+    private final Map<Levels.Stage, List<String>> briefings = new IdentityHashMap<>();
 
     /**
-     * Builds the menus with the difficulty and weapon tuning files read here and now. This is for tests only:
-     * the game loads its tuning once at start-up and uses
-     * {@link #MenuState(GameSettings, SaveData, Screen, DifficultyTuning, WeaponTuning)}.
+     * Builds the menus with the difficulty and weapon tuning files and the text read here and now. This is for
+     * tests only: the game loads them once at start-up and uses
+     * {@link #MenuState(GameSettings, SaveData, Screen, DifficultyTuning, WeaponTuning, UiStrings)}.
      * @param settings live settings model
      * @param saveData campaign & record persistence
      * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
@@ -95,24 +156,63 @@ public final class MenuState {
     }
 
     /**
+     * Builds the menus with the text and the key bindings read here and now. This is for tests only, as the shorter
+     * form is.
+     * @param settings live settings model
+     * @param saveData campaign & record persistence
+     * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
+     * @param difficultyTuning what each difficulty multiplies
+     * @param weaponTuning the weapon balance
+     */
+    public MenuState(GameSettings settings, SaveData saveData, Screen startScreen,
+                     DifficultyTuning difficultyTuning, WeaponTuning weaponTuning) {
+        this(settings, saveData, startScreen, difficultyTuning, weaponTuning,
+            weaponTuning == null || difficultyTuning == null ? null : readStrings(difficultyTuning, weaponTuning));
+    }
+
+    /** Reads the text of the menus, with the key names of the bindings file, for the constructor above. */
+    private static UiStrings readStrings(DifficultyTuning difficultyTuning, WeaponTuning weaponTuning) {
+        PixelFont font = PixelFont.load();
+        return UiStrings.load(font, KeyBindings.load(font)::hint,
+            TextValues.of(weaponTuning, difficultyTuning, WorldTuning.load()));
+    }
+
+    /**
      * @param settings live settings model
      * @param saveData campaign & record persistence
      * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
      * @param difficultyTuning what each difficulty multiplies, as loaded at start-up
      * @param weaponTuning the weapon balance, as loaded at start-up
+     * @param strings the text of the menus, as loaded at start-up
+     * @throws IllegalArgumentException if a stage's title cannot be drawn, or a line of its briefing cannot be
+     *     drawn or breaks a placeholder rule
      */
     public MenuState(GameSettings settings, SaveData saveData, Screen startScreen,
-                     DifficultyTuning difficultyTuning, WeaponTuning weaponTuning) {
+                     DifficultyTuning difficultyTuning, WeaponTuning weaponTuning, UiStrings strings) {
         if (difficultyTuning == null) throw new IllegalArgumentException("Difficulty tuning must not be null");
         if (weaponTuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
+        if (strings == null) throw new IllegalArgumentException("Strings must not be null");
         this.settings = settings;
         this.saveData = saveData;
         this.difficultyTuning = difficultyTuning;
         this.weaponTuning = weaponTuning;
+        this.strings = strings;
+        for (Levels.Stage stage : campaign) fillBriefing(stage);
+        fillBriefing(trainingRange);
         this.activeStage = campaign.get(0);
         this.activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
         this.entryLoadout = activeLoadout;
         setScreen(startScreen);
+    }
+
+    /** Checks that a stage's title can be drawn and fills in the placeholders of its briefing. */
+    private void fillBriefing(Levels.Stage stage) {
+        strings.requireDrawable(stage.title, "the title of stage " + stage.id);
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < stage.briefing.size(); i++) {
+            lines.add(strings.fill(stage.briefing.get(i), "briefing line " + (i + 1) + " of stage " + stage.id));
+        }
+        briefings.put(stage, Collections.unmodifiableList(lines));
     }
 
     public Screen getScreen() {
@@ -129,6 +229,14 @@ public final class MenuState {
 
     public Levels.Stage getActiveStage() {
         return activeStage;
+    }
+
+    /**
+     * @return the briefing of {@link #getActiveStage()} as shown: its lines with the key names and tuning values
+     *     filled in
+     */
+    public List<String> getActiveBriefing() {
+        return briefings.get(activeStage);
     }
 
     public PlayerLoadout getActiveLoadout() {
@@ -152,7 +260,7 @@ public final class MenuState {
         return settingsReturnScreen;
     }
 
-    /** @return whether {@link #QUIT_PROMPT} should be shown, after a first press of the quit key. */
+    /** @return whether the quit prompt should be shown, after a first press of the quit key. */
     public boolean isQuitPromptVisible() {
         return quitConfirmTimer > 0f;
     }
@@ -163,7 +271,7 @@ public final class MenuState {
     }
 
     /**
-     * Handles the quit key on the Title and Pause screens. The first press only shows {@link #QUIT_PROMPT}; a second
+     * Handles the quit key on the Title and Pause screens. The first press only shows the quit prompt; a second
      * press within {@link #QUIT_CONFIRM_SECONDS} quits. Does nothing on other screens.
      */
     public Command requestQuit() {
@@ -192,17 +300,26 @@ public final class MenuState {
         return copy;
     }
 
-    /** @return visible menu option labels for the current screen. */
+    /** @return visible menu option labels for the current screen, in the order of {@link #getMenuOptions()}. */
     public List<String> getOptions() {
-        List<String> items = new ArrayList<>();
+        List<Option> options = getMenuOptions();
+        if (options.isEmpty()) return Collections.emptyList();
+        List<String> labels = new ArrayList<>(options.size());
+        for (int i = 0; i < options.size(); i++) labels.add(options.get(i).label);
+        return labels;
+    }
+
+    /** @return the visible menu options of the current screen, top row first. */
+    public List<Option> getMenuOptions() {
+        List<Option> items = new ArrayList<>();
         switch (screen) {
             case TITLE:
-                if (saveData.hasSavedRun()) items.add("CONTINUE CAMPAIGN");
-                items.add("START CAMPAIGN");
-                items.add("SELECT STAGE");
-                items.add("TRAINING RANGE");
-                items.add("SETTINGS");
-                items.add("QUIT");
+                if (saveData.hasSavedRun()) add(items, OptionId.CONTINUE, UiText.MENU_CONTINUE_CAMPAIGN);
+                add(items, OptionId.START_CAMPAIGN, UiText.MENU_START_CAMPAIGN);
+                add(items, OptionId.SELECT_STAGE, UiText.MENU_SELECT_STAGE);
+                add(items, OptionId.TRAINING_RANGE, UiText.MENU_TRAINING_RANGE);
+                add(items, OptionId.SETTINGS, UiText.MENU_SETTINGS);
+                add(items, OptionId.QUIT, UiText.MENU_QUIT);
                 break;
             case STAGE_SELECT: {
                 int unlocked = saveData.getUnlockedStageIndex();
@@ -212,57 +329,144 @@ public final class MenuState {
                         Difficulty fastest = saveData.getFastestDifficulty(stage.id);
                         float bestTime = fastest == null ? Float.POSITIVE_INFINITY
                             : saveData.getBestTime(stage.id, fastest);
-                        items.add(stageSelectRow(stage.title, saveData.getBestOverallRank(stage.id), bestTime,
-                            fastest));
+                        items.add(new Option(OptionId.STAGE, stageSelectRow(stage.title,
+                            saveData.getBestOverallRank(stage.id), bestTime, fastest), i));
                     } else {
-                        items.add(stage.title + " [LOCKED]");
+                        items.add(new Option(OptionId.STAGE, strings.format(UiText.MENU_STAGE_LOCKED, stage.title),
+                            i));
                     }
                 }
-                items.add("BACK");
+                add(items, OptionId.BACK, UiText.MENU_BACK);
                 break;
             }
             case DIFFICULTY_SELECT:
-                items.add("EASY - 70% DAMAGE / +25% PICKUPS");
-                items.add("NORMAL - STANDARD CHALLENGE");
-                items.add("HARD - 140% DAMAGE / -20% PICKUPS");
-                items.add("BACK");
+                for (Difficulty difficulty : Difficulty.values()) {
+                    items.add(new Option(OptionId.DIFFICULTY, difficultyRow(difficulty), difficulty.ordinal()));
+                }
+                add(items, OptionId.BACK, UiText.MENU_BACK);
                 break;
             case BRIEFING:
-                items.add("DEPLOY");
-                items.add("RETURN TO TITLE");
+                add(items, OptionId.DEPLOY, UiText.MENU_DEPLOY);
+                add(items, OptionId.RETURN_TO_TITLE, UiText.MENU_RETURN_TO_TITLE);
                 break;
             case PAUSED:
-                items.add("RESUME");
-                items.add("RESTART STAGE");
-                items.add("SETTINGS");
-                items.add("RETURN TO TITLE");
-                items.add("QUIT");
+                add(items, OptionId.RESUME, UiText.MENU_RESUME);
+                add(items, OptionId.RESTART, UiText.MENU_RESTART_STAGE);
+                add(items, OptionId.SETTINGS, UiText.MENU_SETTINGS);
+                add(items, OptionId.RETURN_TO_TITLE, UiText.MENU_RETURN_TO_TITLE);
+                add(items, OptionId.QUIT, UiText.MENU_QUIT);
                 break;
             case SETTINGS:
-                items.add(String.format(Locale.ROOT, "SENSITIVITY: < %.2f >", settings.getMouseSensitivity()));
-                items.add("INVERT LOOK Y: < " + (settings.isInvertY() ? "ON" : "OFF") + " >");
-                items.add("FIELD OF VIEW: < " + Math.round(settings.getFov()) + " >");
-                items.add("VIEW BOB: < " + (settings.isViewBob() ? "ON" : "OFF") + " >");
-                items.add("MASTER VOLUME: < " + Math.round(settings.getMasterVolume() * 100f) + "% >");
-                items.add("FULLSCREEN: < " + (settings.isFullscreen() ? "ON" : "OFF") + " >");
-                items.add("BACK");
+                addSetting(items, OptionId.SET_SENSITIVITY, UiText.MENU_SETTINGS_SENSITIVITY,
+                    String.format(Locale.ROOT, "%.2f", settings.getMouseSensitivity()));
+                addSetting(items, OptionId.SET_INVERT_Y, UiText.MENU_SETTINGS_INVERT_Y, onOff(settings.isInvertY()));
+                addSetting(items, OptionId.SET_FOV, UiText.MENU_SETTINGS_FOV,
+                    Integer.toString(Math.round(settings.getFov())));
+                addSetting(items, OptionId.SET_VIEW_BOB, UiText.MENU_SETTINGS_VIEW_BOB,
+                    onOff(settings.isViewBob()));
+                addSetting(items, OptionId.SET_VOLUME, UiText.MENU_SETTINGS_VOLUME,
+                    TextFormat.percent(settings.getMasterVolume()));
+                addSetting(items, OptionId.SET_FULLSCREEN, UiText.MENU_SETTINGS_FULLSCREEN,
+                    onOff(settings.isFullscreen()));
+                add(items, OptionId.BACK, UiText.MENU_BACK);
                 break;
             case DEAD:
-                items.add("RETRY STAGE (R)");
-                items.add("RETURN TO TITLE");
+                add(items, OptionId.RETRY, UiText.MENU_RETRY_STAGE);
+                add(items, OptionId.RETURN_TO_TITLE, UiText.MENU_RETURN_TO_TITLE);
                 break;
             case INTERMISSION:
                 if (!inTrainingRange && stageIndex + 1 < campaign.size()) {
-                    items.add("NEXT STAGE");
+                    add(items, OptionId.NEXT_STAGE, UiText.MENU_NEXT_STAGE);
                 }
-                items.add("PLAY AGAIN");
-                items.add("RETURN TO TITLE");
+                add(items, OptionId.PLAY_AGAIN, UiText.MENU_PLAY_AGAIN);
+                add(items, OptionId.RETURN_TO_TITLE, UiText.MENU_RETURN_TO_TITLE);
                 break;
             case PLAYING:
             default:
                 return Collections.emptyList();
         }
         return items;
+    }
+
+    private void add(List<Option> items, OptionId id, UiText label) {
+        items.add(new Option(id, strings.get(label), Option.NO_PAYLOAD));
+    }
+
+    private void addSetting(List<Option> items, OptionId id, UiText row, String value) {
+        items.add(new Option(id, strings.format(row, value), Option.NO_PAYLOAD));
+    }
+
+    private String onOff(boolean on) {
+        return strings.get(on ? UiText.MENU_SETTINGS_ON : UiText.MENU_SETTINGS_OFF);
+    }
+
+    /** @return the highlighted option, or null on a screen without options. */
+    public Option getSelectedOption() {
+        List<Option> options = getMenuOptions();
+        if (options.isEmpty()) return null;
+        return options.get(Math.min(selectedIndex, options.size() - 1));
+    }
+
+    /**
+     * Highlights the first option with an id, as {@link #setSelectedIndex} does for a row.
+     * @param id what the option does
+     * @return whether the current screen has such an option
+     */
+    public boolean selectId(OptionId id) {
+        return selectAt(indexOf(id, Option.NO_PAYLOAD, false));
+    }
+
+    /**
+     * Highlights the option with an id that stands for a given stage or difficulty.
+     * @param id {@link OptionId#STAGE} or {@link OptionId#DIFFICULTY}
+     * @param payload the stage's place in the campaign, or the ordinal of the {@link Difficulty}
+     * @return whether the current screen has such an option
+     */
+    public boolean selectId(OptionId id, int payload) {
+        return selectAt(indexOf(id, payload, true));
+    }
+
+    private boolean selectAt(int index) {
+        if (index < 0) return false;
+        setSelectedIndex(index);
+        return true;
+    }
+
+    private int indexOf(OptionId id, int payload, boolean matchPayload) {
+        List<Option> options = getMenuOptions();
+        for (int i = 0; i < options.size(); i++) {
+            Option option = options.get(i);
+            if (option.id == id && (!matchPayload || option.payload == payload)) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * @param difficulty a difficulty
+     * @return its Select Difficulty row, made from what {@link DifficultyTuning} holds for it: its label with the
+     *     damage taken and the change in what pickups give, as in {@code EASY - 70% DAMAGE / +25% PICKUPS}, or
+     *     the standard row when it multiplies everything by 1
+     */
+    String difficultyRow(Difficulty difficulty) {
+        return difficultyRow(strings, difficultyTuning, difficulty);
+    }
+
+    /** @return the row {@link #difficultyRow(Difficulty)} makes from a given text and tuning. */
+    static String difficultyRow(UiStrings strings, DifficultyTuning tuning, Difficulty difficulty) {
+        DifficultyTuning.Scales scales = tuning.of(difficulty);
+        String label = strings.label(difficulty);
+        if (difficultyRowText(tuning, difficulty) == UiText.MENU_DIFFICULTY_ROW_STANDARD) {
+            return strings.format(UiText.MENU_DIFFICULTY_ROW_STANDARD, label);
+        }
+        return strings.format(UiText.MENU_DIFFICULTY_ROW, label, TextFormat.percent(scales.damageTakenScale),
+            TextFormat.signedPercent(scales.pickupScale));
+    }
+
+    /** @return the line a difficulty's Select Difficulty row is made from: the standard one when it changes nothing. */
+    static UiText difficultyRowText(DifficultyTuning tuning, Difficulty difficulty) {
+        DifficultyTuning.Scales scales = tuning.of(difficulty);
+        boolean standard = scales.damageTakenScale == 1f && scales.pickupScale == 1f && scales.enemySpeedScale == 1f;
+        return standard ? UiText.MENU_DIFFICULTY_ROW_STANDARD : UiText.MENU_DIFFICULTY_ROW;
     }
 
     /**
@@ -273,17 +477,12 @@ public final class MenuState {
      * @return the Select Stage row of an unlocked stage: the title and {@code [READY]} before its first clear,
      *     afterwards the best rank and the fastest clear with its difficulty, as in {@code [BEST: S] 1:42 (HARD)}
      */
-    static String stageSelectRow(String title, char bestRank, float bestTime, Difficulty fastest) {
-        if (bestRank == '-') return title + " [READY]";
-        String row = title + " [BEST: " + bestRank + "]";
-        if (fastest == null) return row;
-        return row + " " + formatShortTime(bestTime) + " (" + fastest.label + ")";
-    }
-
-    /** @return the time as minutes and whole seconds, as in {@code 1:42}; it stops at {@code 99:59}. */
-    static String formatShortTime(float seconds) {
-        int whole = (int) Math.min(99 * 60 + 59, Math.max(0f, seconds));
-        return String.format(Locale.ROOT, "%d:%02d", whole / 60, whole % 60);
+    String stageSelectRow(String title, char bestRank, float bestTime, Difficulty fastest) {
+        if (bestRank == '-') return strings.format(UiText.MENU_STAGE_READY, title);
+        String rank = String.valueOf(bestRank);
+        if (fastest == null) return strings.format(UiText.MENU_STAGE_BEST, title, rank);
+        return strings.format(UiText.MENU_STAGE_BEST_TIME, title, rank, TextFormat.clock(bestTime),
+            strings.label(fastest));
     }
 
     /**
@@ -292,20 +491,22 @@ public final class MenuState {
      *     on a stage with no medal yet
      */
     public String getStageSelectDetail() {
-        if (screen != Screen.STAGE_SELECT || selectedIndex >= campaign.size()
-            || selectedIndex > saveData.getUnlockedStageIndex()) {
-            return null;
-        }
-        String stageId = campaign.get(selectedIndex).id;
-        StringBuilder line = new StringBuilder("MEDALS:");
+        if (screen != Screen.STAGE_SELECT) return null;
+        // The rows here are the campaign's stages in order and then BACK (see getMenuOptions), so the highlighted
+        // stage is known without building the rows, which the HUD has already built once for this frame.
+        int stage = Math.min(selectedIndex, campaign.size());
+        if (stage >= campaign.size() || stage > saveData.getUnlockedStageIndex()) return null;
+        String stageId = campaign.get(stage).id;
+        StringBuilder counts = new StringBuilder();
         int earned = 0;
         for (Difficulty diff : Difficulty.values()) {
             int count = saveData.getMedals(stageId, diff).size();
             earned += count;
-            line.append(diff.ordinal() == 0 ? " " : "  ").append(diff.label).append(' ').append(count).append('/')
-                .append(Medal.values().length);
+            if (counts.length() > 0) counts.append("  ");
+            counts.append(strings.format(UiText.MENU_STAGE_MEDAL_COUNT, strings.label(diff),
+                Integer.toString(count), Integer.toString(Medal.values().length)));
         }
-        return earned == 0 ? null : line.toString();
+        return earned == 0 ? null : strings.format(UiText.MENU_STAGE_MEDALS, counts.toString());
     }
 
     /** Moves the highlighted row up or down, wrapping cleanly. */
@@ -334,8 +535,8 @@ public final class MenuState {
     /** Adjusts the currently highlighted setting left (-1) or right (+1) on the Settings screen. */
     public Command adjustHorizontal(int direction) {
         if (screen != Screen.SETTINGS || direction == 0) return Command.NONE;
-        switch (selectedIndex) {
-            case 0: {
+        switch (getSelectedOption().id) {
+            case SET_SENSITIVITY: {
                 float before = settings.getMouseSensitivity();
                 settings.adjustSensitivity(direction);
                 // At the end of its range the value stays where it was, and then nothing changed.
@@ -345,24 +546,24 @@ public final class MenuState {
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             }
-            case 1:
+            case SET_INVERT_Y:
                 settings.setInvertY(!settings.isInvertY());
                 log.debug("Setting changed: invert Y {}", settings.isInvertY());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
-            case 2: {
+            case SET_FOV: {
                 float before = settings.getFov();
                 settings.adjustFov(direction);
                 if (settings.getFov() != before) log.debug("Setting changed: field of view {}", settings.getFov());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             }
-            case 3:
+            case SET_VIEW_BOB:
                 settings.setViewBob(!settings.isViewBob());
                 log.debug("Setting changed: view bob {}", settings.isViewBob());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
-            case 4: {
+            case SET_VOLUME: {
                 float before = settings.getMasterVolume();
                 settings.adjustMasterVolume(direction);
                 if (settings.getMasterVolume() != before) {
@@ -371,7 +572,7 @@ public final class MenuState {
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.NONE;
             }
-            case 5:
+            case SET_FULLSCREEN:
                 settings.setFullscreen(!settings.isFullscreen());
                 log.debug("Setting changed: fullscreen {}", settings.isFullscreen());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
@@ -383,13 +584,12 @@ public final class MenuState {
 
     /** Confirms the currently highlighted menu item. */
     public Command confirm() {
-        List<String> options = getOptions();
-        if (options.isEmpty()) return Command.NONE;
-        String choice = options.get(Math.min(selectedIndex, options.size() - 1));
-        log.debug("Menu {} confirmed '{}'", screen, choice);
+        Option choice = getSelectedOption();
+        if (choice == null) return Command.NONE;
+        log.debug("Menu {} confirmed '{}'", screen, choice.label);
         switch (screen) {
             case TITLE:
-                if (choice.startsWith("CONTINUE")) {
+                if (choice.id == OptionId.CONTINUE) {
                     inTrainingRange = false;
                     campaignCompleted = false;
                     stageIndex = Math.min(saveData.getSavedStageIndex(), campaign.size() - 1);
@@ -401,20 +601,20 @@ public final class MenuState {
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
-                if (choice.startsWith("START CAMPAIGN")) {
+                if (choice.id == OptionId.START_CAMPAIGN) {
                     pendingStageIndex = 0;
                     difficultyReturnScreen = Screen.TITLE;
                     setScreen(Screen.DIFFICULTY_SELECT);
-                    selectedIndex = 1; // Default to NORMAL.
+                    selectDefaultDifficulty();
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("SELECT STAGE")) {
+                if (choice.id == OptionId.SELECT_STAGE) {
                     setScreen(Screen.STAGE_SELECT);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("TRAINING RANGE")) {
+                if (choice.id == OptionId.TRAINING_RANGE) {
                     inTrainingRange = true;
                     campaignCompleted = false;
                     stageIndex = 0;
@@ -425,26 +625,26 @@ public final class MenuState {
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("SETTINGS")) {
+                if (choice.id == OptionId.SETTINGS) {
                     settingsReturnScreen = Screen.TITLE;
                     setScreen(Screen.SETTINGS);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("QUIT")) return Command.QUIT;
+                if (choice.id == OptionId.QUIT) return Command.QUIT;
                 return Command.NONE;
 
             case STAGE_SELECT:
-                if (choice.equals("BACK")) {
+                if (choice.id == OptionId.BACK) {
                     setScreen(Screen.TITLE);
                     emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
-                if (selectedIndex < campaign.size() && selectedIndex <= saveData.getUnlockedStageIndex()) {
-                    pendingStageIndex = selectedIndex;
+                if (choice.id == OptionId.STAGE && choice.payload <= saveData.getUnlockedStageIndex()) {
+                    pendingStageIndex = choice.payload;
                     difficultyReturnScreen = Screen.STAGE_SELECT;
                     setScreen(Screen.DIFFICULTY_SELECT);
-                    selectedIndex = 1; // Default to NORMAL.
+                    selectDefaultDifficulty();
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 } else {
                     emitUiSound(SoundEvent.Type.MENU_BACK);
@@ -452,13 +652,12 @@ public final class MenuState {
                 return Command.NONE;
 
             case DIFFICULTY_SELECT:
-                if (choice.startsWith("BACK")) {
+                if (choice.id == OptionId.BACK) {
                     setScreen(difficultyReturnScreen);
                     emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
-                Difficulty diff = choice.startsWith("EASY") ? Difficulty.EASY
-                    : choice.startsWith("HARD") ? Difficulty.HARD : Difficulty.NORMAL;
+                Difficulty diff = Difficulty.values()[choice.payload];
                 inTrainingRange = false;
                 campaignCompleted = false;
                 stageIndex = Math.min(pendingStageIndex, campaign.size() - 1);
@@ -471,7 +670,7 @@ public final class MenuState {
                 return Command.NONE;
 
             case BRIEFING:
-                if (choice.startsWith("DEPLOY")) {
+                if (choice.id == OptionId.DEPLOY) {
                     if (!inTrainingRange) saveData.saveCampaignRun(stageIndex, activeLoadout);
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
@@ -482,32 +681,32 @@ public final class MenuState {
                 return Command.NONE;
 
             case PAUSED:
-                if (choice.startsWith("RESUME")) {
+                if (choice.id == OptionId.RESUME) {
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("RESTART")) {
+                if (choice.id == OptionId.RESTART) {
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
                 }
-                if (choice.startsWith("SETTINGS")) {
+                if (choice.id == OptionId.SETTINGS) {
                     settingsReturnScreen = Screen.PAUSED;
                     setScreen(Screen.SETTINGS);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("RETURN TO TITLE")) {
+                if (choice.id == OptionId.RETURN_TO_TITLE) {
                     setScreen(Screen.TITLE);
                     emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
                 }
-                if (choice.startsWith("QUIT")) return Command.QUIT;
+                if (choice.id == OptionId.QUIT) return Command.QUIT;
                 return Command.NONE;
 
             case SETTINGS:
-                if (choice.startsWith("BACK")) {
+                if (choice.id == OptionId.BACK) {
                     setScreen(settingsReturnScreen);
                     emitUiSound(SoundEvent.Type.MENU_BACK);
                     return Command.NONE;
@@ -515,7 +714,7 @@ public final class MenuState {
                 return adjustHorizontal(1);
 
             case DEAD:
-                if (choice.startsWith("RETRY")) {
+                if (choice.id == OptionId.RETRY) {
                     setScreen(Screen.PLAYING);
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.LAUNCH_STAGE;
@@ -525,7 +724,7 @@ public final class MenuState {
                 return Command.NONE;
 
             case INTERMISSION:
-                if (choice.startsWith("NEXT STAGE")) {
+                if (choice.id == OptionId.NEXT_STAGE) {
                     campaignCompleted = false;
                     stageIndex++;
                     activeStage = campaign.get(stageIndex);
@@ -535,7 +734,7 @@ public final class MenuState {
                     emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                     return Command.NONE;
                 }
-                if (choice.startsWith("PLAY AGAIN")) {
+                if (choice.id == OptionId.PLAY_AGAIN) {
                     campaignCompleted = false;
                     // A side trip: replay from the stage's entry loadout and leave the CONTINUE save alone.
                     activeLoadout = entryLoadout;
@@ -550,6 +749,12 @@ public final class MenuState {
             default:
                 return Command.NONE;
         }
+    }
+
+    /** Highlights NORMAL, the difficulty a new run is offered first. */
+    private void selectDefaultDifficulty() {
+        int normal = indexOf(OptionId.DIFFICULTY, Difficulty.NORMAL.ordinal(), true);
+        if (normal >= 0) selectedIndex = normal;
     }
 
     /** Handles pressing Escape in any state. */

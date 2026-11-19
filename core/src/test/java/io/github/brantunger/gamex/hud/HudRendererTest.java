@@ -1,7 +1,9 @@
 package io.github.brantunger.gamex.hud;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Gdx;
@@ -9,6 +11,11 @@ import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.input.Action;
+import io.github.brantunger.gamex.input.BoundInput;
+import io.github.brantunger.gamex.input.KeyBindings;
+import io.github.brantunger.gamex.input.KeyNames;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
@@ -16,6 +23,7 @@ import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Levels;
@@ -75,7 +83,7 @@ class HudRendererTest {
     void settingsOpenedFromTheTitleShowsNoCombatHud() {
         GameSimulation simulation = new GameSimulation(Levels.first());
         MenuState menu = menuOn(MenuState.Screen.TITLE);
-        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
 
@@ -88,7 +96,7 @@ class HudRendererTest {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
         menu.escape();
         assertTrue(HudRenderer.showsCombatHud(menu, simulation), "Pause");
-        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
 
@@ -108,9 +116,30 @@ class HudRendererTest {
     }
 
     @Test
+    void theOverlayTakesTheSizeOfTheWindowDefaultsUntilTheWindowReportsItsOwn() {
+        WindowDefaults other = WindowDefaults.parse("window.txt", "window.width: 1024\nwindow.height: 768\n");
+        for (Graphics graphics : new Graphics[] {null, graphicsStub(0, 0), graphicsStub(-1, 600)}) {
+            Gdx.graphics = graphics;
+            HudRenderer hud = new HudRenderer(null, null, TestTuning.STRINGS, other, null);
+            assertEquals(1024f, hud.getWidth(), 0f);
+            assertEquals(768f, hud.getHeight(), 0f);
+            assertEquals(768f / HudRenderer.HUD_REFERENCE_SPAN, hud.getUnit(), 1e-6f);
+        }
+
+        // A window that reports a size is believed over the file.
+        Gdx.graphics = graphicsStub(800, 600);
+        HudRenderer sized = new HudRenderer(null, null, TestTuning.STRINGS, other, null);
+        assertEquals(800f, sized.getWidth(), 0f);
+        assertEquals(600f, sized.getHeight(), 0f);
+
+        assertThrows(IllegalArgumentException.class,
+            () -> new HudRenderer(null, null, TestTuning.STRINGS, null, null));
+    }
+
+    @Test
     void constructorAndResizeGuardZeroAndNegativeDimensionsWithoutNaNProjection() {
         Gdx.graphics = graphicsStub(0, 0);
-        HudRenderer hud = new HudRenderer(null, null, null);
+        HudRenderer hud = new HudRenderer(null, null, TestTuning.STRINGS, WindowDefaults.load(), null);
         assertEquals(1280f, hud.getWidth(), 1e-4f);
         assertEquals(720f, hud.getHeight(), 1e-4f);
         assertEquals(1f, hud.getUnit(), 1e-6f);
@@ -134,28 +163,28 @@ class HudRendererTest {
     }
 
     @Test
-    void formatTimeFloorsTenthsBeforeSplittingMinutesAndSeconds() {
-        assertEquals("00:00.0", HudRenderer.formatTime(0f));
-        assertEquals("00:00.0", HudRenderer.formatTime(-0.0f));
-        assertEquals("00:00.0", HudRenderer.formatTime(-3.5f));
-        assertEquals("00:00.0", HudRenderer.formatTime(Float.NaN));
-        assertEquals("00:00.0", HudRenderer.formatTime(Float.POSITIVE_INFINITY));
-        assertEquals("00:00.0", HudRenderer.formatTime(Float.NEGATIVE_INFINITY));
+    void stopwatchTimeFloorsTenthsBeforeSplittingMinutesAndSeconds() {
+        assertEquals("00:00.0", TextFormat.stopwatch(0f));
+        assertEquals("00:00.0", TextFormat.stopwatch(-0.0f));
+        assertEquals("00:00.0", TextFormat.stopwatch(-3.5f));
+        assertEquals("00:00.0", TextFormat.stopwatch(Float.NaN));
+        assertEquals("00:00.0", TextFormat.stopwatch(Float.POSITIVE_INFINITY));
+        assertEquals("00:00.0", TextFormat.stopwatch(Float.NEGATIVE_INFINITY));
 
         // Minute rollover boundaries must never produce ":60.0".
-        assertEquals("00:59.9", HudRenderer.formatTime(59.95f));
-        assertEquals("00:59.9", HudRenderer.formatTime(59.96f));
-        assertEquals("00:59.9", HudRenderer.formatTime(59.999f));
-        assertEquals("01:00.0", HudRenderer.formatTime(60.0f));
-        assertEquals("01:59.9", HudRenderer.formatTime(119.99f));
-        assertEquals("02:00.0", HudRenderer.formatTime(120.0f));
+        assertEquals("00:59.9", TextFormat.stopwatch(59.95f));
+        assertEquals("00:59.9", TextFormat.stopwatch(59.96f));
+        assertEquals("00:59.9", TextFormat.stopwatch(59.999f));
+        assertEquals("01:00.0", TextFormat.stopwatch(60.0f));
+        assertEquals("01:59.9", TextFormat.stopwatch(119.99f));
+        assertEquals("02:00.0", TextFormat.stopwatch(120.0f));
 
         // Sub-par clears against a 50.0s par must never round up to "00:50.0".
-        assertEquals("00:49.9", HudRenderer.formatTime(49.95f));
-        assertEquals("00:49.9", HudRenderer.formatTime(49.96f));
-        assertEquals("00:49.9", HudRenderer.formatTime(Math.nextDown(50.0f)));
-        assertEquals("00:50.0", HudRenderer.formatTime(50.0f));
-        assertEquals("100:00.0", HudRenderer.formatTime(6000f));
+        assertEquals("00:49.9", TextFormat.stopwatch(49.95f));
+        assertEquals("00:49.9", TextFormat.stopwatch(49.96f));
+        assertEquals("00:49.9", TextFormat.stopwatch(Math.nextDown(50.0f)));
+        assertEquals("00:50.0", TextFormat.stopwatch(50.0f));
+        assertEquals("100:00.0", TextFormat.stopwatch(6000f));
     }
 
     @Test
@@ -167,16 +196,69 @@ class HudRendererTest {
         }
 
         // Half-screen and portrait windows clamp unit by width / 720f so 678-unit Title footer and 660-unit Briefing fit.
-        String titleFooter = "WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT";
+        String titleFooter = TestTuning.STRINGS.get(UiText.SCREEN_TITLE_FOOTER);
+        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
+            titleFooter, "the shipped footer with the key names of the shipped bindings");
         for (int[] size : new int[][] {{960, 1080}, {1080, 1920}, {480, 720}, {680, 720}, {160, 320}}) {
             float w = size[0];
             float h = size[1];
             float u = HudRenderer.hudUnit(w, h);
             assertEquals(w / 720f, u, 1e-6f, w + "x" + h);
-            assertTrue(PixelFont.width(titleFooter, 2.0f * u) <= w, "Title footer fits within " + w + "x" + h);
+            assertTrue(PixelFont.width(titleFooter, HudRenderer.TITLE_FOOTER_PIXEL * u) <= w,
+                "Title footer fits within " + w + "x" + h);
             assertTrue(664f * u <= w, "Briefing panel + border fits within " + w + "x" + h);
             assertTrue(492f * u <= h, "Tallest menu panel + border fits vertically within " + w + "x" + h);
         }
+    }
+
+    /** @return the Title footer as loaded with the key names {@code keys} gives */
+    private static String titleFooter(KeyLabels keys) {
+        return UiStrings.load(TestTuning.FONT, keys, TestTuning.TEXT_VALUES).get(UiText.SCREEN_TITLE_FOOTER);
+    }
+
+    /** @return whether the Title footer, one centred line, stays inside a window of each 4:3 size */
+    private static boolean footerFitsFourByThree(String footer) {
+        boolean fits = true;
+        for (int[] size : new int[][] {{640, 480}, {800, 600}, {1024, 768}, {1600, 1200}}) {
+            float u = HudRenderer.hudUnit(size[0], size[1]);
+            assertEquals(size[1] / 720f, u, 1e-6f, "the unit of a 4:3 window comes from its height");
+            fits &= PixelFont.width(footer, HudRenderer.TITLE_FOOTER_PIXEL * u) <= size[0];
+        }
+        return fits;
+    }
+
+    @Test
+    void titleFooterOfTheLoadedTextFitsAFourByThreeWindowWithAnyShippedInputAsTheHint() {
+        // The hint of an action is the first input of its line. The widest footer the shipped bindings can give is
+        // the one that names, for each action, the input of its line with the longest name.
+        KeyBindings shipped = TestTuning.BINDINGS;
+        KeyLabels widest = id -> {
+            String longest = shipped.hint(id);
+            for (BoundInput input : shipped.inputs(Action.byId(id))) {
+                String name = KeyNames.display(input);
+                if (name.length() > longest.length()) longest = name;
+            }
+            return longest;
+        };
+        String shippedFooter = TestTuning.STRINGS.get(UiText.SCREEN_TITLE_FOOTER);
+        String widestFooter = titleFooter(widest);
+        assertTrue(widestFooter.length() >= shippedFooter.length(), widestFooter);
+        assertTrue(footerFitsFourByThree(shippedFooter), shippedFooter);
+        assertTrue(footerFitsFourByThree(widestFooter), widestFooter);
+
+        // A 4:3 window is 960 HUD units wide, which is room for 120 characters of the footer's size.
+        StringBuilder full = new StringBuilder();
+        while (full.length() < 120) full.append('W');
+        assertTrue(footerFitsFourByThree(full.toString()));
+        assertFalse(footerFitsFourByThree(full + "W"));
+
+        // The check sees a footer that long key names push past the window.
+        String numpad = titleFooter(TestTuning.bindingsWith("move_forward", "Numpad 8", "move_left", "Numpad 4",
+            "move_back", "Numpad 5", "move_right", "Numpad 6", "weapon_1", "Numpad 1", "weapon_3", "Numpad 3",
+            "quick_swap", "Numpad 0")::hint);
+        assertEquals("NUMPAD 8NUMPAD 4NUMPAD 5NUMPAD 6: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  "
+            + "NUMPAD 1-NUMPAD 3/NUMPAD 0/SCROLL: WEAPON  LMB/RMB: FIRE/ALT", numpad);
+        assertFalse(footerFitsFourByThree(numpad), numpad);
     }
 
     @Test
@@ -275,6 +357,31 @@ class HudRendererTest {
     }
 
     @Test
+    void anInteractionPromptIsColouredByItsKindWhateverItsWords() {
+        float[] usable = {0.62f, 1f, 0.86f, 0.95f};
+        float[] blocked = {1f, 0.72f, 0.30f, 0.95f};
+        // The four the interact key acts on, then the four of a bulkhead that stays shut.
+        GameSimulation.InteractionPrompt[] prompts = GameSimulation.InteractionPrompt.values();
+        assertEquals(8, prompts.length);
+        for (GameSimulation.InteractionPrompt prompt : prompts) {
+            boolean acts = prompt == GameSimulation.InteractionPrompt.OVERRIDE_CONSOLE
+                || prompt == GameSimulation.InteractionPrompt.UNLOCK_AMBER
+                || prompt == GameSimulation.InteractionPrompt.UNLOCK_CYAN
+                || prompt == GameSimulation.InteractionPrompt.OPEN_BULKHEAD;
+            assertArrayEquals(acts ? usable : blocked, HudRenderer.promptColour(prompt), 0f, prompt.name());
+            // With the shipped text that is the colour the first characters of the words used to pick.
+            assertEquals(TestTuning.STRINGS.prompt(prompt).startsWith("[E]"), acts, prompt.name());
+        }
+        // The words are no part of the choice: a prompt reworded without its key keeps its colour.
+        UiStrings reworded = TestTuning.stringsWith("prompt.open_bulkhead", "OPEN THE BULKHEAD");
+        assertFalse(reworded.prompt(GameSimulation.InteractionPrompt.OPEN_BULKHEAD).startsWith("[E]"));
+        assertArrayEquals(usable, HudRenderer.promptColour(GameSimulation.InteractionPrompt.OPEN_BULKHEAD), 0f);
+        HudRenderer.promptColour(GameSimulation.InteractionPrompt.OPEN_BULKHEAD)[0] = 0f;
+        assertArrayEquals(usable, HudRenderer.promptColour(GameSimulation.InteractionPrompt.OPEN_BULKHEAD), 0f,
+            "the colour handed out is a copy");
+    }
+
+    @Test
     void liveRailLanceZoomNearBulkheadKeepsInteractionPromptBelowRangefinderBrackets() {
         GameMap doorMap = GameMap.parse(
             "#######",
@@ -285,7 +392,7 @@ class HudRendererTest {
         GameSimulation sim = new GameSimulation(doorMap, railLoadout, false);
         sim.player.position.set(2.4f, 1.5f);
         sim.player.look(90f - sim.player.getYaw(), 0f);
-        assertEquals("[E] OPEN BULKHEAD", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.OPEN_BULKHEAD, sim.getInteractionPrompt());
         assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
 
         PlayerInput holdZoom = new PlayerInput();
@@ -294,7 +401,7 @@ class HudRendererTest {
         boolean sawFullZoom = false;
         for (int step = 0; step < 30; step++) {
             sim.update(1f / 120f, holdZoom);
-            assertEquals("[E] OPEN BULKHEAD", sim.getInteractionPrompt());
+            assertEquals(GameSimulation.InteractionPrompt.OPEN_BULKHEAD, sim.getInteractionPrompt());
             float zoom = sim.getZoom();
             if (zoom > HudRenderer.RAIL_ZOOM_OPTIC_THRESHOLD) {
                 if (zoom < 0.99f) sawZoomTransition = true;

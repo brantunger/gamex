@@ -1,0 +1,9 @@
+// GAMEX_DEMO=action: in the original first level, the player turns towards a pillar near the spawn, holds the
+// blast button, lets it go, and fires the pistol.
+screen: playing
+stage: first_level
+loadout: fresh
+
+1: turn -24
+5-49: alt_fire
+57-: fire

@@ -85,6 +85,30 @@ class AssetTextTest {
     }
 
     @Test
+    void theLookupOfTheLauncherIsTheWorkingDirectoryThenTheClasspathAndNowhereElse(@TempDir Path temp)
+        throws IOException {
+        Gdx.files = null;
+        Path workingDir = java.nio.file.Files.createDirectories(temp.resolve("project").resolve("core"));
+        write(temp.resolve("configured").resolve(LOOKUP_PATH), "configured");
+        write(temp.resolve("project").resolve("assets").resolve(LOOKUP_PATH), "parent assets");
+        write(workingDir.resolve("assets").resolve(LOOKUP_PATH), "child assets");
+        System.setProperty("gamex.assets", temp.resolve("configured").toString());
+
+        // Gdx.files.internal knows none of the three, so the launcher must not read them either.
+        assertEquals("classpath", AssetText.readAsInternal("data", LOOKUP_PATH, workingDir).trim());
+        assertEquals("configured", AssetText.readHeadless("data", LOOKUP_PATH, workingDir));
+        write(workingDir.resolve(LOOKUP_PATH), "working directory");
+        assertEquals("working directory", AssetText.readAsInternal("data", LOOKUP_PATH, workingDir));
+
+        write(temp.resolve("configured").resolve("data").resolve("only-loose.txt"), "configured");
+        write(workingDir.resolve("assets").resolve("data").resolve("only-loose.txt"), "child assets");
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+            () -> AssetText.readAsInternal("data", "data/only-loose.txt", workingDir));
+        assertEquals("The data asset data/only-loose.txt was not found on the classpath or at "
+            + workingDir.resolve("data").resolve("only-loose.txt").toAbsolutePath().normalize(), e.getMessage());
+    }
+
+    @Test
     void aFileFoundNowhereIsReportedWithEveryPathTriedInOrder(@TempDir Path temp) {
         Gdx.files = null;
         Path workingDir = temp.resolve("project").resolve("core");

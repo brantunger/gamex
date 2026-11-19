@@ -58,11 +58,11 @@ class GameLoggingTest {
         GameSimulation simulation = new GameSimulation(Levels.stage("04_lockdown_wing").map, PlayerLoadout.fresh(),
             false);
         PlayerInput input = new PlayerInput();
-        assertNotNull(simulation.getObjectiveText(), "the stage has an objective");
+        assertNotNull(simulation.getObjective(), "the stage has an objective");
         try (LogCapture capture = LogCapture.of(GameSimulation.class, Level.TRACE)) {
             for (int i = 0; i < 120; i++) {
                 simulation.update(FRAME, input);
-                simulation.getObjectiveText();
+                simulation.getObjective();
                 simulation.pause();
             }
             assertFalse(simulation.player.isDead(), "nothing happened to the player");
@@ -82,7 +82,7 @@ class GameLoggingTest {
         simulation.player.position.set(2.5f, 1.5f);
         PlayerInput input = new PlayerInput();
         try (LogCapture capture = LogCapture.of(GameSimulation.class, Level.DEBUG)) {
-            String objective = simulation.getObjectiveText();
+            GameSimulation.Objective objective = simulation.getObjective();
             int floods = simulation.getObjectiveFloodCount();
             assertEquals(List.of("Objective changed to '" + objective + "'"), capture.messages(Level.DEBUG));
 
@@ -92,7 +92,7 @@ class GameLoggingTest {
             assertTrue(simulation.doors.get(0).isOpening(), "the bulkhead opens");
             for (int i = 0; i < 30; i++) {
                 simulation.update(FRAME, input);
-                assertEquals(objective, simulation.getObjectiveText());
+                assertEquals(objective, simulation.getObjective());
             }
 
             assertTrue(simulation.getObjectiveFloodCount() > floods, "the objective was worked out again");
@@ -104,9 +104,9 @@ class GameLoggingTest {
     @Test
     void aSettingAtTheEndOfItsRangeLogsNoChange() {
         GameSettings settings = new GameSettings();
-        settings.setFov(GameSettings.MAX_FOV);
-        settings.setMouseSensitivity(GameSettings.MIN_SENSITIVITY);
-        settings.setMasterVolume(GameSettings.MAX_MASTER_VOLUME);
+        settings.setFov(settings.defaults().fov.max);
+        settings.setMouseSensitivity(settings.defaults().sensitivity.min);
+        settings.setMasterVolume(settings.defaults().volume.max);
         MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         menu.moveSelection(3);
         menu.confirm();

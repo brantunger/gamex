@@ -2,6 +2,9 @@ package io.github.brantunger.gamex;
 
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.hud.PixelFont;
+import io.github.brantunger.gamex.hud.TextValues;
+import io.github.brantunger.gamex.hud.UiStrings;
+import io.github.brantunger.gamex.input.KeyBindings;
 import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.DifficultyTuning;
@@ -38,6 +41,12 @@ public final class TestTuning {
     public static final Palettes PALETTES = Palettes.load();
     /** The shipped clip range, fog, halos and accent of each kind of door and pickup. */
     public static final RenderSettings RENDER = RenderSettings.load();
+    /** The tuning values a text may quote, from the shipped tuning. */
+    public static final TextValues TEXT_VALUES = TextValues.of(WEAPONS, DIFFICULTY, WORLD);
+    /** The shipped inputs of every action, which give the key names the text shows. */
+    public static final KeyBindings BINDINGS = KeyBindings.load(FONT);
+    /** The shipped text of the menus and the HUD, with the key names of the shipped bindings. */
+    public static final UiStrings STRINGS = UiStrings.load(FONT, BINDINGS::hint, TEXT_VALUES);
 
     private TestTuning() {}
 
@@ -109,6 +118,73 @@ public final class TestTuning {
     public static RenderSettings renderWith(String key, String value) {
         return RenderSettings.parse(RenderSettings.PATH,
             withValue(AssetText.read("data", RenderSettings.PATH), key, value));
+    }
+
+    /**
+     * @param key a key of {@code data/strings.txt}
+     * @param value the value to give it
+     * @return the shipped text with that one line changed
+     */
+    public static UiStrings stringsWith(String key, String value) {
+        return UiStrings.parse(UiStrings.PATH, withValue(AssetText.read("data", UiStrings.PATH), key, value), FONT,
+            BINDINGS::hint, TEXT_VALUES);
+    }
+
+    /**
+     * @param changes pairs of an action id of {@code data/bindings.txt} and the inputs to give it
+     * @return the text of the shipped bindings file with those lines changed
+     */
+    public static String bindingsTextWith(String... changes) {
+        String text = AssetText.read("data", KeyBindings.PATH);
+        for (int i = 0; i < changes.length; i += 2) text = withValue(text, changes[i], changes[i + 1]);
+        return text;
+    }
+
+    /**
+     * @param changes pairs of an action id of {@code data/bindings.txt} and the inputs to give it
+     * @return the shipped bindings with those lines changed
+     */
+    public static KeyBindings bindingsWith(String... changes) {
+        return KeyBindings.parse(KeyBindings.PATH, bindingsTextWith(changes), FONT);
+    }
+
+    /**
+     * @param bindings the inputs of every action
+     * @return the shipped text with the key names of those bindings
+     */
+    public static UiStrings stringsFor(KeyBindings bindings) {
+        return UiStrings.load(FONT, bindings::hint, TEXT_VALUES);
+    }
+
+    /**
+     * @return the text of the shipped {@code data/strings.txt} with every line reworded: outside the placeholders,
+     *     each letter is swapped for the one as far from the other end of the alphabet (A for Z, B for Y), so no
+     *     word of the shipped text is left
+     */
+    public static String rewordedStringsText() {
+        StringBuilder out = new StringBuilder();
+        for (String line : AssetText.splitLines(AssetText.read("data", UiStrings.PATH))) {
+            int colon = line.indexOf(':');
+            if (AssetText.isComment(line.trim()) || colon < 0) {
+                out.append(line).append('\n');
+                continue;
+            }
+            out.append(line, 0, colon + 1);
+            boolean inPlaceholder = false;
+            for (int i = colon + 1; i < line.length(); i++) {
+                char c = line.charAt(i);
+                if (c == '{') inPlaceholder = true;
+                if (c == '}') inPlaceholder = false;
+                out.append(!inPlaceholder && c >= 'A' && c <= 'Z' ? (char) ('A' + 'Z' - c) : c);
+            }
+            out.append('\n');
+        }
+        return out.toString();
+    }
+
+    /** @return the shipped text of the menus and the HUD with every line reworded by {@link #rewordedStringsText}. */
+    public static UiStrings rewordedStrings() {
+        return UiStrings.parse(UiStrings.PATH, rewordedStringsText(), FONT, BINDINGS::hint, TEXT_VALUES);
     }
 
     /**

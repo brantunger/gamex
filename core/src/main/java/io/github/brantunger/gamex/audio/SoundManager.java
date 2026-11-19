@@ -105,7 +105,7 @@ public final class SoundManager implements Disposable {
         if (menuState != null) menuState.drainSoundEvents(frameEvents);
         if (simulation != null) simulation.drainSoundEvents(frameEvents);
 
-        float master = settings == null ? GameSettings.DEFAULT_MASTER_VOLUME : settings.getMasterVolume();
+        float master = settings.getMasterVolume();
         if (muted || !available) {
             stopLoops();
             return;

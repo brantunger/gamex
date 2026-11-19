@@ -1,0 +1,13 @@
+// GAMEX_DEMO=wardenidle: the Warden standing as it does before a fight. The player is behind its shoulder, as it
+// faces its door, and out of its hearing. The turret and the drone that would open fire on the player there, and
+// the rest of the stage's hostiles with them, are taken out of the picture. No input is played.
+screen: playing
+stage: 06_warden_core
+loadout: custom
+loadout.health: 100
+loadout.armor: 50
+loadout.shells: 16
+loadout.weapon: scattergun
+position: 26.8, 5.2
+look: 135, -4
+keep_enemies: warden

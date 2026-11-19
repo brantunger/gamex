@@ -29,6 +29,8 @@ import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.SettingsDefaults;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.world.Door;
@@ -58,9 +60,6 @@ public final class WorldRenderer implements Disposable {
 
     private static final Logger log = LoggerFactory.getLogger(WorldRenderer.class);
 
-    static final int DEFAULT_VIEWPORT_WIDTH = 1280;
-    static final int DEFAULT_VIEWPORT_HEIGHT = 720;
-    private static final float FIELD_OF_VIEW = 70f;
     /** How far the view rises and falls with each step, in world units. */
     private static final float BOB_HEIGHT = 0.012f;
     /** How long the spark of a pistol impact shows over its scorch mark, in seconds. */
@@ -213,13 +212,17 @@ public final class WorldRenderer implements Disposable {
      * @param textures the textures to draw with; the caller keeps ownership of them
      * @param palette the colours of the world models' materials and accents
      * @param settings the clip range, the fog, the halos and the accent of each kind of door and pickup
+     * @param window the size the camera takes until the window reports its own
+     * @param defaults the settings defaults; the camera has their field of view until a frame is drawn
      */
-    public WorldRenderer(GameMap map, ProceduralTextures textures, ModelPalette palette, RenderSettings settings) {
-        this(map, Gdx.graphics, textures, palette, settings, null);
+    public WorldRenderer(GameMap map, ProceduralTextures textures, ModelPalette palette, RenderSettings settings,
+                         WindowDefaults window, SettingsDefaults defaults) {
+        this(map, Gdx.graphics, textures, palette, settings, window, defaults, null);
     }
 
     WorldRenderer(GameMap map, Graphics graphics, ProceduralTextures textures, ModelPalette palette,
-                  RenderSettings settings, ResourceBackend backend) {
+                  RenderSettings settings, WindowDefaults window, SettingsDefaults defaults,
+                  ResourceBackend backend) {
         this.textures = textures;
         this.palette = palette;
         this.renderSettings = settings;
@@ -239,7 +242,7 @@ public final class WorldRenderer implements Disposable {
             // The Warden's model is loaded later; whether it is there to load is found out now.
             active.checkWardenModel();
             int modelsBefore = ModelMesh.getLoadedCount();
-            camera = createWorldCamera(graphics, settings);
+            camera = createWorldCamera(graphics, settings, window, defaults.fov.initial);
 
             // The shader text is read from assets/shaders/; a missing file stops the start here, by name.
             Disposable worldShaderHandle = active.createWorldShader(
@@ -528,23 +531,24 @@ public final class WorldRenderer implements Disposable {
         }
     }
 
-    static int initialViewportWidth(Graphics graphics) {
+    static int initialViewportWidth(Graphics graphics, WindowDefaults window) {
         return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
             ? graphics.getWidth()
-            : DEFAULT_VIEWPORT_WIDTH;
+            : window.width;
     }
 
-    static int initialViewportHeight(Graphics graphics) {
+    static int initialViewportHeight(Graphics graphics, WindowDefaults window) {
         return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
             ? graphics.getHeight()
-            : DEFAULT_VIEWPORT_HEIGHT;
+            : window.height;
     }
 
-    static PerspectiveCamera createWorldCamera(Graphics graphics, RenderSettings settings) {
+    static PerspectiveCamera createWorldCamera(Graphics graphics, RenderSettings settings, WindowDefaults window,
+                                               float fieldOfView) {
         PerspectiveCamera cam = new PerspectiveCamera();
-        cam.fieldOfView = FIELD_OF_VIEW;
-        cam.viewportWidth = initialViewportWidth(graphics);
-        cam.viewportHeight = initialViewportHeight(graphics);
+        cam.fieldOfView = fieldOfView;
+        cam.viewportWidth = initialViewportWidth(graphics, window);
+        cam.viewportHeight = initialViewportHeight(graphics, window);
         cam.near = settings.clipNear;
         cam.far = settings.clipFar;
         cam.update(Gdx.app != null && Gdx.gl != null);

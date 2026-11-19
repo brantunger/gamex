@@ -9,12 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
+import io.github.brantunger.gamex.settings.SettingsDefaults;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
 import io.github.brantunger.gamex.weapon.RailLanceModel;
@@ -443,11 +446,10 @@ class PalettesTest {
         assertEquals(0.5f, green.fogGreen, 0f);
         assertEquals(0.25f, green.fogBlue, 0f);
 
-        assertEquals(0.1f, WorldRenderer.createWorldCamera(null, RENDER).near, 0f);
-        assertEquals(60f, WorldRenderer.createWorldCamera(null, RENDER).far, 0f);
-        assertEquals(0.25f, WorldRenderer.createWorldCamera(null, TestTuning.renderWith("clip.near", "0.25")).near,
-            0f);
-        assertEquals(35f, WorldRenderer.createWorldCamera(null, TestTuning.renderWith("clip.far", "35")).far, 0f);
+        assertEquals(0.1f, worldCamera(RENDER).near, 0f);
+        assertEquals(60f, worldCamera(RENDER).far, 0f);
+        assertEquals(0.25f, worldCamera(TestTuning.renderWith("clip.near", "0.25")).near, 0f);
+        assertEquals(35f, worldCamera(TestTuning.renderWith("clip.far", "35")).far, 0f);
 
         assertArrayEquals(rgbg(0f, 1f, 0f, 1f),
             TestTuning.renderWith("pickup.halo.medkit", "0, 1, 0, 1").pickupHalo(Pickup.Kind.MEDKIT), 0f);
@@ -481,6 +483,11 @@ class PalettesTest {
         ModelPalette own = new ModelPalette("test", materials, new LinkedHashMap<>());
         grey[0] = 1f;
         assertEquals(0.5f, own.colour("grey")[0], 0f);
+    }
+
+    private static PerspectiveCamera worldCamera(RenderSettings settings) {
+        return WorldRenderer.createWorldCamera(null, settings, WindowDefaults.load(),
+            SettingsDefaults.load().fov.initial);
     }
 
     private static String worldText() {

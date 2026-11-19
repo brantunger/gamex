@@ -6,30 +6,23 @@ import java.util.Set;
 
 /**
  * Feats a stage clear can earn besides its letter rank. Each is saved per stage and difficulty, and once earned it
- * is kept.
+ * is kept. The label the menus and the tally show for each is in {@code assets/data/strings.txt}.
  */
 public enum Medal {
     /** Cleared without losing any health or armor. */
-    UNTOUCHED("UNTOUCHED"),
+    UNTOUCHED,
     /** Cleared with every hostile on the stage destroyed. */
-    SWEEP("SWEEP"),
+    SWEEP,
     /** Cleared in less than the stage's par time. */
-    UNDER_PAR("UNDER PAR"),
+    UNDER_PAR,
     /** Cleared with at least {@link #SHARPSHOOTER_PERCENT} percent of the shots fired hitting. */
-    SHARPSHOOTER("SHARPSHOOTER");
+    SHARPSHOOTER;
 
     /** Lowest accuracy, in percent of shots that hit, that earns {@link #SHARPSHOOTER}. */
     public static final int SHARPSHOOTER_PERCENT = 60;
 
     /** The bits of a saved value that belong to a medal. */
     private static final int KNOWN_BITS = (1 << values().length) - 1;
-
-    /** Display label for menus and the tally. */
-    public final String label;
-
-    Medal(String label) {
-        this.label = label;
-    }
 
     /**
      * @param stats the finished run

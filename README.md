@@ -37,8 +37,8 @@ game stops as it starts, on any stage, with the error `The warden model models/e
 file, not the model itself. Install Git LFS, then run 'git lfs install' and 'git lfs pull' in the repository; in CI,
 check out with 'lfs: true'.`, and `./gradlew test` fails with the same reason in every test of `WardenModelTest` that reads the model.
 
-The game opens in a 1280x720 window, on the Title screen, with the mouse cursor free. If fullscreen was switched
-on in the settings on an earlier run, it opens fullscreen instead. Two environment variables keep it in a window
+The game opens in a 1280x720 window (the size in `assets/data/window.txt`), on the Title screen, with the mouse
+cursor free. If fullscreen was switched on in the settings on an earlier run, it opens fullscreen instead. Two environment variables keep it in a window
 whatever the saved setting says, and leave that setting as it is: `GAMEX_WINDOW`, which sets the window size, and
 `GAMEX_SCREENSHOT` (both under [Debug screenshot mode](#debug-screenshot-mode)). The cursor is captured while you
 play and is freed whenever a menu is up.
@@ -71,6 +71,9 @@ In the menus:
 | `Esc` | Go back: Pause resumes play, Settings and the difficulty screen return to where they were opened, others return to the Title |
 | `R` | Restart the stage on the pause menu or the death screen |
 | `Q` | Quit from the Title or Pause screen: the first press shows `PRESS Q AGAIN TO QUIT`, a second press within about 2 seconds quits |
+
+These are the keys and buttons the game ships with. `assets/data/bindings.txt` gives every action its inputs,
+and the key names in the on-screen text follow that file (see [Key bindings](#key-bindings-bindingstxt)).
 
 On the Settings screen a click on the left half of a setting's row steps it down and a click on the right half
 steps it up. An on/off setting flips either way. A key press or a click acts once, however long it is held. The
@@ -159,7 +162,8 @@ targets a beam pierces. A charged blast becomes a hit only when its explosion da
 no medals.
 
 **Settings.** The settings are mouse sensitivity, inverted look, field of view, view bob, master volume and
-fullscreen. They are saved between runs. Opened from the Title, the Settings screen keeps the Title's moving
+fullscreen. They are saved between runs; what each is before you change it, and the range and step of each
+row, come from `assets/data/settings.txt` (see [Tuning files](#tuning-files)). Opened from the Title, the Settings screen keeps the Title's moving
 backdrop; opened from the pause menu, it stays over the paused game.
 
 **Health and armor.** You start a campaign with 100 health and no armor; both hold at most 100. While armor is
@@ -249,7 +253,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number logs a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden`, `wardenidle` or `jump`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script, the name of a file in `assets/demos/` without `.txt`: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden`, `wardenidle` or `jump`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the weapon in hand and the hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
@@ -278,7 +282,59 @@ on by environment variables:
   without taking damage.
 
 `action`, `targets` and a run without a script start in play on the original first level, which has no pickups and
-no exit. The script name is not case-sensitive, and an unknown name is the same as no script.
+no exit. The script name is not case-sensitive. A name with no file in `assets/demos/` stops the game with a message
+naming the file it looked for, and so does a name holding anything but letters, digits, `_` and `-`.
+
+#### Demo script files
+
+Each script is a text file, `assets/demos/<name>.txt`, so a demo is added or adjusted without a rebuild: edit or
+add a file and run `./gradlew run` with `GAMEX_SCREENSHOT` set and `GAMEX_DEMO` set to its name. A file is a header
+block that sets the scene, then a blank line, then the timeline of inputs. A script may end after the header block;
+then no input is played. `assets/demos/breach.txt`:
+
+```
+// GAMEX_DEMO=breach: Outer Breach. The player runs in, dashes, sidesteps, turns and then fires the pistol.
+screen: playing
+stage: 01_outer_breach
+loadout: fresh
+
+1-155: move_forward
+25: dash
+115-135: move_right
+136-150: turn -1.2
+150-: fire
+```
+
+The header block, in the `key: value` format of the [tuning files](#tuning-files), with `//` comment lines:
+
+| Line | Meaning |
+| --- | --- |
+| `screen` | `playing`, `title` or `stage_select`: the screen the run opens on. |
+| `stage` | The `id` of a campaign stage, `training_range`, or `first_level` for the original first level. |
+| `loadout` | `fresh` (full health, no armor, the pistol alone) or `custom`. |
+| `loadout.health`, `loadout.armor`, `loadout.weapon` | Needed with `loadout: custom`, and not allowed without it: health from 1 to 100, armor from 0 to 100, and the weapon in hand (`pistol`, `scattergun` or `raillance`). The weapon in hand must be one the loadout holds with ammunition: `scattergun` needs a `loadout.shells` above 0 and `raillance` a `loadout.slugs` above 0. |
+| `loadout.shells`, `loadout.slugs` | Optional with `loadout: custom`: the line gives the player the Scattergun or the Rail Lance with that much ammunition. |
+| `position` | Optional: `x, y` on the map, in cells. Without it the player stands on the spawn. |
+| `look` | Optional: `yaw, pitch` in degrees, turned from where the spawn faces. |
+| `unlock_all_stages` | Optional: `true` opens every stage on the Select Stage screen. |
+| `keep_enemies` | Optional: the kinds of enemy that stay (`drone`, `turret`, `guard`, `warden`, separated by commas); every other enemy is removed before the first frame. |
+
+A timeline line is `frames: input` or `frames: input amount`. Frames are counted from 1: one frame (`25`), a first
+and a last frame (`115-135`), or a first frame with no end (`150-`). The inputs carry the names of the key-binding
+actions:
+
+- `move_forward`, `move_back`, `move_left`, `move_right`: held, at full speed or at the amount given (more than 0,
+  at most 1; `5-14: move_forward 0.5`).
+- `fire`, `alt_fire` (charge, double blast or zoom), `jump`: held for the frames.
+- `dash`, `interact`, `weapon_1`, `weapon_2`, `weapon_3`, `quick_swap`, `weapon_next`, `weapon_prev`: asked for on
+  each of the frames.
+- `turn` and `look_up`, which the mouse does: the degrees turned right or looked up on each of the frames. The
+  amount is needed and may be negative.
+
+The difficulty is always Normal. A header the game does not know, a missing one, an unknown stage or input, an
+amount out of range and two lines that set the same thing on the same frame each stop the game with a message
+naming the file and the line (a missing header has no line: the message names the file and the header). The frame
+saved (`GAMEX_SCREENSHOT_FRAME`, 60 by default) and the 1/60 second a frame lasts are not in the files.
 
 With `GAMEX_VIEWMODEL_ORBIT` the saved frame shows the weapon in hand and the hand alone, at rest, on a plain grey
 background, without the world or the HUD. That weapon is the Pistol, except in the `scattergun`, `warden`, `wardenidle` and `jump`
@@ -296,9 +352,9 @@ there.
 
 One more variable works on any run, with or without `GAMEX_SCREENSHOT`: `GAMEX_WINDOW` sets the window size as
 `WIDTHxHEIGHT`, for example `800x600`. A value that is malformed, smaller than 160x120 or larger than 7680x4320 logs a
-warning and the window opens at 1280x720. Whenever the variable is set, even to such a value, the game stays in a
+warning and the window opens at the size in `assets/data/window.txt`, 1280x720 as shipped. Whenever the variable is set, even to such a value, the game stays in a
 window although fullscreen is saved on. The saved setting is not changed, so the Settings screen still reads
-`FULLSCREEN: ON`.
+`FULLSCREEN: < ON >`.
 
 PowerShell:
 
@@ -332,7 +388,7 @@ followed by the exception's stack trace:
 | Value | What is logged |
 | --- | --- |
 | unset, blank, or `info` | Startup and shutdown, the screens shown, the assets loaded (one line for each batch, and one for the Warden model when it is first loaded), settings read, saved progress read and written, levels started and cleared, deaths, boss phases, best times and medals, display mode switches; and every warning. |
-| `debug` | All of that, plus each model, sound, stage, tuning and shader file loaded and which copy of a tuning or shader file was read, the meshes, textures and animations of the Warden model, hostiles spawned and killed, the Warden's punches and its changes of animation, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
+| `debug` | All of that, plus each model, sound, stage, tuning, shader and demo script file loaded and which copy of a tuning or shader file was read, the meshes, textures and animations of the Warden model, hostiles spawned and killed, the Warden's punches and its changes of animation, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
 | `warn`, `error` | Only warnings and errors, or only errors. |
 | `trace` | The same as `debug`; the game logs nothing at that level. |
 
@@ -340,7 +396,8 @@ The value can be in any case, with spaces around it. Any other value logs a warn
 
 A warning is logged for most things the game falls back on: a sound that does not load, an environment variable it
 cannot read, a saved number that is not a number (once for each key), a saved run with an unknown difficulty. An
-unknown saved weapon, a setting out of range and an unknown `GAMEX_DEMO` name are replaced without one.
+unknown saved weapon and a setting out of range are replaced without one. An unknown `GAMEX_DEMO` name is not
+replaced: it stops the game.
 
 Nothing is logged for a frame in which nothing happened, and nothing is written to a file.
 
@@ -391,14 +448,23 @@ The `tools` programs print their own output and show only the warnings and error
   - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), the reading of the shader files in `assets/shaders/` (`Shaders`), the textures read from `assets/textures/` (`ProceduralTextures`, with the wall types' textures named by `assets/data/walls.txt` through `WallTextures`), the five palettes of the world models, the weapons and the hand loaded together (`Palettes`), and the clip range, fog, halos and per-kind accents read from `assets/data/render.txt` (`RenderSettings`).
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
-    or input types), the pixel font, whose glyphs are loaded from `assets/data/pixel-font.txt` (`PixelFont`), and
-    the check that text read from a file can be drawn with it (`GlyphCheck`).
+    types and reads no input device), the pixel font, whose glyphs are loaded from `assets/data/pixel-font.txt`
+    (`PixelFont`), the check that text read from a file can be drawn with it (`GlyphCheck`), and the text of the
+    menus and the HUD, loaded from `assets/data/strings.txt` (`UiStrings`): the list of its lines and their
+    placeholders (`UiText`), the parsing and filling of a line (`TextTemplate`), the key names and tuning values a
+    line may quote (`KeyLabels`, `TextValues`), how numbers and times are written (`TextFormat`), and the check at
+    start-up that every line fits where it is drawn (`TextFit`).
   - `settings`: the player's settings (`GameSettings`), the saved campaign run and best records (`SaveData`), the
     medals (`Medal`), what a finished run hands to the results screen (`RunStats`), and the key-value store they are
-    kept in: libGDX preferences in the game, a map in tests and debug runs.
-  - `input`: reads the keyboard and mouse for play and for the menus, adds up mouse movement for looking around
-    (`LookAccumulator`), and handles pause and cursor capture.
-  - `debug`: the debug screenshot mode.
+    kept in: libGDX preferences in the game, a map in tests and debug runs. Also the defaults, ranges and steps of
+    the settings, loaded from `assets/data/settings.txt` (`SettingsDefaults`), and the default window size, loaded
+    from `assets/data/window.txt` (`WindowDefaults`).
+  - `input`: reads the keyboard and mouse for play and for the menus (`InputController`), adds up mouse movement
+    for looking around (`LookAccumulator`), and handles pause and cursor capture. Also the actions an input can be
+    bound to (`Action`), the inputs of each action, loaded from `assets/data/bindings.txt` (`KeyBindings`,
+    `BoundInput`), and the names of the inputs in that file and in on-screen hints (`KeyNames`).
+  - `debug`: the debug screenshot mode (`DemoRun`) and the demo scripts it plays, loaded from `assets/demos/`
+    (`DemoScript` for a script and its timeline, `DemoScene` for the scene its header block sets).
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings, the window icons, and the log level and
   console log configuration (`LogLevel`, `logback.xml`).
 - `tools`: the Gradle model, audio and texture authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
@@ -416,9 +482,11 @@ The `tools` programs print their own output and show only the warnings and error
     not carry the header.
   - `data/*.txt`: `key: value` tuning files (see [Tuning files](#tuning-files)): `enemies.txt`, `warden.txt`,
     `difficulty.txt`, `sound-volumes.txt`, `walls.txt`, `weapons.txt`, `world.txt`, `render.txt`,
-    `palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt` and
-    `palette-hand.txt`; and `pixel-font.txt`, the glyphs of the HUD font, drawn as blocks of `#` and `.` rather
-    than written as `key: value` lines.
+    `palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt`,
+    `palette-hand.txt`, `strings.txt`, `bindings.txt`, `settings.txt` and `window.txt`; and `pixel-font.txt`, the
+    glyphs of the HUD font, drawn as blocks of `#` and `.` rather than written as `key: value` lines.
+  - `demos/*.txt`: the scripts of the debug screenshot mode, one for each `GAMEX_DEMO` name (see
+    [Demo script files](#demo-script-files)). They are read only on a run that names one.
   - `shaders/*.glsl`: the vertex and fragment shaders of the map (`world`), the world models (`model`) and the
     first-person weapon and hand (`viewmodel`).
   - `textures/*.png`: the wall, floor, ceiling and effect textures, generated by `./gradlew tools:generateTextures`.
@@ -447,8 +515,9 @@ in the format the stage headers in `assets/levels/*.map` already use. The loader
 - `sound-volumes.txt`: the playback volume of each sound cue.
 - `walls.txt`: the `.png` texture of each wall type.
 - `weapons.txt`: the pistol, the scattergun and its pellet rings, the Rail Lance, the charged blast, the energy
-  meter, the recoil kicks, and the ammunition pickups and caps. Its `rail.zoom_factor` is restated in words in the
-  briefing of `assets/levels/03-security-hub.map` ("1.8X ZOOM OPTIC"), so change the two together.
+  meter, the recoil kicks, and the ammunition pickups and caps. The briefing of
+  `assets/levels/03-security-hub.map` quotes its `rail.zoom_factor` with a `{rail.zoom_factor}` placeholder
+  ("1.8X ZOOM OPTIC"), so the text follows the value.
 - `world.txt`: what the health, armor and energy pickups give, the canister's explosion, the shock grates, how
   long the hit marker and a pickup toast show, and the table of how far each noise is heard.
 - `palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt` and
@@ -457,8 +526,26 @@ in the format the stage headers in `assets/levels/*.map` already use. The loader
   The material names are the ones the model files use in their `usemtl` lines.
 - `render.txt`: the camera's clip range, the fog, the halos under pickups and security consoles, and which accent
   of `palette-world.txt` each kind of pickup and each kind of door lock is drawn with.
+- `strings.txt`: every line of text the menus and the HUD show (see [Menu and HUD text](#menu-and-hud-text)).
+- `bindings.txt`: the keys, mouse buttons and wheel directions of every action, which are also the key names the
+  text shows (see [Key bindings](#key-bindings-bindingstxt)).
+- `settings.txt`: what each setting is until the game first saves the settings, and the least, the most and the step
+  of the mouse sensitivity, the field of view and the master volume on the Settings screen. The player's own choices
+  stay in the saved preferences (see [Saved settings and progress](#saved-settings-and-progress)): all six settings
+  are saved, changed or not, when the player leaves the Settings screen, switches fullscreen or closes the game (a
+  screenshot run saves nothing), so a default changed in the file reaches only a player with nothing saved. A saved
+  value outside a range that was narrowed is brought back into it when it is read. A least value above the most, a
+  default outside its range, a step below the precision a setting is kept to (0.01 for sensitivity and volume, 1 for
+  the field of view) and a least value, a most value or a default finer than that precision (a field of view of 72.5,
+  a sensitivity of 0.405) each stop the game. The names the preferences are saved under are not in the file: they are
+  the save format.
+- `window.txt`: the width and height of the window when it is not fullscreen and `GAMEX_WINDOW` does not set one,
+  from 160x120 to 7680x4320. The launcher reads it before libGDX is up, from the places the game reads its own
+  files from (see [Which copy of a file is read](#which-copy-of-a-file-is-read)). There is no size behind the file:
+  without it, or with a size it cannot use, the game does not open, and the message names the file and, where there
+  is one, the key. The 3D view and the HUD are laid out for this size too, until the window reports its own.
 
-A recolour therefore takes an edited palette file and `./gradlew run`, or `./gradlew tools:preview`, where `R` reads
+A recolour takes an edited palette file and `./gradlew run`, or `./gradlew tools:preview`, where `R` reads
 the palette files and the font file again (see [tools/README.md](tools/README.md)).
 
 `pixel-font.txt`, also in `assets/data/`, is not a `key: value` file: it holds the HUD font, one block per
@@ -484,6 +571,110 @@ The key is the text before the first colon; the value is the rest of the line. A
 and its case matters: a dot is part of the name and nothing more. A comment takes a whole line; there are no comments
 after a value, and `//` there is part of the value. A byte order mark and Windows line endings are accepted.
 
+### Menu and HUD text
+
+`assets/data/strings.txt` holds every line of text the menus and the HUD show: menu options, HUD captions, screen
+titles, the lines of the results screen, objectives, interaction prompts, toasts, and the labels of the
+pickups, difficulties and medals. It is a `key: value` file like the others, every key must be present, and
+`UiStrings` reads it once at start-up. Stage titles and briefings stay in the `.map` files.
+
+A line may hold placeholders, which are names in braces:
+
+| Placeholder | Stands for |
+|---|---|
+| `{key:action}` | The name of the key `bindings.txt` gives an action, as in `[{key:interact}] OPEN BULKHEAD`: rebind the action and every line that names it shows the new key (see [Key bindings](#key-bindings-bindingstxt)). The actions are those of `bindings.txt`, listed under [Key bindings](#key-bindings-bindingstxt). |
+| `{rail.zoom_factor}` | That value of `weapons.txt`, written without needless decimals (`1.8`, `2`). |
+| any other name | A value the game fills in when it shows the line, as in `HOSTILES {remaining}/{total}`. Each line has a fixed set of these, the ones the shipped line uses (`UiText` lists them): a line must keep every one of them, in any order, and can take no others. |
+
+The first two kinds also work in the `briefing` lines of a stage file, which take no others.
+
+The game stops at start-up, naming the file, the key and the line, when a line is empty, holds a character the pixel
+font cannot draw, has a brace without its partner, names an unknown placeholder or action, or leaves out a placeholder
+it must keep. A bad placeholder in a briefing is reported when the stage file is read, a briefing that cannot be drawn
+when the text is measured (see below), and a stage title that cannot be drawn when the menus are built. A value loses
+the spaces at its ends, and braces cannot be written as plain text.
+
+Rewording a line changes what is shown and nothing else. The menus tell their options apart by ids fixed in code
+(`MenuState.OptionId`), the HUD colours an interaction prompt by whether the bulkhead can be used and not by its
+words, and the simulation names objectives, prompts and toasts by enum (`GameSimulation.Objective`,
+`InteractionPrompt`, `ToastId`). Which options a screen has, and their order, stay in code. The Select Difficulty
+rows are made from `difficulty.txt` with the wording of `menu.difficulty.row`: `damage_taken` 0.7 reads `70%
+DAMAGE` and `pickup` 1.25 reads `+25% PICKUPS`; `enemy_speed` is not shown. A difficulty whose three multipliers
+are all 1 gets `menu.difficulty.row_standard`.
+
+Layout stays in code, so a longer line can outgrow its place, and a line too long for its place stops the game
+at start-up. Once the font, the bindings and the text are loaded, `TextFit` measures every line that is drawn in a
+box, at the size it is drawn in, and the message names the key, the file and the line, shows the text and says by
+how many characters it is too long:
+
+| Line | Room |
+|---|---|
+| The Title footer | A 4:3 window: 120 characters. |
+| A toast, the pickup toasts among them | The room kept around the centre of the window: 38 characters. |
+| The objective line, `hud.objective` around the objective's words | From the status column to that room: 40 characters. |
+| An interaction prompt | The narrowest window: 73 characters. A blocked bulkhead's line is also a toast. |
+| A menu option, with the Select Stage, Select Difficulty and Settings rows | Its row while highlighted: 42 characters. |
+| The title and captions of each menu screen, the quit prompt, the Settings help line, the medal line of Select Stage, the lines of the results screen, and a stage's title on the Briefing and results screens | Their panel, less a margin on each side. |
+| The label over the boss health bar | The bar's panel. |
+| A briefing line of a stage file | The briefing's box: 58 characters. The box holds three lines, and a stage with more stops the game too. |
+
+A line that takes values is measured with the longest it is given room for: every stage title and every label,
+counts of `999`, `9999` damage, `100%`, a pickup of `+999` (a keycard and a weapon come without an amount), times
+of `99:59.9` (`99:59` on Select Stage, and a stage's par time where it is longer to write), a rank of
+one letter, all four medals marked new, and the end of each Settings range that is longer to write. The Select
+Difficulty rows are measured with the multipliers of `difficulty.txt`. The status row, the timer, the health, armor
+and energy captions, the weapon list, the keycard badges and the low-energy and charge captions are in no box and
+are not measured.
+
+A hint that sums up several keys is a line that names their actions. The Title footer's `WASD: MOVE` is
+`{key:move_forward}{key:move_left}{key:move_back}{key:move_right}: MOVE` and its `1-3` is
+`{key:weapon_1}-{key:weapon_3}`, so they follow the bindings as the single key names do.
+
+### Key bindings (`bindings.txt`)
+
+`assets/data/bindings.txt` gives every action its keys, mouse buttons or wheel direction, one `key: value` line per
+action with one input or several separated by commas. Edit a line and relaunch with `./gradlew run`; there is no
+rebuild. The [Controls](#controls) tables list the bindings the game ships with.
+
+```
+dash: L-Shift, R-Shift
+weapon_next: Wheel-Down
+fire: Mouse-Left
+```
+
+- The actions are `pause`, `retry`, `move_forward`, `move_back`, `move_left`, `move_right`, `dash`, `jump`,
+  `interact`, `weapon_1`, `weapon_2`, `weapon_3`, `quick_swap`, `weapon_next`, `weapon_prev`, `fire`, `alt_fire`
+  (during play) and `menu_up`, `menu_down`, `menu_left`, `menu_right`, `menu_confirm`, `quit`, `menu_click` (on the
+  menu screens); `pause` and `retry` act in both. What an action does, and whether it acts while held or once per
+  press, stays in code (`InputController`, the `Action` enum).
+- A key has the name libGDX gives it, and the case matters: `A` to `Z`, `0` to `9`, `Space`, `Enter`, `Escape`,
+  `Tab`, `Up`, `Down`, `Left`, `Right`, `L-Shift`, `R-Shift`, `L-Ctrl`, `R-Ctrl`, `L-Alt`, `R-Alt`, `F1` to `F12`,
+  `Numpad 0` to `Numpad 9` and so on. The comma key is written `Comma` and the numpad's `Num Comma`. The mouse buttons are `Mouse-Left`,
+  `Mouse-Right`, `Mouse-Middle`, `Mouse-Back` and `Mouse-Forward`; the wheel is `Wheel-Up` or `Wheel-Down`.
+- An input can serve one action during play and another on the menu screens, as `Q` does for `quick_swap` and
+  `quit`. It cannot serve two actions that act at the same time.
+- The wheel works during play only, and `menu_click` takes mouse buttons only.
+- The first input of a line is the one an on-screen hint names, under a short display name (`KeyNames`:
+  `L-Shift` and `R-Shift` are `SHIFT`, the `Ctrl` and `Alt` keys `CTRL` and `ALT`, `Escape` is `ESC`, `Comma` is
+  `,` and `Num Comma` is `NUM ,`, the mouse buttons are `LMB`, `RMB`, `MMB`, `MB4` and `MB5`, the wheel is
+  `SCROLL`, and any other key is its name in capitals). The HUD font must be able to draw that name. Every key name
+  on screen is such a hint, except the word `CLICK` of the Settings help line, which is plain text and does not
+  follow `menu_click`: the Title
+  footer, the `ENERGY [SHIFT: DASH]` caption, the weapon list, the `[E]` prompts, `RETRY STAGE (R)`, `PRESS Q AGAIN
+  TO QUIT`, the Settings help line and the briefing that names the zoom button are lines of `strings.txt` and of
+  the stage files with `{key:action}` placeholders (see [Menu and HUD text](#menu-and-hud-text)), so a rebound
+  action changes all of them at the next start.
+- Longer key names make longer lines, and a line a key name makes too long for its place stops the game at start-up
+  (see [Menu and HUD text](#menu-and-hud-text)): the message names the line and the actions whose key names it shows.
+  The Title footer is one centred line with room for 120 characters in a 4:3 window, and it has 85 with the shipped
+  keys; the briefing line of the Security Hub that names the alt-fire button has room for a key name of 14 characters
+  with the shipped zoom factor, which is the longest name a key has (`Forward Delete`).
+
+The game stops at start-up, naming the file, the action and the line (an action without a line has no line to
+name), on an action without a line or with two, a line that names no action, an unknown or repeated input name, a
+clash, the wheel on an action of the menu screens, anything but a mouse button on `menu_click`, and a hint the font
+cannot draw. Rebinding in the game and saving bindings with the player's settings are not supported.
+
 ### Which copy of a file is read
 
 - **The file under the working directory comes first.** The game reads assets with libGDX's `Gdx.files.internal`,
@@ -500,12 +691,20 @@ after a value, and `//` there is part of the value. A byte order mark and Window
   `PalettesTest` (the palette files and `render.txt`), `shippedGlyphsAreTheBitStringsTheFontHeldInCode` in
   `PixelFontTest` (`pixel-font.txt`), `StageLoadoutTest`, `StageLoadoutFileTest` and
   `shippedStagesListTheirStartingWeaponsInALoadoutHeader` in `LevelsTest` (the `loadout` headers, and with them the
-  order of `campaign.txt`), `PIXELS_PAINTED_IN_CODE` in `GeneratedTexturesTest` (the textures), and
-  `ShaderFilesTest` and `RendererSupportTest` (the text of the shaders). Other tests hold shipped values too:
-  `EnemyTest` expects the Warden's 900 health, `TunedWeaponSimulationTest` the shipped recoil kicks and `PistolTest`
-  the shots the shipped fire interval gives, for three, and a `walls.txt` that stops using a generated texture
-  fails `theGameLoadsExactlyTheGeneratedTextures` in `GeneratedTexturesTest`. These pins are temporary and are to
-  be replaced; the aim is that committing a tuned value takes the data file alone.
+  order of `campaign.txt`), `UiStringsTest` (`strings.txt`, and the briefings of the stage files with their
+  placeholders filled in), `KeyHintsTest` (`strings.txt` and `bindings.txt`), `KeyBindingsTest` (`bindings.txt`),
+  `SettingsDefaultsTest` (`settings.txt`), `WindowDefaultsTest` (`window.txt`), `DemoScriptTest` (the scripts in
+  `assets/demos/`), `PIXELS_PAINTED_IN_CODE` in `GeneratedTexturesTest` (the textures), and `ShaderFilesTest` and
+  `RendererSupportTest` (the text of the shaders). Other tests hold shipped values too: `EnemyTest` expects the
+  Warden's 900 health, `TunedWeaponSimulationTest` the shipped recoil kicks and `PistolTest` the shots the shipped
+  fire interval gives, for three, and a `walls.txt` that stops using a generated texture fails
+  `theGameLoadsExactlyTheGeneratedTextures` in `GeneratedTexturesTest`. Of the newer files, `HudRendererTest`
+  expects the shipped Title footer (`strings.txt` and `bindings.txt`), `StageRecordsDisplayTest` the widest toast,
+  the longest objective line and a tally line of `strings.txt`, `MenuStateTest` the `NEXT STAGE` label,
+  `InputControllerTest` presses the keys of the shipped `bindings.txt`, `DemoRunTest` plays the shipped `jump`
+  script, and `RendererSupportTest`, `HudRendererTest` and, in `desktop`, `DesktopLauncherTest` expect the 1280x720
+  of `window.txt`. These pins are temporary and are to be replaced; the aim is that committing a tuned value takes
+  the data file alone.
 - **A packaged jar** holds a copy of `assets/` and reads that copy. A loose file at the same relative path under the
   working directory of the process (the directory `java -jar` is run from, which need not be the folder the jar is
   in) is read in its place: for example `data/pistol.txt` under that directory. Without one, a changed value needs
@@ -514,6 +713,13 @@ after a value, and `//` there is part of the value. A byte order mark and Window
   rule), a file is looked for in the folder named by the `gamex.assets` system property, then in `../assets`,
   `assets` and the working directory, then on the classpath. Only the `core:test` and `tools:test` tasks set
   `gamex.assets` (to `assets/`); `desktop:test` and the generator tasks do not.
+- **The desktop launcher** needs `data/window.txt` and `data/settings.txt` before it starts libGDX, and looks for
+  them as the first rule says all the same: the file at that path under the working directory if there is one, the
+  copy on the classpath otherwise. Under `./gradlew run` that is the file in `assets/`, and for a packaged jar the
+  copy inside it unless a loose `data/window.txt` or `data/settings.txt` lies under the working directory; it does
+  not look in `gamex.assets`, `../assets` or `assets`. It reads each of the two once and hands what it read to
+  `MainGame`, which reads neither again and passes them on to the settings, the renderers and the HUD, so the
+  window and the game in it cannot go by different copies.
 
 ### Mistakes in a file stop the game
 
@@ -574,17 +780,22 @@ always reach the code as an immutable tuning object that is passed in:
    - **Arrays.** `getFloats` and `getInts` return a new array each time. The tuning object keeps it in a private
      field and gives out an indexed getter or a copy, so that it stays immutable.
 3. In the game, load it once at start-up, in `MainGame.create()` or later and never from a static initialiser,
-   and pass the object to the classes that use it, through a constructor or a `GameSimulation` field. Tests build
+   and pass the object to the classes that use it, through a constructor or a `GameSimulation` field. (The two
+   files the launcher needs before the window exists, `settings.txt` and `window.txt`, are loaded once in
+   `DesktopLauncher` instead and passed to `MainGame`'s constructor.) Tests build
    their own values and read no file: with the public constructor (`DifficultyTuning`, `SoundVolumes`,
    `WallTextures`, `ModelPalette`), or with `parse(label, text)` where the constructor is private
-   (`EnemyTuning`, `WardenTuning`, `WeaponTuning`, `WorldTuning`, `RenderSettings`, `PixelFont`).
+   (`EnemyTuning`, `WardenTuning`, `WeaponTuning`, `WorldTuning`, `RenderSettings`, `PixelFont`,
+   `SettingsDefaults`, `WindowDefaults`; the `parse` of `KeyBindings` takes the font as well, which checks that
+   its hints can be drawn, and that of `UiStrings` the font, the key names and the tuning values its lines quote).
    Tests that want the shipped values take them from `TestTuning`, which loads the shipped files in static fields;
    that is fine in test code. To test the rules of a `load()` without a file, have it hand text to
    `TuningFile.parseText(path, text, ...)`, which takes the same key declarations.
 
 `core/build.gradle` and `tools/build.gradle` already track `assets/data`, `assets/shaders` and `assets/textures`, so
 a file added there needs no build change, and editing it reruns the tests. Any other new folder under `assets/` must
-be added to `TestLocations` in `core/build.gradle` and to `ToolsAssetsLocation` in `tools/build.gradle`.
+be registered as a test input in `core/build.gradle` (in `TestLocations`, or as `assets/demos` is, with
+`inputs.files`) and, if a `tools` test reads it, in `ToolsAssetsLocation` in `tools/build.gradle`.
 
 ## Tests
 
@@ -594,8 +805,9 @@ be added to `TestLocations` in `core/build.gradle` and to `ToolsAssetsLocation` 
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
 graphics context; the few that touch libGDX's `Gdx` globals put stubs there or clear them (`InputControllerTest`,
+`InputControllerBindingsTest`,
 `MainGameViewportTest`, `SoundManagerPartialLoadTest`, `SoundVolumesTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`, `ShadersTest`, `WallTexturesTest`, `EnemyTuningTest`, `PixelFontTest`, `StageLoadoutFileTest`, `DemoRunTest`, `HudRendererTest`, and `ModelPreviewAppTest` in `tools`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds, `.map`
-levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/levels`, `assets/data` and `assets/shaders`, and the `tools` tests also read the textures in `assets/textures`. `core/build.gradle` and `tools/build.gradle` track all six folders, so editing an asset reruns them. They cover:
+levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/levels`, `assets/data` and `assets/shaders`, and the `tools` tests also read the textures in `assets/textures`. `core/build.gradle` and `tools/build.gradle` track all six folders, so editing an asset reruns them; `core/build.gradle` tracks the demo scripts in `assets/demos` as well. They cover:
 
 - `GameSimulation` (`GameSimulationTest`): pistol hits, a charged blast from release to explosion, muzzle launch and
   crosshair convergence, a pause dropping a charge, targets blocking the player, the clamp on long frames, canister
@@ -606,7 +818,8 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
 - The HUD objective line (`ObjectiveTextTest`) and the shot and hit counts behind the accuracy figure
   (`ShotAccuracyTest`).
 - `MainGame` (`MainGameViewportTest`): the GL viewport on resize and on HiDPI displays, the windowed size to fall
-  back to, a forced windowed start, and which screens draw the backdrop.
+  back to (the one it is given, or that of the window defaults when it is given none), a forced windowed start, and
+  which screens draw the backdrop.
 - `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit, the `loadout` header and finding a stage by its id), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
@@ -624,42 +837,75 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   and refusal on low energy), and the jump (its arc, the mid-air dash, and the jump buffer at low frame rates).
 - `hud`: the menu screens, the saved run, quick restart and the `Q` quit prompt (`MenuStateTest`,
   `MenuStateFlowTest`), the Select Stage rows and the lines of the results screen, including that they fit their
-  panels (`StageRecordsDisplayTest`), when the combat HUD is shown (`HudRendererTest`), and the pixel font
+  panels (`StageRecordsDisplayTest`), when the combat HUD is shown and the size the overlay takes from the window
+  defaults until the window reports its own (`HudRendererTest`), and the pixel font
   (`PixelFontTest`): the glyphs of the shipped `pixel-font.txt` are the ones the font held in code, an altered or
   added glyph changes what is drawn, an edited loose copy is read with no rebuild, and a broken file fails naming
-  the file, the line and the glyph.
+  the file, the line and the glyph. The text of the menus and the HUD: the shipped `strings.txt` shows the text
+  the code held, an edited line changes what is shown and nothing else, the Select Difficulty rows are made from
+  the loaded multipliers, the option rows fit their box, and a broken line fails naming the file, the key and the
+  line (`UiStringsTest`); the placeholder rules of a line (`TextTemplateTest`); how numbers and times are written
+  (`TextFormatTest`); and every menu flow run again with every line reworded (`RenamedLabelsFlowTest`).
+  `KeyHintsTest`: with the shipped `bindings.txt` every key name on screen is the one the text spelled out, and
+  other keys in that file change the Title footer, the HUD captions, the prompts, the quit and retry lines, the
+  Settings help line and the briefing that names a key; `HudRendererTest` checks that the Title footer fits a 4:3
+  window. `TextFitTest`: the shipped text fits with the shipped key names, a line one character too long for its
+  box stops the start naming the file, the key and the line, a line with values is measured with the longest it
+  can hold, a remapped key with a long name stops the start naming the line and the action, a stage with a
+  fourth briefing line stops it naming the stage and its file, and `MainGame` runs the check when it has loaded the
+  text.
 - `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, the saved run,
   best times and ranks (`GameSettingsAndSaveTest`), the medals (`MedalTest`), and damaged or hand-edited settings and
-  save values (`CorruptPrefsTest`).
+  save values (`CorruptPrefsTest`). `SettingsDefaultsTest`: the shipped `settings.txt` holds the defaults, ranges
+  and steps the code held, edited ones reach the settings and the Settings rows, a stored value outside a narrowed
+  range is clamped, and a range, default or step that cannot work fails naming the file and the key, as does a
+  least value, a most value or a default finer than the setting is kept.
+  `WindowDefaultsTest`: the shipped `window.txt` holds 1280x720, and a file without a usable size fails naming the
+  file and the key instead of falling back.
 - `audio`: shipped `.wav` asset coverage/format verification, loop-seam continuity, muted headless draining and 3D
   spatial attenuation/panning math (`SoundManagerTest`), and sound files that fail to load
   (`SoundManagerPartialLoadTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulatorTest`), and menu keys and clicks acting once
   per press, `R`, `Q`, and held buttons and `Space` being ignored when play resumes (`InputControllerTest`).
+  `KeyBindingsTest`: the shipped `bindings.txt` binds every action to the inputs the game had in code and gives
+  every action the key name the screen showed, a changed line changes the inputs and the hint, and an unbound
+  action, an unknown name, a clash and a hint the font cannot draw fail naming the file, the action and, except
+  for the unbound action, the line.
+  `InputControllerBindingsTest` plays other bindings through the controller: an action follows its line, and the
+  input it had before does nothing.
 - `weapon`: the pistol, combat scattergun (`ScattergunTest`: deterministic 8/16 pellet cones, range falloff, 1-shell fallback, pump curve), and rail lance (`RailLanceTest`: cooldown, bolt cycle, smooth 1.8x zoom optic & cancel latch), the energy meter, the blast's charge rules, the blast projectile (including impact
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol, scattergun & rail lance models (`PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full slide/pump/bolt travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
   normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
-- `data`: where a text file is looked for without libGDX, in order, and through `Gdx.files` with it, the log line
-  saying which copy was read, and line splitting (`AssetTextTest`); the `key: value` format, every typed getter,
+- `data`: where a text file is looked for without libGDX, in order, and through `Gdx.files` with it, where the
+  launcher's two files are looked for (the working directory, then the classpath), the log line saying which copy
+  was read, and line splitting (`AssetTextTest`); the `key: value` format, every typed getter,
   repeated and optional keys and the exact message of every error, a sample file read from the test classpath, and
   an edited loose copy of it changing the loaded value (`TuningFileTest`). `LevelsErrorMessagesTest` pins the text
   of each stage-header error and of the missing-layout, blank-line, null-text and missing-file errors (not the
   wrapped `Invalid map layout` ones), and `GlyphCheckTest` the characters the pixel font draws.
 - `model`: the OBJ parser (including files it must reject) and model-file error reporting (`ModelVertices.read`).
-- `debug`: the parsing of `GAMEX_VIEWMODEL_ORBIT` and the `jump` demo script (`DemoRunTest`).
+- `debug`: the parsing of `GAMEX_VIEWMODEL_ORBIT` and the `jump` demo script (`DemoRunTest`). `DemoScriptTest`:
+  every script in `assets/demos/` plays the input and builds the scene the code held, frame by frame; an edited
+  timeline or header changes the run; a name with no file fails naming the file, and a broken header or timeline
+  naming the file and the line (the file and the header, for a missing header).
 - logging: a cleared level, menu navigation, a settings change, a best time, medals and a damaged saved run each log
   their line at the right level, and frames in which nothing happens log nothing (`GameLoggingTest`).
-- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), when the game starts fullscreen,
-  the packaging icons, when and how `StartupHelper` relaunches the JVM on macOS, and reading `GAMEX_LOG_LEVEL` and
-  the level `logback.xml` then runs at (`LogLevelTest`).
+- `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds) and falling back to the size of
+  the window file, the shipped `window.txt` read without libGDX, that the launcher reads `window.txt` and
+  `settings.txt` under the working directory and then on the classpath and from no `assets` folder, when the game
+  starts fullscreen (with nothing saved, when `settings.txt` says so), the packaging icons, when and how
+  `StartupHelper` relaunches the JVM on macOS, and reading `GAMEX_LOG_LEVEL` and the level `logback.xml` then runs
+  at (`LogLevelTest`).
 - Enemy, Warden and difficulty tuning: the shipped `enemies.txt`, `warden.txt` and `difficulty.txt` hold the
   values the code had before them, a changed value changes a spawned enemy, the combo and the starter ammunition,
   an edited loose copy is read with no rebuild, and a missing, unknown, mistyped or out-of-range key fails naming
   the file and the key, as `avoids_hazards: true` does for any kind but the guard (`EnemyTuningTest`,
   `DifficultyTuningTest`). `TunedSimulationTest` plays changed values through the whole simulation (rail damage,
   shock grates, the boss flag, death bursts and noise, overdrive, punch sounds, difficulty scaling) and checks
-  that no main source of `core`, `desktop` or `tools` calls a constructor that reads the tuning files itself.
+  that no main source of `core`, `desktop` or `tools` calls a constructor that reads the tuning files itself
+  (those of `GameSimulation`, `MenuState`, `InputController`, `GameSettings` and `MainGame` that are for tests),
+  and that `settings.txt` and `window.txt` are read once, by the launcher, and not again once `MainGame` is built.
   `TestTuning` holds the shipped values and one-value-changed copies of them for the other tests.
 - Weapon and world tuning: the shipped `weapons.txt` and `world.txt` hold the values the code had before them,
   down to the pellet pattern, the falloff and the blast's radius, damage and cost bit for bit, a changed value
@@ -699,8 +945,8 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   source of its own and sets every uniform the game's model shader declares, and `MeshBuilderTest` that the
   Gradle scripts declare the texture generator's output and order its consumers after it.
 
-Rendering, the drawing of the HUD and the menus on screen, OpenAL audio hardware playback and the other demo scripts
-have no tests.
+Rendering, the drawing of the HUD and the menus on screen, the pictures the demo scripts save and OpenAL audio
+hardware playback have no tests.
 
 A GitHub Actions workflow (`.github/workflows/build.yml`) runs `./gradlew build` with Java 21 on Linux, Windows and
 macOS on every pull request and push to `main`.

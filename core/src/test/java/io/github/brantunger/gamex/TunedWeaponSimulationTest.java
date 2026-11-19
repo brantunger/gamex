@@ -345,11 +345,11 @@ class TunedWeaponSimulationTest {
                 "#####");
             PlayerInput forward = new PlayerInput();
             forward.moveForward = 1f;
-            while (sim.getToastMessage() == null && sim.getTime() < 2f) sim.update(FRAME, forward);
-            assertEquals("+25 HEALTH", sim.getToastMessage());
+            while (sim.getToast() == null && sim.getTime() < 2f) sim.update(FRAME, forward);
+            assertEquals("+25 HEALTH", TestTuning.STRINGS.toast(sim.getToast()));
             PlayerInput idle = new PlayerInput();
             for (int i = 0; i < 60; i++) sim.update(FRAME, idle);
-            assertEquals(world == brief, sim.getToastMessage() == null, "a second later");
+            assertEquals(world == brief, sim.getToast() == null, "a second later");
         }
 
         WorldTuning longMarker = TestTuning.worldWith("feedback.hit_marker_time", "0.64");
