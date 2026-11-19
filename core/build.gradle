@@ -15,8 +15,9 @@ dependencies {
   testImplementation "ch.qos.logback:logback-classic:$logbackVersion"
 }
 
-// Tells the tests where the assets folder is. Editing a committed model, sound or level reruns the tests; paths are
-// tracked relatively to stay out of the build cache key.
+// Tells the tests where the assets folder is. Editing a committed model, sound, level, data file, shader or texture
+// reruns the tests; paths are tracked relatively to stay out of the build cache key. The data, shaders and textures
+// folders are tracked as file trees, which may be empty or missing; the other three must exist.
 class TestLocations implements CommandLineArgumentProvider {
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
@@ -29,6 +30,18 @@ class TestLocations implements CommandLineArgumentProvider {
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
   File levels
+
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  FileTree data
+
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  FileTree shaders
+
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  FileTree textures
 
   @Override
   Iterable<String> asArguments() {
@@ -44,7 +57,10 @@ test {
   jvmArgumentProviders.add(new TestLocations(
     models: rootProject.file("assets/models"),
     sounds: rootProject.file("assets/sounds"),
-    levels: rootProject.file("assets/levels")
+    levels: rootProject.file("assets/levels"),
+    data: rootProject.fileTree("assets/data"),
+    shaders: rootProject.fileTree("assets/shaders"),
+    textures: rootProject.fileTree("assets/textures")
   ))
 }
 

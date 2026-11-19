@@ -1,16 +1,10 @@
 package io.github.brantunger.gamex.world;
 
-import com.badlogic.gdx.Gdx;
+import io.github.brantunger.gamex.data.AssetText;
+import io.github.brantunger.gamex.data.TuningFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -28,6 +22,10 @@ import java.util.regex.Pattern;
  * begin with {@code key: value} metadata headers ({@code id}, {@code title}, {@code par},
  * {@code complete_on_all_targets}, and one or more {@code briefing} lines), followed by a blank line and the
  * rectangular {@link GameMap} layout. Lines whose trimmed text begins with {@code //} are treated as comments.
+ *
+ * <p>The files are read with {@link AssetText} and the headers are parsed by {@link TuningFile}, the loader shared
+ * with the tuning files in {@code assets/data/}; the checks particular to a stage (the form of its {@code id}, a
+ * positive {@code par}) are made here.
  */
 public final class Levels {
 
@@ -54,7 +52,9 @@ public final class Levels {
     /** Internal asset path of Campaign Stage 06 ("06: WARDEN CORE"). */
     public static final String WARDEN_CORE_PATH = LEVELS_DIR + "/06-warden-core.map";
 
-    private static final char BYTE_ORDER_MARK = 0xFEFF;
+    private static final List<String> SINGLE_HEADERS =
+        Arrays.asList("id", "title", "par", "complete_on_all_targets");
+    private static final List<String> REPEATED_HEADERS = Collections.singletonList("briefing");
     private static final Pattern STAGE_ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]+");
     private static final Pattern POSITIVE_DECIMAL = Pattern.compile("[+]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)");
 
@@ -141,7 +141,7 @@ public final class Levels {
      * @return the parsed map
      */
     public static GameMap loadMap(String assetPath) {
-        GameMap map = parseMap(assetPath, readAssetText(assetPath));
+        GameMap map = parseMap(assetPath, AssetText.read("level", assetPath));
         log.debug("Loaded map {}: {}x{}", assetPath, map.getWidth(), map.getHeight());
         return map;
     }
@@ -152,7 +152,7 @@ public final class Levels {
      * @return the parsed stage
      */
     public static Stage loadStage(String assetPath) {
-        Stage stage = parseStage(assetPath, readAssetText(assetPath));
+        Stage stage = parseStage(assetPath, AssetText.read("level", assetPath));
         log.debug("Loaded stage {} from {}: {}x{}, par {} s", stage.id, assetPath, stage.map.getWidth(),
             stage.map.getHeight(), stage.parSeconds);
         return stage;
@@ -165,7 +165,7 @@ public final class Levels {
      * @return unmodifiable ordered list of campaign stages
      */
     public static List<Stage> loadCampaign(String assetPath) {
-        List<Stage> stages = parseCampaign(assetPath, readAssetText(assetPath), Levels::loadStage);
+        List<Stage> stages = parseCampaign(assetPath, AssetText.read("level", assetPath), Levels::loadStage);
         log.info("Loaded {} campaign stages from {}", stages.size(), assetPath);
         return stages;
     }
@@ -181,13 +181,13 @@ public final class Levels {
         if (text == null) {
             throw new IllegalArgumentException("Map text for " + assetPath + " is null");
         }
-        List<String> lines = splitLines(text);
+        List<String> lines = AssetText.splitLines(text);
         List<String> rows = new ArrayList<>();
         boolean afterRows = false;
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             String trimmed = line.trim();
-            if (isComment(trimmed)) continue;
+            if (AssetText.isComment(trimmed)) continue;
             if (trimmed.isEmpty()) {
                 if (!rows.isEmpty()) afterRows = true;
                 continue;
@@ -219,108 +219,30 @@ public final class Levels {
         if (text == null) {
             throw new IllegalArgumentException("Stage text for " + assetPath + " is null");
         }
-        List<String> lines = splitLines(text);
-        String id = null;
-        String title = null;
-        Float parSeconds = null;
-        Boolean completeOnAllTargets = null;
+        List<String> lines = AssetText.splitLines(text);
+        TuningFile header = TuningFile.parseHeader(assetPath, lines, "stage", "map layout", SINGLE_HEADERS,
+            REPEATED_HEADERS);
+
+        TuningFile.Entry idHeader = header.entry("id");
+        String id = idHeader.value;
+        if (!STAGE_ID_PATTERN.matcher(id).matches()) {
+            throw new IllegalArgumentException("Invalid stage id '" + id + "' in " + assetPath
+                + " at line " + idHeader.line);
+        }
+        String title = header.getString("title");
+        TuningFile.Entry parHeader = header.entry("par");
+        float parSeconds = parseParSeconds(assetPath, parHeader.line, parHeader.value);
+        boolean completeOnAllTargets = header.getBoolean("complete_on_all_targets");
         List<String> briefing = new ArrayList<>();
-        boolean seenAnyHeader = false;
-        int index = 0;
-
-        while (index < lines.size()) {
-            String line = lines.get(index);
-            int lineNumber = index + 1;
-            index++;
-            String trimmed = line.trim();
-            if (isComment(trimmed)) continue;
-            if (trimmed.isEmpty()) {
-                if (seenAnyHeader) break;
-                continue;
+        for (TuningFile.Entry line : header.entries("briefing")) {
+            if (line.value.isEmpty()) {
+                throw new IllegalArgumentException("Empty 'briefing' line in " + assetPath
+                    + " at line " + line.line);
             }
-            int colon = line.indexOf(':');
-            if (colon <= 0) {
-                throw new IllegalArgumentException(
-                    "Expected 'key: value' stage header or blank line before map layout in "
-                        + assetPath + " at line " + lineNumber);
-            }
-            seenAnyHeader = true;
-            String key = line.substring(0, colon).trim();
-            String value = line.substring(colon + 1).trim();
-            switch (key) {
-                case "id":
-                    if (id != null) {
-                        throw new IllegalArgumentException("Duplicate 'id' header in " + assetPath
-                            + " at line " + lineNumber);
-                    }
-                    if (!STAGE_ID_PATTERN.matcher(value).matches()) {
-                        throw new IllegalArgumentException("Invalid stage id '" + value + "' in " + assetPath
-                            + " at line " + lineNumber);
-                    }
-                    id = value;
-                    break;
-                case "title":
-                    if (title != null) {
-                        throw new IllegalArgumentException("Duplicate 'title' header in " + assetPath
-                            + " at line " + lineNumber);
-                    }
-                    if (value.isEmpty()) {
-                        throw new IllegalArgumentException("Empty 'title' header in " + assetPath
-                            + " at line " + lineNumber);
-                    }
-                    title = value;
-                    break;
-                case "par":
-                    if (parSeconds != null) {
-                        throw new IllegalArgumentException("Duplicate 'par' header in " + assetPath
-                            + " at line " + lineNumber);
-                    }
-                    parSeconds = parseParSeconds(assetPath, lineNumber, value);
-                    break;
-                case "complete_on_all_targets":
-                    if (completeOnAllTargets != null) {
-                        throw new IllegalArgumentException(
-                            "Duplicate 'complete_on_all_targets' header in " + assetPath + " at line " + lineNumber);
-                    }
-                    if ("true".equals(value)) {
-                        completeOnAllTargets = Boolean.TRUE;
-                    } else if ("false".equals(value)) {
-                        completeOnAllTargets = Boolean.FALSE;
-                    } else {
-                        throw new IllegalArgumentException(
-                            "Expected 'true' or 'false' for 'complete_on_all_targets' in "
-                                + assetPath + " at line " + lineNumber + ", got '" + value + "'");
-                    }
-                    break;
-                case "briefing":
-                    if (value.isEmpty()) {
-                        throw new IllegalArgumentException("Empty 'briefing' line in " + assetPath
-                            + " at line " + lineNumber);
-                    }
-                    briefing.add(value);
-                    break;
-                default:
-                    throw new IllegalArgumentException("Unknown stage header '" + key + "' in " + assetPath
-                        + " at line " + lineNumber);
-            }
+            briefing.add(line.value);
         }
 
-        if (id == null) {
-            throw new IllegalArgumentException("Missing 'id' header in " + assetPath);
-        }
-        if (title == null) {
-            throw new IllegalArgumentException("Missing 'title' header in " + assetPath);
-        }
-        if (parSeconds == null) {
-            throw new IllegalArgumentException("Missing 'par' header in " + assetPath);
-        }
-        if (completeOnAllTargets == null) {
-            throw new IllegalArgumentException("Missing 'complete_on_all_targets' header in " + assetPath);
-        }
-        if (briefing.isEmpty()) {
-            throw new IllegalArgumentException("Missing 'briefing' header in " + assetPath);
-        }
-
+        int index = header.bodyStart();
         List<String> rows = new ArrayList<>();
         boolean afterRows = false;
         while (index < lines.size()) {
@@ -328,7 +250,7 @@ public final class Levels {
             int lineNumber = index + 1;
             index++;
             String trimmed = line.trim();
-            if (isComment(trimmed)) continue;
+            if (AssetText.isComment(trimmed)) continue;
             if (trimmed.isEmpty()) {
                 if (!rows.isEmpty()) afterRows = true;
                 continue;
@@ -362,13 +284,13 @@ public final class Levels {
         if (text == null) {
             throw new IllegalArgumentException("Campaign manifest text for " + assetPath + " is null");
         }
-        List<String> lines = splitLines(text);
+        List<String> lines = AssetText.splitLines(text);
         List<Stage> stages = new ArrayList<>();
         Set<String> seenIds = new HashSet<>();
         for (int i = 0; i < lines.size(); i++) {
             int lineNumber = i + 1;
             String entry = lines.get(i).trim();
-            if (entry.isEmpty() || isComment(entry)) continue;
+            if (entry.isEmpty() || AssetText.isComment(entry)) continue;
             if (entry.contains("/") || entry.contains("\\") || entry.contains("..") || !entry.endsWith(".map")) {
                 throw new IllegalArgumentException("Invalid stage file name '" + entry + "' in " + assetPath
                     + " at line " + lineNumber);
@@ -403,72 +325,5 @@ public final class Levels {
                 + " at line " + lineNumber + ", got " + value);
         }
         return parsed;
-    }
-
-    private static boolean isComment(String trimmedLine) {
-        return trimmedLine.startsWith("//");
-    }
-
-    private static List<String> splitLines(String text) {
-        int start = (!text.isEmpty() && text.charAt(0) == BYTE_ORDER_MARK) ? 1 : 0;
-        List<String> lines = new ArrayList<>();
-        int lineStart = start;
-        int len = text.length();
-        for (int i = start; i < len; i++) {
-            char c = text.charAt(i);
-            if (c == '\r' || c == '\n') {
-                lines.add(text.substring(lineStart, i));
-                if (c == '\r' && i + 1 < len && text.charAt(i + 1) == '\n') {
-                    i++;
-                }
-                lineStart = i + 1;
-            }
-        }
-        if (lineStart < len) {
-            lines.add(text.substring(lineStart, len));
-        }
-        return lines;
-    }
-
-    private static String readAssetText(String assetPath) {
-        if (assetPath == null || assetPath.trim().isEmpty()) {
-            throw new IllegalArgumentException("Level asset path must not be blank");
-        }
-        if (Gdx.files != null) {
-            return Gdx.files.internal(assetPath).readString("UTF-8");
-        }
-        List<Path> candidates = new ArrayList<>();
-        String configured = System.getProperty("gamex.assets");
-        if (configured != null && !configured.trim().isEmpty()) {
-            candidates.add(Paths.get(configured, assetPath));
-        }
-        candidates.add(Paths.get("..", "assets", assetPath));
-        candidates.add(Paths.get("assets", assetPath));
-        candidates.add(Paths.get(assetPath));
-        for (Path candidate : candidates) {
-            if (!Files.isRegularFile(candidate)) continue;
-            try {
-                return Files.readString(candidate, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to read level asset " + candidate, e);
-            }
-        }
-        String resourcePath = assetPath.replace('\\', '/');
-        ClassLoader loader = Levels.class.getClassLoader();
-        if (loader != null) {
-            try (InputStream in = loader.getResourceAsStream(resourcePath)) {
-                if (in != null) {
-                    return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to read level resource " + resourcePath, e);
-            }
-        }
-        List<Path> tried = new ArrayList<>(candidates.size());
-        for (Path candidate : candidates) {
-            tried.add(candidate.toAbsolutePath().normalize());
-        }
-        throw new IllegalStateException("The level asset " + assetPath + " was not found. Set the system property "
-            + "gamex.assets to the assets folder, or run from the root project or a subproject. Tried: " + tried);
     }
 }

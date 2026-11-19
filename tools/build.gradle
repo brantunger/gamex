@@ -57,6 +57,8 @@ tasks.register('preview', JavaExec) {
   systemProperty 'gamex.modelsDir', rootProject.file('assets/models').path
 }
 
+// Tells the tests where the assets folder is. Editing a model, sound, level, data file, shader or texture reruns
+// them. The data, shaders and textures folders are tracked as file trees, which may be empty or missing.
 class ToolsAssetsLocation implements CommandLineArgumentProvider {
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
@@ -65,6 +67,22 @@ class ToolsAssetsLocation implements CommandLineArgumentProvider {
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
   File sounds
+
+  @InputDirectory
+  @PathSensitive(PathSensitivity.RELATIVE)
+  File levels
+
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  FileTree data
+
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  FileTree shaders
+
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  FileTree textures
 
   @Override
   Iterable<String> asArguments() {
@@ -82,6 +100,10 @@ test {
   ).withPathSensitivity(PathSensitivity.NONE)
   jvmArgumentProviders.add(new ToolsAssetsLocation(
     models: rootProject.file('assets/models'),
-    sounds: rootProject.file('assets/sounds')
+    sounds: rootProject.file('assets/sounds'),
+    levels: rootProject.file('assets/levels'),
+    data: rootProject.fileTree('assets/data'),
+    shaders: rootProject.fileTree('assets/shaders'),
+    textures: rootProject.fileTree('assets/textures')
   ))
 }

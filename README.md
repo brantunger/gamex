@@ -371,13 +371,17 @@ The `tools` programs print their own output and show only the warnings and error
   - `weapon`: the pistol, the combat scattergun (`Scattergun`), the rail lance (`RailLance`), weapon slot switching (`WeaponSlot`), the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
     `EnemyProjectile`), explosion damage, the pistol, scattergun & rail lance 3D models (`PistolModel`, `ScattergunModel`, `RailLanceModel`), the colours for the
     hand's mesh (`HandModel`) and the numbers that animate them.
+  - `data`: the shared loader for text files under `assets/`: where a file is looked for, with or without libGDX
+    (`AssetText`), and the `key: value` format with its typed getters and errors (`TuningFile`). See
+    [Tuning files](#tuning-files).
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
     a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
     indexed deduplication). None use graphics types.
   - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), and the textures painted in code.
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
-    or input types) and the built-in pixel font.
+    or input types), the built-in pixel font and the check that text read from a file can be drawn with it
+    (`GlyphCheck`).
   - `settings`: the player's settings (`GameSettings`), the saved campaign run and best records (`SaveData`), the
     medals (`Medal`), what a finished run hands to the results screen (`RunStats`), and the key-value store they are
     kept in: libGDX preferences in the game, a map in tests and debug runs.
@@ -391,6 +395,8 @@ The `tools` programs print their own output and show only the warnings and error
   `SoundSynth`, `GenerateAllSounds`, and the interactive LWJGL3 previewer (`ModelPreviewApp`).
 - `assets`: the files the game loads, at start-up except where noted:
   - `levels/*.map`, `levels/campaign.txt`: plain-text map layouts, stage metadata/briefings, and ordered campaign manifest.
+  - `data/*.txt`: `key: value` tuning files (see [Tuning files](#tuning-files)). The folder does not exist until the
+    first tuning file is added.
   - `sounds/*.wav`: 16-bit mono PCM `.wav` files for every weapon, combat, world, pickup and menu cue plus the seamless `charge-hum.wav` blast-charge loop.
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`, `models/viewmodel-raillance.obj`: the meshes of the first-person pistol (body and slide), shortened double-barrel drum combat scattergun (body and lever forend), and rail lance (body and magnetic bolt).
@@ -404,6 +410,106 @@ The `tools` programs print their own output and show only the warnings and error
     Warden is shown, and checked to be there when the game starts. It is a Git LFS file: without Git LFS the game
     and the tests find a small pointer file in its place and stop on it, saying so (see [How to run](#how-to-run)).
 
+## Tuning files
+
+Numbers and texts that are meant to be tuned without a rebuild live in `key: value` text files under `assets/data/`,
+in the format the stage headers in `assets/levels/*.map` already use. The loader is
+`io.github.brantunger.gamex.data.TuningFile`; no tuning file ships yet.
+
+```
+// A line whose trimmed text begins with two slashes is a comment.
+pistol.fire_interval: 0.3
+pistol.pellets: 8
+pistol.auto: false
+pistol.name: SERVICE PISTOL
+pistol.falloff: 0.60, 1.10, 1.27
+hint: A KEY DECLARED AS REPEATED
+hint: MAY APPEAR ON SEVERAL LINES.
+```
+
+The key is the text before the first colon; the value is the rest of the line. A key is matched as a whole string
+and its case matters: a dot is part of the name and nothing more. A comment takes a whole line; there are no comments
+after a value, and `//` there is part of the value. A byte order mark and Windows line endings are accepted.
+
+### Which copy of a file is read
+
+- **The file under the working directory comes first.** The game reads assets with libGDX's `Gdx.files.internal`,
+  which opens the file at that path relative to the working directory if there is one, and reads the copy on the
+  classpath only otherwise. This holds for every internal asset (models, sounds and levels too), not for tuning files
+  alone.
+- **`./gradlew run`** starts the game with `assets/` as its working directory, so it reads the files you edit. Change
+  a value, start the game again, and the change is there; no Java is compiled.
+- **A packaged jar** holds a copy of `assets/` and reads that copy. A loose file at the same relative path under the
+  working directory of the process (the directory `java -jar` is run from, which need not be the folder the jar is
+  in) is read in its place: for example `data/pistol.txt` under that directory. Without one, a changed value needs
+  a new jar.
+- **Without libGDX** (the tests and the `tools` generators; `tools:preview` runs with libGDX and follows the first
+  rule), a file is looked for in the folder named by the `gamex.assets` system property, then in `../assets`,
+  `assets` and the working directory, then on the classpath. Only the `core:test` and `tools:test` tasks set
+  `gamex.assets` (to `assets/`); `desktop:test` and the generator tasks do not.
+
+### Mistakes in a file stop the game
+
+No value in a tuning file has a default, and a file the game asks for must be there: a missing file stops the game
+too. Every mistake in a file is an `IllegalArgumentException`:
+
+- **Loading the file stops** on a line that is not `key: value` (the message names the file and the line), on a key
+  the code does not know and on a key given twice (file, key and line), and then on a key that is missing (file and
+  key). For example, mistyping the second key of the sample above gives
+  `Unknown key 'pistol.pelets' in data/pistol.txt at line 3`.
+- **Reading a value stops** on an empty value and on a value of the wrong form: `0.5f`, `fast`, `NaN` or a number
+  too large or too small for a float where a number is read, `8.0` for a whole number, `yes` for `true` (file, key
+  and line).
+
+A mistyped key therefore cannot leave the old value silently in place. The code may declare a key as optional; such
+a key may be left out, and what that means is for the code that reads it to say.
+
+### Adding a tuning file, and how its values reach the code
+
+A value read from a file cannot be a `static final` constant, and no constant is initialised from a file. Values
+always reach the code as an immutable tuning object that is passed in:
+
+1. Add `assets/data/<name>.txt`.
+2. Add a class with a final field per value (public, except that an array is private with an accessor), a
+   constructor taking them all, and a static `load()` that declares every key the file holds. For the sample above:
+
+   ```java
+   public static PistolTuning load() {
+       TuningFile file = TuningFile.load("data/pistol.txt",
+           List.of("pistol.fire_interval", "pistol.pellets", "pistol.auto", "pistol.name", "pistol.falloff"),
+           List.of("hint"));
+       float fireInterval = file.getFloat("pistol.fire_interval");
+       if (fireInterval <= 0f) throw file.invalid("pistol.fire_interval", "must be positive");
+       return new PistolTuning(fireInterval, file.getInt("pistol.pellets"), file.getBoolean("pistol.auto"),
+           file.getDisplayString("pistol.name"), file.getFloats("pistol.falloff", 3),
+           file.getDisplayStrings("hint"));
+   }
+   ```
+
+   - **Declaring keys.** `load(path, "a", "b")` declares keys that each appear on exactly one line. The form above
+     takes those first and the repeated keys (one line or more) second; a third list declares optional keys (one
+     line or none), which the code asks about with `has(key)` before reading them.
+   - **Reading values.** `getFloat`, `getInt`, `getBoolean` and `getString` read one value. `getFloats(key)` and
+     `getInts(key)` read a comma-separated list, and `getFloats(key, count)` and `getInts(key, count)` one of
+     exactly that length. `getStrings` reads every line of any declared key, so it is the getter for a repeated
+     one. `getDisplayString` and `getDisplayStrings` also check that the pixel font can draw every character.
+   - **Lines of a repeated key.** `entries(key)` gives each line with its key, raw value and line number, and
+     `getFloat`, `getInt`, `getFloats` and `getInts` also take such a line, so a row like `ring: 7, 0.12, 0` is
+     read as strictly as a single value. `entry(key)` gives the one line of a single-valued key.
+   - **Ranges.** A getter checks the form of a value. Its range is checked by `load()`, which reports a bad one
+     with `file.invalid(key, problem)`, or `file.invalid(entry, problem)` for a line of a repeated key; the
+     message names the file, key and line and ends with the value.
+   - **Arrays.** `getFloats` and `getInts` return a new array each time. The tuning object keeps it in a private
+     field and gives out an indexed getter or a copy, so that it stays immutable.
+3. Load it once at start-up, in `MainGame.create()` or later and never from a static initialiser, and pass the
+   object to the classes that use it, through a constructor or a `GameSimulation` field. Tests build their own
+   values with the constructor and read no file. To test the rules of a `load()` without a file, have it hand text
+   to `TuningFile.parseText(path, text, ...)`, which takes the same key declarations.
+
+`core/build.gradle` and `tools/build.gradle` already track `assets/data`, `assets/shaders` and `assets/textures`, so
+a file added there needs no build change, and editing it reruns the tests. Any other new folder under `assets/` must
+be added to `TestLocations` in `core/build.gradle` and to `ToolsAssetsLocation` in `tools/build.gradle`.
+
 ## Tests
 
 ```sh
@@ -412,9 +518,9 @@ The `tools` programs print their own output and show only the warnings and error
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
 graphics context; the few that touch libGDX's `Gdx` globals put stubs there (`InputControllerTest`,
-`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `LevelsTest`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds and `.map`
-levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/build.gradle` tracks those folders, so
-editing an asset reruns them. They cover:
+`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds and `.map`
+levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/build.gradle` tracks those folders and
+`assets/data`, `assets/shaders` and `assets/textures`, so editing an asset reruns them. They cover:
 
 - `GameSimulation` (`GameSimulationTest`): pistol hits, a charged blast from release to explosion, muzzle launch and
   crosshair convergence, a pause dropping a charge, targets blocking the player, the clamp on long frames, canister
@@ -457,6 +563,12 @@ editing an asset reruns them. They cover:
   contact bisection) and explosion damage, enemy bolts (`EnemyProjectileTest`), the shipped pistol, scattergun & rail lance models (`PistolModelTest`, `ScattergunModelTest`, `RailLanceModelTest`: closed convex outward solids and zero hand-glove penetration at rest and full slide/pump/bolt travel), the shipped hand mesh (every part is closed and faces outwards, no quad folds, unit
   normals, bands of the fingers and palm lie on the grip's surface, the fingers wrap the grip, no glove vertex is inside
   the pistol, and `HandSculpt`'s copied outlines match `PistolModel`), and the animation (recoil, slide, walking bob and turn lag).
+- `data`: where a text file is looked for without libGDX, in order, and through `Gdx.files` with it, the log line
+  saying which copy was read, and line splitting (`AssetTextTest`); the `key: value` format, every typed getter,
+  repeated and optional keys and the exact message of every error, a sample file read from the test classpath, and
+  an edited loose copy of it changing the loaded value (`TuningFileTest`). `LevelsErrorMessagesTest` pins the text
+  of each stage-header error and of the missing-layout, blank-line, null-text and missing-file errors (not the
+  wrapped `Invalid map layout` ones), and `GlyphCheckTest` the characters the pixel font draws.
 - `model`: the OBJ parser (including files it must reject) and model-file error reporting (`ModelVertices.read`).
 - `debug`: the parsing of `GAMEX_VIEWMODEL_ORBIT` and the `jump` demo script (`DemoRunTest`).
 - logging: a cleared level, menu navigation, a settings change, a best time, medals and a damaged saved run each log
