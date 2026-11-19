@@ -4,15 +4,15 @@ An original 3D first-person shooter, built with [libGDX](https://libgdx.com/) 1.
 
 This is an active campaign & range build. You are "gamerx", equipped with an infinite-ammo pistol, a charged energy
 blast, a pump-action **Combat Scattergun** with 2-shell double-blast alt-fire, a piercing **Rail Lance** with 1.8x
-tactical zoom optic, a free physical jump, and a horizontal energy dash. Battle four hostile robotic archetypes (**Rusher Drones**, **Sentry Turrets**,
-**Guard Bots**, and the two-phase **Warden Mech** boss), jump or dash over live **Shock Grates**, chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
+tactical zoom optic, a free physical jump, and a horizontal energy dash. Battle four hostile archetypes (three robots, **Rusher Drones**, **Sentry Turrets** and
+**Guard Bots**, and the two-phase melee boss **the Warden**), jump or dash over live **Shock Grates**, chain explosive coolant canisters, breach sliding bulkhead doors, collect Amber and Cyan
 keycards, override Security Consoles, collect 3D health, armor, energy, weapon, shell and slug pickups, and clear the 6-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
 Range**. Surface and effect textures are synthesised in code at start-up, while every map and campaign stage is loaded from
 `assets/levels/`, every weapon, combat and menu sound is loaded from a 16-bit mono PCM `.wav` file in `assets/sounds/`, and
 every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
-pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`.
+pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`. The Warden is the exception: a skinned, animated binary glTF model (`enemy-warden.glb`, stored with Git LFS) drawn with [gdx-gltf](https://github.com/mgsx-dev/gdx-gltf); it is loaded the first time a stage with a Warden is shown.
 
 ## How to run
 
@@ -29,6 +29,12 @@ needs the JVM option `-XstartOnFirstThread`: the `run` task passes it, the Const
 
 The build compiles and runs with a Java 21 toolchain. If Gradle finds no Java 21 on the machine, the first build
 downloads one, so it can take a while.
+
+The Warden's model, `assets/models/enemy-warden.glb`, is a [Git LFS](https://git-lfs.com/) file. Install Git LFS and
+run `git lfs install` before cloning, or `git lfs pull` afterwards. Without it the file is a small pointer file: the
+game stops as it starts, on any stage, with the error `The warden model models/enemy-warden.glb is a Git LFS pointer
+file, not the model itself. Install Git LFS, then run 'git lfs install' and 'git lfs pull' in the repository; in CI,
+check out with 'lfs: true'.`, and `./gradlew test` fails with the same reason in every test of `WardenModelTest` that reads the model.
 
 The game opens in a 1280x720 window, on the Title screen, with the mouse cursor free. If fullscreen was switched
 on in the settings on an earlier run, it opens fullscreen instead. Two environment variables keep it in a window
@@ -110,11 +116,11 @@ Where the run is stored, and how to reset it, is under [Saved settings and progr
 - **03: Security Hub** combines coordinated squads of all three archetypes and unlocks the **Rail Lance** (`R` / `r`) ahead of its long combat corridors.
 - **04: Lockdown Wing** introduces sliding bulkhead doors (`=`), Amber keycard wing gating (`k` -> `A`), and a Security Console lockdown override (`S` -> `L`) protecting extraction and ambush bays.
 - **05: Command Vault** chains Amber and Cyan keycard clearances (`k` -> `A`, `c` -> `C`) to a vault Security Console override and flanking ambush.
-- **06: Warden Core** introduces live two-cell **Shock Grates** (`~`), adds an Amber keycard door (`k` -> `A`) and a Security Console that overrides two lockdown doors (`S` -> `L`), and culminates in the two-phase **Warden Mech** boss (`B`) sealing the `M` extraction bulkhead before `CAMPAIGN COMPLETE`.
+- **06: Warden Core** introduces live two-cell **Shock Grates** (`~`), adds an Amber keycard door (`k` -> `A`) and a Security Console that overrides two lockdown doors (`S` -> `L`), and culminates in the two-phase boss **the Warden** (`B`) sealing the `M` extraction bulkhead before `CAMPAIGN COMPLETE`.
 - The **Training Range** includes practice targets, a one-cell Shock Grate that a plain jump clears, and both the Scattergun and Rail Lance racks, ending when every target is destroyed (always played on Normal).
 
 **Objective.** A line near the top left of the HUD names the next step towards the exit and follows your progress:
-`FIND THE AMBER KEYCARD` or `FIND THE CYAN KEYCARD`, `OVERRIDE THE SECURITY CONSOLE`, `DESTROY THE WARDEN MECH`, then
+`FIND THE AMBER KEYCARD` or `FIND THE CYAN KEYCARD`, `OVERRIDE THE SECURITY CONSOLE`, `DESTROY THE WARDEN`, then
 `REACH EXIT PAD`. When more than one step is open, the one you can walk to comes first. The Training Range shows
 `DESTROY ALL TARGETS`. On a window narrower than about 16:9 the line sits a little lower, so that it clears the boss
 bar and the pickup messages.
@@ -171,7 +177,7 @@ points constant across difficulties.
   - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets: one in the centre, an inner ring of `5` at `3.4°` and an outer ring of `10` at `6.8°` (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
   - Pulling the trigger at `0` shells emits a dry-fire click and smart-swaps automatically: to your previous weapon if it is loaded, otherwise to a loaded Rail Lance, otherwise to the Pistol.
 - **Rail Lance (`3`)**: Unlocked in **03: Security Hub**, **06: Warden Core**, and the **Training Range** (and unlocked directly in Slot 3 when deploying to Stages `04`–`06` from Select Stage). Draws from a carried `15`-slug pool fed by Rail Lance (`+5`) and Slug Pack (`+3`) pickups scaled by difficulty:
-  - **Primary fire (LMB, `1` slug)**: Instant `60u` piercing hitscan beam (`1.10s` capacitor recharge, `0` distance falloff) that penetrates every live target and enemy in line (`120` damage; `90` vs Warden Mech boss plating), stopping only at solid walls, closed bulkheads, or Security Consoles and leaving a fading 3D beam wake.
+  - **Primary fire (LMB, `1` slug)**: Instant `60u` piercing hitscan beam (`1.10s` capacitor recharge, `0` distance falloff) that penetrates every live target and enemy in line (`120` damage; `90` vs the Warden's hide), stopping only at solid walls, closed bulkheads, or Security Consoles and leaving a fading 3D beam wake.
   - **Tactical Zoom Optic (hold RMB, `0` cost)**: Smooth `1.8x` FOV magnification with proportional look-sensitivity scaling, centered low-ADS framing, rangefinder HUD brackets, full arena move speed, and instant zoom cancel on Dash, weapon swap or pause.
   - Pulling the trigger at `0` slugs emits a dry-fire click and smart-swaps automatically: to your previous weapon if it is loaded, otherwise to a loaded Scattergun, otherwise to the Pistol.
 
@@ -196,19 +202,19 @@ walls shield targets, enemies and the player from explosions, while close-range 
 - Blasts and dashes are paid for from the same meter.
 
 **Targets, Enemies & Pickups.** Levels contain coolant canisters (50 health, three pistol shots) that detonate in
-chain-reacting area explosions when destroyed, ring boards (120 health, six pistol shots), and four robotic hostiles:
+chain-reacting area explosions when destroyed, ring boards (120 health, six pistol shots), and four hostiles, three robots and the Warden:
 
 - **Rusher Drone** (40 health): closes distance around cover via grid pathfinding and telegraphs a shock lunge that
   can be sidestepped with Energy Dash.
 - **Sentry Turret** (80 health): anchored base with a swiveling dual-barrel head that winds up and fires 3-bolt
   bursts.
 - **Guard Bot** (100 health): mobile skirmisher that avoids Shock Grates, strafes at medium range and fires single aimed plasma bolts.
-- **Warden Mech** (600 health): two-phase sanctum boss tracked by a top-center health bar. Fires twin-arm 3-bolt fan volleys and telegraphed hydraulic charge slams in Phase 1, shifting at `<= 50%` HP into **Overdrive** (electric violet-cyan reactor, `30%` faster stride/cadence, and 5-bolt fan barrages).
+- **The Warden** (900 health): two-phase melee brute tracked by a top-center health bar; it has no ranged attack. It stands until it notices you, walks (`1.3 u/s`) along the way to a player it cannot see and runs (`3.7 u/s`, faster than your `3.2`) at one it can. Within `0.9u` and facing you it throws a `2.47s` three-punch combo: a hook at `0.60s`, a backhand at `1.10s` and an uppercut at `1.27s` (`16` / `16` / `28` damage), each warned of by a flare at its chest and each carried by a lunge along its facing that stops at the player (up to `2.3u`, `0.7u`, `0.7u`). A punch lands on a player within `1.1u` and `50` degrees of its facing at that moment, and it turns only slowly (`45` deg/s) while it punches, so a sidestep or an Energy Dash avoids all three; walking straight back does not, because the first lunge catches you. After the combo it stands open for `0.9s`. At `<= 50%` HP it enters **Overdrive** (a blue glow): it runs `25%` faster, turns `50%` faster, punches `35%` harder, throws the combo `15%` faster and recovers in `60%` of the time. The times and damage here are those on Normal: the difficulty scales the speed of the combo, the length of the recovery and the damage of the punches, as it does other enemy attacks, but not how fast the Warden walks or runs.
 
-Drones, Guard Bots and the Warden Mech walk round canisters, ring boards, Security Consoles, turrets and each other
+Drones, Guard Bots and the Warden walk round canisters, ring boards, Security Consoles, turrets and each other
 instead of stopping against them, and they turn doorway corners without catching on them.
 
-**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **jumping (`Space`) clears floor grates while airborne** and **Energy Dash (`Shift`) grants 100% immunity** (`0` damage) for as long as the dash lasts. Guard Bots detour around `~` grates while Drones and the Warden Mech traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden Mech** automatically unseals all `M` boss extraction bulkheads.
+**Shock Grates, Bulkheads, Keycards & Consoles.** Live Shock Grate floor tiles (`~`) deal periodic arc ticks while walked on, while **jumping (`Space`) clears floor grates while airborne** and **Energy Dash (`Shift`) grants 100% immunity** (`0` damage) for as long as the dash lasts. Guard Bots detour around `~` grates while Drones and the Warden traverse them freely. Sliding steel bulkhead doors (`=`) open permanently with `E`; Amber (`k`) and Cyan (`c`) keycards unlock matching `A` / `C` bulkheads; `S` Security Consoles override `L` lockdown bulkheads; and defeating every **Warden** automatically unseals all `M` boss extraction bulkheads.
 
 ## Saved settings and progress
 
@@ -238,7 +244,7 @@ on by environment variables:
 | --- | --- |
 | `GAMEX_SCREENSHOT` | Path of the PNG to write. Switches the mode on; without it the game runs normally. |
 | `GAMEX_SCREENSHOT_FRAME` | The frame to save, counted from 1. Default 60; a non-number logs a warning and uses 60. |
-| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden` or `jump`. Without it the player stands still. |
+| `GAMEX_DEMO` | Optional script: `action`, `targets`, `breach`, `title`, `lockdown`, `stages`, `scattergun`, `raillance`, `warden`, `wardenidle` or `jump`. Without it the player stands still. |
 | `GAMEX_VIEWMODEL_ORBIT` | Optional: `yaw` or `yaw,pitch` in degrees. Draws only the weapon in hand and the hand, from outside. |
 
 - `action`: the player turns towards a pillar, charges and releases a blast, then fires the pistol.
@@ -257,7 +263,12 @@ on by environment variables:
 - `raillance`: on the Security Hub stage, holding the Rail Lance, the player holds the zoom from frame 6 to frame 38
   and fires a beam on frame 24.
 - `warden`: on the Warden Core stage, placed in the Warden's arena with the Scattergun, the player pulls the trigger
-  on frames 1 and 3, which fires one blast, and then walks forward.
+  on frames 1 and 3, which fires one blast and wakes the Warden, walks forward and then stands. The Warden runs at
+  them from frame 1 (frame 40 shows it in mid-run), starts its combo on frame 65, lands its punches on frames 101,
+  132 and 142 and stands open from frame 214 to frame 268; its next combo starts on frame 269.
+- `wardenidle`: on the Warden Core stage, with every hostile but the Warden removed, the player stands behind the
+  Warden's shoulder, out of its sight and hearing, and does nothing. Any frame shows the Warden standing as it
+  does before a fight, with no boss bar; `HOSTILES` reads `1/8`.
 - `jump`: in the Training Range, the player walks at the Shock Grate and jumps it on frame 19, without a dash and
   without taking damage.
 
@@ -265,7 +276,7 @@ on by environment variables:
 no exit. The script name is not case-sensitive, and an unknown name is the same as no script.
 
 With `GAMEX_VIEWMODEL_ORBIT` the saved frame shows the weapon in hand and the hand alone, at rest, on a plain grey
-background, without the world or the HUD. That weapon is the Pistol, except in the `scattergun`, `warden` and `jump`
+background, without the world or the HUD. That weapon is the Pistol, except in the `scattergun`, `warden`, `wardenidle` and `jump`
 scripts (the Scattergun) and the `raillance` script (the Rail Lance). A yaw of 0 shows them from behind, 90 from the left side and 180 from the front; a
 pitch of 90 shows them from above, and the pitch is 0 if left out. A value that is not a number logs a warning
 and the normal picture is saved.
@@ -315,8 +326,8 @@ followed by the exception's stack trace:
 
 | Value | What is logged |
 | --- | --- |
-| unset, blank, or `info` | Startup and shutdown, the screens shown, the assets loaded (one line for each batch), settings read, saved progress read and written, levels started and cleared, deaths, boss phases, best times and medals, display mode switches; and every warning. |
-| `debug` | All of that, plus each model, sound and stage file loaded, hostiles spawned and killed, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
+| unset, blank, or `info` | Startup and shutdown, the screens shown, the assets loaded (one line for each batch, and one for the Warden model when it is first loaded), settings read, saved progress read and written, levels started and cleared, deaths, boss phases, best times and medals, display mode switches; and every warning. |
+| `debug` | All of that, plus each model, sound and stage file loaded, the meshes, textures and animations of the Warden model, hostiles spawned and killed, the Warden's punches and its changes of animation, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
 | `warn`, `error` | Only warnings and errors, or only errors. |
 | `trace` | The same as `debug`; the game logs nothing at that level. |
 
@@ -363,7 +374,7 @@ The `tools` programs print their own output and show only the warnings and error
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
     a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
     indexed deduplication). None use graphics types.
-  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), and the textures painted in code.
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), and the textures painted in code.
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
     or input types) and the built-in pixel font.
@@ -378,7 +389,7 @@ The `tools` programs print their own output and show only the warnings and error
 - `tools`: the Gradle model and audio authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
   DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `RailLanceSculpt`, `HandSculpt`, `GenerateAllModels`,
   `SoundSynth`, `GenerateAllSounds`, and the interactive LWJGL3 previewer (`ModelPreviewApp`).
-- `assets`: the files the game loads at start-up:
+- `assets`: the files the game loads, at start-up except where noted:
   - `levels/*.map`, `levels/campaign.txt`: plain-text map layouts, stage metadata/briefings, and ordered campaign manifest.
   - `sounds/*.wav`: 16-bit mono PCM `.wav` files for every weapon, combat, world, pickup and menu cue plus the seamless `charge-hum.wav` blast-charge loop.
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
@@ -386,8 +397,12 @@ The `tools` programs print their own output and show only the warnings and error
   - `models/canister.obj`, `models/ring-board.obj`, `models/blast-orb.obj`, `models/rail-beam.obj`, `models/pickup-*.obj`: 3D meshes for
     targets, pickups (medkit, armor, energy cell, keycards, scattergun, shells, rail lance, slugs), blast projectiles and rail beam trails.
   - `models/door-bulkhead.obj`, `models/security-console.obj`, `models/hazard-grate.obj`: 3D meshes for sliding bulkhead doors, security consoles and shock grates.
-  - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`, `models/enemy-warden.obj`,
-    `models/enemy-bolt.obj`: 3D meshes for articulated enemies, the Warden Mech boss and enemy plasma bolts.
+  - `models/enemy-turret.obj`, `models/enemy-drone.obj`, `models/enemy-guard.obj`,
+    `models/enemy-bolt.obj`: 3D meshes for articulated enemies and enemy plasma bolts.
+  - `models/enemy-warden.glb`: the Warden, a binary glTF with a 28-joint skin, the `Stand_Talking_Angry`, `Walking`,
+    `Running` and `Punch_Combo` animations and three 4096-pixel textures. It is loaded the first time a stage with a
+    Warden is shown, and checked to be there when the game starts. It is a Git LFS file: without Git LFS the game
+    and the tests find a small pointer file in its place and stop on it, saying so (see [How to run](#how-to-run)).
 
 ## Tests
 
@@ -397,7 +412,7 @@ The `tools` programs print their own output and show only the warnings and error
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
 graphics context; the few that touch libGDX's `Gdx` globals put stubs there (`InputControllerTest`,
-`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `LevelsTest`). The `core` tests read `.obj` models, `.wav` sounds and `.map`
+`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `LevelsTest`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds and `.map`
 levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/build.gradle` tracks those folders, so
 editing an asset reruns them. They cover:
 
@@ -414,6 +429,16 @@ editing an asset reruns them. They cover:
 - `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
+- `render`: the Warden model (`WardenModelTest` reads the JSON part of `enemy-warden.glb`: its four animations, its
+  one 28-joint skinned mesh, its height against the Warden's collision height, and the length of its combo clip
+  against the simulation's combo; and checks that only a stage with a live Warden loads the model, and the Warden's
+  glow), and which animation each enemy state shows and how fast it plays for the feet not to slide
+  (`WardenPoseTest`).
+- The Warden's melee (`WardenCombatTest`): its walk without sight and run with it, the three punches at their clip
+  times, reach and frontal arc, the lunges and walls, the telegraph, walking back, sidestepping and dashing, and
+  what overdrive and difficulty change. `WardenFightTest` fights it through the whole simulation with player input:
+  it reaches a player anywhere in its arena on Warden Core, runs down one who only backpedals, and falls to the
+  pistol, the scattergun and the rail lance each on their own.
 - `player`: view angles and movement, armor absorbing damage, death, the dash (its cost, distance, cooldown
   and refusal on low energy), and the jump (its arc, the mid-air dash, and the jump buffer at low frame rates).
 - `hud`: the menu screens, the saved run, quick restart and the `Q` quit prompt (`MenuStateTest`,

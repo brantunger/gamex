@@ -28,7 +28,7 @@ public final class ModelMesh {
         return loadedCount;
     }
 
-    private static void modelLoaded(String assetPath, String label) {
+    static void modelLoaded(String assetPath, String label) {
         loadedCount++;
         log.debug("Loaded the {} model {}", label, assetPath);
     }

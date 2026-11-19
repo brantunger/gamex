@@ -117,8 +117,8 @@ class ModelPreviewAppTest {
 
         app.loadAllEntries();
         int initialCount = app.getEntryCount();
-        // 3 combined viewmodels + 20 world/prop/enemy entries.
-        assertEquals(23, initialCount);
+        // 3 combined viewmodels + 19 world/prop/enemy entries.
+        assertEquals(22, initialCount);
         List<RecordedMesh> gen1Solid = new ArrayList<>(factory.solidMeshes);
         List<RecordedMesh> gen1Wire = new ArrayList<>(factory.wireMeshes);
         assertFalse(gen1Solid.isEmpty());
@@ -136,7 +136,7 @@ class ModelPreviewAppTest {
         String selectedBefore = app.getEntryLabel(app.getCurrentIndex());
         assertEquals("enemy-bolt.obj", selectedBefore);
 
-        // 1) Corrupt canister.obj (loaded near the end of loadAllEntries after 18 entries have built meshes).
+        // 1) Corrupt canister.obj (loaded near the end of loadAllEntries after 17 entries have built meshes).
         Files.writeString(modelsDir.resolve("canister.obj"), "v broken obj syntax\nf 99 100 101\n");
         factory.clearBatchLists();
         app.reloadModels(null);

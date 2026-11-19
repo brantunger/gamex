@@ -661,13 +661,9 @@ class RendererSupportTest {
 
         ObjModel guardObj = ModelMesh.parseModel(
             WorldModels.GUARD_PATH, "guard", readAssetObj(WorldModels.GUARD_PATH));
-        ObjModel wardenObj = ModelMesh.parseModel(
-            WorldModels.WARDEN_PATH, "warden", readAssetObj(WorldModels.WARDEN_PATH));
         for (String part : new String[] {"pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r"}) {
             assertTrue(WorldRenderer.unpackWorldPart(guardObj, WorldModels.GUARD_PATH, "guard", part)
                 .triangleCount() > 0, "guard part " + part);
-            assertTrue(WorldRenderer.unpackWorldPart(wardenObj, WorldModels.WARDEN_PATH, "warden", part)
-                .triangleCount() > 0, "warden part " + part);
         }
 
         // Missing articulated part names both the asset path and "<model> <part>" label.
@@ -693,7 +689,7 @@ class RendererSupportTest {
         assertTrue(missingGuardArm.getMessage().contains("guard arm_r"), missingGuardArm.getMessage());
 
         // Unknown material in articulated or single-part world model names asset path + label + material.
-        ObjModel badWardenTorso = ObjModel.parse(
+        ObjModel badGuardTorso = ObjModel.parse(
             "# @part torso parent=root pivot=0,0.4,0\n"
                 + "# @part torso\n"
                 + "usemtl mystery_chrome\n"
@@ -701,14 +697,14 @@ class RendererSupportTest {
                 + "v 1 0 0\n"
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
-        GdxRuntimeException badWardenMat = assertThrows(GdxRuntimeException.class,
-            () -> WorldRenderer.unpackWorldPart(badWardenTorso, WorldModels.WARDEN_PATH, "warden", "torso"));
-        assertTrue(badWardenMat.getMessage().contains(WorldModels.WARDEN_PATH), badWardenMat.getMessage());
-        assertTrue(badWardenMat.getMessage().contains("warden torso"), badWardenMat.getMessage());
-        assertTrue(badWardenMat.getMessage().contains("mystery_chrome"), badWardenMat.getMessage());
+        GdxRuntimeException badGuardMat = assertThrows(GdxRuntimeException.class,
+            () -> WorldRenderer.unpackWorldPart(badGuardTorso, WorldModels.GUARD_PATH, "guard", "torso"));
+        assertTrue(badGuardMat.getMessage().contains(WorldModels.GUARD_PATH), badGuardMat.getMessage());
+        assertTrue(badGuardMat.getMessage().contains("guard torso"), badGuardMat.getMessage());
+        assertTrue(badGuardMat.getMessage().contains("mystery_chrome"), badGuardMat.getMessage());
 
         GdxRuntimeException badDroneMat = assertThrows(GdxRuntimeException.class,
-            () -> WorldRenderer.unpackWorldModel(badWardenTorso, WorldModels.DRONE_PATH, "drone"));
+            () -> WorldRenderer.unpackWorldModel(badGuardTorso, WorldModels.DRONE_PATH, "drone"));
         assertTrue(badDroneMat.getMessage().contains(WorldModels.DRONE_PATH), badDroneMat.getMessage());
         assertTrue(badDroneMat.getMessage().contains("drone"), badDroneMat.getMessage());
         assertTrue(badDroneMat.getMessage().contains("mystery_chrome"), badDroneMat.getMessage());

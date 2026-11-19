@@ -28,7 +28,7 @@ public final class Door {
         CYAN_KEY,
         /** Sealed remotely until an active Security Console overrides lockdown. */
         LOCKDOWN,
-        /** Sealed remotely until all Warden Mech bosses in the stage are destroyed. */
+        /** Sealed remotely until all Wardens in the stage are destroyed. */
         BOSS
     }
 

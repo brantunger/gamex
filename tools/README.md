@@ -1,6 +1,6 @@
 # `tools` — 3D Model & Audio Asset Generators & Live Previewer
 
-This Gradle subproject (`:tools`) builds all `.obj` model assets in `../assets/models/` and all 16-bit mono PCM `.wav` sound effects in `../assets/sounds/` directly against `:core` constants, materials, dimensions, and sound cues, and provides an interactive LWJGL3 model previewer.
+This Gradle subproject (`:tools`) builds all `.obj` model assets in `../assets/models/` (the Warden's `enemy-warden.glb` is not generated here) and all 16-bit mono PCM `.wav` sound effects in `../assets/sounds/` directly against `:core` constants, materials, dimensions, and sound cues, and provides an interactive LWJGL3 model previewer.
 
 ## Quick Commands
 
@@ -29,10 +29,10 @@ Launch the interactive 3D previewer window:
 ```
 
 ### Previewer Controls
-- **Left/Right or `[`/`]`**: switch between the 23 entries: the 3 first-person viewmodels (pistol, scattergun and rail lance, each with the hand) and 20 world models (enemies, bulkhead door, shock grate, security console, pickups, targets, blast orb, rail beam and enemy bolt)
+- **Left/Right or `[`/`]`**: switch between the 22 entries: the 3 first-person viewmodels (pistol, scattergun and rail lance, each with the hand) and 19 world models (the `.obj` enemies, bulkhead door, shock grate, security console, pickups, targets, blast orb, rail beam and enemy bolt)
 - **Mouse Drag / Scroll**: orbit camera and zoom
-- **`Space`**: toggle live hierarchical joint animation (Warden and Guard leg/arm walk cycles, Turret scan & pitch, Door lift, Pistol slide kick, Scattergun pump, Rail Lance bolt)
-- **`C`**: cycle accent colors (`door-bulkhead`, `pickup-keycard`, `security-console`, `enemy-warden` Phase 1/Overdrive, and the rail lance viewmodel's ready/recharging glow)
+- **`Space`**: toggle live hierarchical joint animation (Guard leg/arm walk cycle, Turret scan & pitch, Door lift, Pistol slide kick, Scattergun pump, Rail Lance bolt)
+- **`C`**: cycle accent colors (`door-bulkhead`, `pickup-keycard`, `security-console`, and the rail lance viewmodel's ready/recharging glow)
 - **`G`**: toggle collision cylinder & `# @socket` gizmos
 - **`W`**: toggle wireframe mode
 - **`R`**: regenerate all `.obj` models via `GenerateAllModels` and hot-reload GPU meshes in place

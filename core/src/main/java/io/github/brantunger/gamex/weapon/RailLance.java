@@ -15,7 +15,7 @@ public final class RailLance {
 
     /** Piercing beam damage dealt to standard targets and enemies (one-shots Drones, Turrets, Guards, Ring Boards). */
     public static final float DAMAGE = 120f;
-    /** Piercing beam damage dealt to the Warden Mech boss's heavy plating (75% of base damage). */
+    /** Piercing beam damage dealt to the Warden's heavy hide (75% of base damage). */
     public static final float WARDEN_DAMAGE = 90f;
     /** Maximum rail beam range in world units. */
     public static final float RANGE = 60f;

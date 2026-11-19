@@ -6,7 +6,8 @@ import io.github.brantunger.gamex.model.ObjModel;
 /**
  * The 3D world objects (targets and blast projectiles), loaded from Wavefront OBJ files. This class names their asset
  * paths and gives each material in those files a colour and gloss, turning parsed models into the game's vertex
- * layout without graphics types.
+ * layout without graphics types. The Warden is the exception: it is a glTF model with its own materials, and
+ * only its path, height, flare position and glow colours are here.
  */
 public final class WorldModels {
 
@@ -38,8 +39,8 @@ public final class WorldModels {
     public static final String DRONE_PATH = "models/enemy-drone.obj";
     /** The path of the guard bot enemy model file inside the assets folder. */
     public static final String GUARD_PATH = "models/enemy-guard.obj";
-    /** The path of the Warden Mech boss model file inside the assets folder. */
-    public static final String WARDEN_PATH = "models/enemy-warden.obj";
+    /** The path of the Warden boss model file, a binary glTF, inside the assets folder. */
+    public static final String WARDEN_PATH = "models/enemy-warden.glb";
     /** The path of the shock/thermal floor grate hazard model file inside the assets folder. */
     public static final String HAZARD_GRATE_PATH = "models/hazard-grate.obj";
     /** The path of the enemy plasma bolt projectile model file inside the assets folder. */
@@ -76,17 +77,11 @@ public final class WorldModels {
     public static final float DRONE_FLARE_Y = 0.34f;
     public static final float DRONE_FLARE_Z = -0.180f;
 
-    public static final float WARDEN_PELVIS_PIVOT_Y = 0.36f;
-    public static final float WARDEN_HIP_X = 0.105f;
-    public static final float WARDEN_HIP_Y = 0.32f;
-    public static final float WARDEN_TORSO_PIVOT_Y = 0.40f;
-    public static final float WARDEN_SHOULDER_X = 0.210f;
-    public static final float WARDEN_SHOULDER_Y = 0.62f;
-    public static final float WARDEN_MUZZLE_X = 0.210f;
-    public static final float WARDEN_MUZZLE_Y = 0.54f;
-    public static final float WARDEN_MUZZLE_Z = -0.175f;
+    /** How tall the Warden model stands in its file, feet at 0; the renderer scales it to the Warden's height. */
+    public static final float WARDEN_MODEL_HEIGHT = 1.70f;
+    /** Where the flare that warns of each of the Warden's punches shows: in front of its chest. */
     public static final float WARDEN_TELEGRAPH_Y = 0.68f;
-    public static final float WARDEN_TELEGRAPH_Z = -0.165f;
+    public static final float WARDEN_TELEGRAPH_Z = -0.26f;
 
     /** Per-draw accent shader colours ({r, g, b, gloss}) substituting {@code # @accent} surfaces without VBO clones. */
     public static final float[] ACCENT_DOOR_UNLOCKED = {0.62f, 0.78f, 0.92f, 0.85f};
@@ -154,10 +149,6 @@ public final class WorldModels {
         SHELL_CRIMSON("shell_crimson", 0.88f, 0.17f, 0.20f, 0.45f),
         SHELL_BRASS("shell_brass", 0.96f, 0.72f, 0.22f, 0.80f),
         SHELL_CRATE("shell_crate", 0.20f, 0.26f, 0.22f, 0.30f),
-        WARDEN_ARMOR("warden_armor", 0.24f, 0.26f, 0.32f, 0.70f),
-        WARDEN_DARK("warden_dark", 0.12f, 0.13f, 0.16f, 0.45f),
-        WARDEN_TRIM("warden_trim", 0.48f, 0.50f, 0.56f, 0.82f),
-        WARDEN_CORE("warden_core", 1.00f, 0.30f, 0.14f, 0.96f),
         HAZARD_FRAME("hazard_frame", 0.22f, 0.25f, 0.30f, 0.65f),
         HAZARD_DARK("hazard_dark", 0.08f, 0.10f, 0.12f, 0.30f),
         HAZARD_COIL("hazard_coil", 0.18f, 0.86f, 1.00f, 0.95f),

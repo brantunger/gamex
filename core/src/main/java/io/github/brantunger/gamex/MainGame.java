@@ -22,6 +22,7 @@ import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.Levels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -143,6 +144,19 @@ public class MainGame extends ApplicationAdapter {
                     warden.completeOnAllTargets);
                 simulation.player.position.set(23.5f, 13.6f);
                 simulation.player.look(-90f, -4f);
+            } else if ("wardenidle".equals(script)) {
+                // Behind the Warden's shoulder, as it faces its door, and out of its hearing, so it stands as it does
+                // before a fight. The turret and the drone that would open fire on the player there, and the rest
+                // of the stage's hostiles with them, are taken out of the picture.
+                Levels.Stage warden = Levels.wardenCore();
+                simulation = new GameSimulation(warden.map,
+                    new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
+                    warden.completeOnAllTargets);
+                for (Enemy enemy : simulation.enemies) {
+                    if (enemy.getKind() != Enemy.Kind.WARDEN) enemy.damage(Float.MAX_VALUE);
+                }
+                simulation.player.position.set(26.8f, 5.2f);
+                simulation.player.look(135f, -4f);
             } else if ("jump".equals(script)) {
                 Levels.Stage range = Levels.trainingRange();
                 simulation = new GameSimulation(range.map,

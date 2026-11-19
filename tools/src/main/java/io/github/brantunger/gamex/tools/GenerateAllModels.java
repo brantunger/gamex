@@ -12,7 +12,7 @@ import java.util.function.Supplier;
 
 /**
  * Generates every shipped {@code .obj} model in {@code assets/models/} deterministically via the {@link MeshBuilder}
- * sculptors.
+ * sculptors. The Warden is not one of them: its model, {@code enemy-warden.glb}, is made outside this project.
  */
 public final class GenerateAllModels {
 
@@ -42,7 +42,6 @@ public final class GenerateAllModels {
         map.put("enemy-turret.obj", EnemySculpt::buildEnemyTurret);
         map.put("enemy-drone.obj", EnemySculpt::buildEnemyDrone);
         map.put("enemy-guard.obj", EnemySculpt::buildEnemyGuard);
-        map.put("enemy-warden.obj", EnemySculpt::buildEnemyWarden);
         map.put("enemy-bolt.obj", PropSculpt::buildEnemyBolt);
         GENERATORS = Collections.unmodifiableMap(map);
     }

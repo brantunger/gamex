@@ -11,9 +11,10 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * A hostile robotic combatant occupying an upright floor cylinder and implementing {@link Damageable}. Supports three
- * archetypes ({@link Kind#DRONE}, {@link Kind#TURRET}, {@link Kind#GUARD}) with cone/proximity/noise wake-up, bounded
- * aggro memory, grid BFS navigation, telegraphed attacks and difficulty-scaled cadence.
+ * A hostile combatant occupying an upright floor cylinder and implementing {@link Damageable}. Supports four
+ * archetypes, three robots ({@link Kind#DRONE}, {@link Kind#TURRET}, {@link Kind#GUARD}) and a creature
+ * ({@link Kind#WARDEN}), with cone/proximity/noise wake-up, bounded aggro memory, grid BFS navigation, telegraphed
+ * attacks and difficulty-scaled cadence.
  */
 public final class Enemy implements Damageable {
 
@@ -25,8 +26,11 @@ public final class Enemy implements Damageable {
         TURRET(80f, 0.23f, 0.68f, 0f),
         /** Mobile armoured skirmisher that strafes at medium range and fires single aimed plasma bolts. */
         GUARD(100f, 0.24f, 0.82f, 2.15f),
-        /** Two-phase heavy walker boss firing fan volleys and telegraphed hydraulic charge slams. */
-        WARDEN(600f, 0.32f, 0.94f, 1.95f);
+        /**
+         * Two-phase melee boss. It walks while it cannot see the player, runs at them once it can, and throws a
+         * three-punch combo in reach. Its speed here is its walk; see {@link #WARDEN_RUN_SPEED}.
+         */
+        WARDEN(900f, 0.32f, 0.94f, 1.30f);
 
         public final float maxHealth;
         public final float radius;
@@ -80,23 +84,62 @@ public final class Enemy implements Damageable {
     public static final float DRONE_LUNGE_DAMAGE = 22f;
     public static final float DRONE_RECOVER_TIME = 0.50f;
 
+    /** The Warden is in overdrive, its second phase, at or below this share of its health. */
     public static final float WARDEN_OVERDRIVE_RATIO = 0.5f;
-    public static final float WARDEN_OVERDRIVE_SCALE = 1.30f;
-    public static final float WARDEN_VOLLEY_RANGE = 16.0f;
-    public static final float WARDEN_WINDUP_TIME = 0.38f;
-    public static final float WARDEN_COOLDOWN = 1.40f;
-    public static final float WARDEN_BOLT_SPEED = 7.8f;
-    public static final float WARDEN_BOLT_DAMAGE = 14f;
-    public static final int WARDEN_FAN_PHASE1 = 3;
-    public static final int WARDEN_FAN_PHASE2 = 5;
-    public static final float WARDEN_FAN_SPREAD_DEG_PHASE1 = 18f;
-    public static final float WARDEN_FAN_SPREAD_DEG_PHASE2 = 30f;
-    public static final float WARDEN_SLAM_TRIGGER_RANGE = 2.65f;
-    public static final float WARDEN_SLAM_WINDUP_TIME = 0.42f;
-    public static final float WARDEN_SLAM_LUNGE_TIME = 0.24f;
-    public static final float WARDEN_SLAM_LUNGE_SPEED = 9.2f;
-    public static final float WARDEN_SLAM_DAMAGE = 26f;
-    public static final float WARDEN_SLAM_RECOVER_TIME = 0.48f;
+    /** How fast the Warden runs at a player it can see. The player moves at 3.2, so walking away does not work. */
+    public static final float WARDEN_RUN_SPEED = 3.70f;
+    /**
+     * How long the Warden keeps running after it loses sight of the player, in seconds. A sightline that grazes a
+     * pillar comes and goes from step to step, and without this the Warden would stutter between walk and run.
+     */
+    public static final float WARDEN_CHASE_MEMORY = 0.5f;
+    /** How fast the Warden turns while it chases, in degrees per second. */
+    public static final float WARDEN_TURN_RATE = 320f;
+    /** The Warden starts its combo when the player's centre is this close, in sight and in front of it. */
+    public static final float WARDEN_ATTACK_RANGE = 0.90f;
+    /** The player must be within this angle of the Warden's facing for the combo to start, in degrees. */
+    public static final float WARDEN_ATTACK_FACING_DEG = 15f;
+    /** The length of the {@code Punch_Combo} clip of the Warden's model, in seconds; the combo lasts as long. */
+    public static final float WARDEN_COMBO_TIME = 2.4666667f;
+    /**
+     * When each punch of the combo lands, in seconds of the clip. They were measured on the clip, by following the
+     * hand joints through it: a left hook that is furthest forward at 0.600 s (its speed peaks at 0.633 s), a left
+     * backhand furthest forward at 1.100 s, and a right uppercut furthest forward at 1.267 s (its speed peaks at
+     * 1.233 s, the fastest move of the clip). From 2.07 s the clip is back in its guard stance.
+     */
+    private static final float[] WARDEN_PUNCH_TIMES = {0.60f, 1.10f, 1.27f};
+    /** The damage of each punch of the combo; the uppercut that ends it is the heavy one. */
+    private static final float[] WARDEN_PUNCH_DAMAGE = {16f, 16f, 28f};
+    /**
+     * How far the Warden lunges along its facing into each punch, at most: it stops at the player. The first is
+     * long enough to catch a player who walks straight back from the start of the combo. In the 0.6 s before it
+     * lands they get 1.92 further away, and on the easy difficulty, where the combo is slower, 2.26.
+     */
+    private static final float[] WARDEN_LUNGE_DISTANCE = {2.30f, 0.70f, 0.70f};
+    /** The longest piece a lunge is moved in at once. */
+    private static final float WARDEN_LUNGE_MAX_STEP = 0.05f;
+    /** How long before each punch lands its lunge starts, in seconds of the clip. */
+    private static final float[] WARDEN_LUNGE_TIME = {0.30f, 0.20f, 0.14f};
+    /** A punch hits a player whose centre is within this distance of the Warden's when it lands. */
+    public static final float WARDEN_PUNCH_REACH = 1.10f;
+    /** A punch hits a player within this angle of the Warden's facing, in degrees to either side. */
+    public static final float WARDEN_PUNCH_ARC_DEG = 50f;
+    /** How fast the Warden turns during its combo, in degrees per second: slowly, so a sidestep gets round it. */
+    public static final float WARDEN_COMBO_TURN_RATE = 45f;
+    /** How long before a punch lands its telegraph builds up, in seconds of the clip. */
+    public static final float WARDEN_TELEGRAPH_TIME = 0.22f;
+    /** How long the Warden stands open after its combo before it chases again, in seconds. */
+    public static final float WARDEN_RECOVER_TIME = 0.90f;
+    /** In overdrive the Warden runs this much faster. */
+    public static final float WARDEN_OVERDRIVE_SPEED_SCALE = 1.25f;
+    /** In overdrive the Warden turns this much faster, in the chase and in the combo. */
+    public static final float WARDEN_OVERDRIVE_TURN_SCALE = 1.50f;
+    /** In overdrive every punch does this much more damage. */
+    public static final float WARDEN_OVERDRIVE_DAMAGE_SCALE = 1.35f;
+    /** In overdrive the combo plays this much faster, its punches and lunges with it. */
+    public static final float WARDEN_OVERDRIVE_COMBO_RATE = 1.15f;
+    /** In overdrive the recovery after the combo lasts this share of its time. */
+    public static final float WARDEN_OVERDRIVE_RECOVER_SCALE = 0.60f;
 
     private static final float WAKE_COOLDOWN = 0.25f;
     private static final float STRAFE_SWITCH_TIME = 1.8f;
@@ -135,11 +178,15 @@ public final class Enemy implements Damageable {
     private float lungeDirX;
     private float lungeDirZ;
     private boolean lungeHitDealt;
-    private boolean windupIsSlam;
-    private boolean preferSlamNext;
     private boolean overdriveTriggered;
-    private boolean slamTriggered;
-    private float shootRecoil;
+    /** How far into its combo the Warden is, in seconds of the clip. */
+    private float comboTime;
+    private int punchesThrown;
+    private int punchesHeard;
+    private int punchesLanded;
+    private boolean chasing;
+    private float unseenTime = WARDEN_CHASE_MEMORY;
+    private float groundSpeed;
     private float strafeSign = 1f;
     private float strafeTimer = STRAFE_SWITCH_TIME;
     private float sidestepSign = 1f;
@@ -252,42 +299,65 @@ public final class Enemy implements Damageable {
     }
 
     /**
-     * @return wind-up intensity in [0, 1] during attack telegraphing or burst fire, otherwise 0.
+     * @return wind-up intensity in [0, 1] during attack telegraphing or burst fire, otherwise 0. For the Warden it
+     *     builds up over the {@link #WARDEN_TELEGRAPH_TIME} before each punch of its combo lands.
      */
     public float getWindupProgress() {
         if (state != State.WINDUP) return 0f;
+        if (kind == Kind.WARDEN) {
+            if (punchesThrown >= WARDEN_PUNCH_TIMES.length) return 0f;
+            float left = WARDEN_PUNCH_TIMES[punchesThrown] - comboTime;
+            return Math.max(0f, Math.min(1f, 1f - left / WARDEN_TELEGRAPH_TIME));
+        }
         if (burstRemaining > 0) return 1f;
         if (stateDuration <= 0f) return 0f;
         return Math.max(0f, Math.min(1f, 1f - stateTimer / stateDuration));
     }
 
-    /** @return whether this enemy is a live Warden Mech operating in Phase 2 Overdrive (&le; 50% HP). */
+    /** @return whether this enemy is a live Warden in overdrive, its second phase (&le; 50% HP). */
     public boolean isOverdrive() {
         return kind == Kind.WARDEN && !isDestroyed() && health <= kind.maxHealth * WARDEN_OVERDRIVE_RATIO;
     }
 
-    /** @return true once when a Warden Mech transitions across 50% HP into Phase 2 Overdrive. */
+    /** @return true once when a Warden crosses 50% HP into overdrive. */
     public boolean consumeOverdriveTriggered() {
         boolean triggered = overdriveTriggered;
         overdriveTriggered = false;
         return triggered;
     }
 
-    /** @return true once when a Warden Mech launches a hydraulic charge slam. */
-    public boolean consumeSlamTriggered() {
-        boolean triggered = slamTriggered;
-        slamTriggered = false;
-        return triggered;
+    /** @return how many punches the Warden has thrown since this was last asked; each is asked about once. */
+    public int consumePunchesThrown() {
+        int thrown = punchesThrown - punchesHeard;
+        punchesHeard = punchesThrown;
+        return thrown;
     }
 
-    /** @return true while a Warden Mech is winding up or executing a hydraulic charge slam. */
-    public boolean isSlamAttack() {
-        return kind == Kind.WARDEN && ((state == State.WINDUP && windupIsSlam) || state == State.LUNGING);
+    /** @return how many punches of the Warden's current or last combo hit the player and hurt them. */
+    public int getPunchesLanded() {
+        return punchesLanded;
     }
 
-    /** @return firing recoil impulse in [0, 1] for cannon arm animation. */
-    public float getShootRecoil() {
-        return shootRecoil;
+    /** @return whether this is a Warden running at a player it can see, rather than walking after one it cannot. */
+    public boolean isChasing() {
+        return kind == Kind.WARDEN && state == State.PURSUING && chasing;
+    }
+
+    /**
+     * @return the speed the Warden set out to move at in its last step, in units per second: its walk or its run
+     *     while it had somewhere to go, and 0 while it stood, punched or recovered. Other enemies report 0.
+     */
+    public float getGroundSpeed() {
+        return groundSpeed;
+    }
+
+    /**
+     * @return how far into the {@code Punch_Combo} clip the Warden is, in seconds: 0 before its first combo, rising
+     *     through a combo, and {@link #WARDEN_COMBO_TIME} from then on, through the recovery and the chase that
+     *     follows, until its next combo starts
+     */
+    public float getComboTime() {
+        return comboTime;
     }
 
     /**
@@ -334,7 +404,7 @@ public final class Enemy implements Damageable {
                        List<EnemyProjectile> outProjectiles) {
         if (dt <= 0f) return;
         hitFlash = Math.max(0f, hitFlash - dt);
-        shootRecoil = Math.max(0f, shootRecoil - dt * 4.5f);
+        groundSpeed = 0f;
         if (isDestroyed() || player == null || player.isDead()) {
             if (state == State.WINDUP || state == State.LUNGING || state == State.RECOVERING) {
                 state = State.DORMANT;
@@ -381,7 +451,7 @@ public final class Enemy implements Damageable {
                 break;
             case WARDEN:
                 updateWarden(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, damageScale, player,
-                    worldBlockers, doors, outProjectiles);
+                    worldBlockers, doors);
                 break;
             case DRONE:
             default:
@@ -598,77 +668,34 @@ public final class Enemy implements Damageable {
 
     private void updateWarden(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
                               boolean hasLos, float speedScale, float damageScale, Player player,
-                              List<? extends Damageable> worldBlockers, List<Door> doors,
-                              List<EnemyProjectile> outProjectiles) {
-        float phaseScale = isOverdrive() ? WARDEN_OVERDRIVE_SCALE : 1.0f;
-        float effectiveScale = speedScale * phaseScale;
+                              List<? extends Damageable> worldBlockers, List<Door> doors) {
+        boolean overdrive = isOverdrive();
+        float turnScale = overdrive ? WARDEN_OVERDRIVE_TURN_SCALE : 1f;
 
         if (state == State.WINDUP) {
-            if (hasLos && dist > 1e-4f) {
-                yaw = turnToward(yaw, yawToward(dx, dz), (windupIsSlam ? 260f : 340f) * phaseScale * dt);
-            }
-            stateTimer -= dt;
-            if (stateTimer <= 0f) {
-                if (windupIsSlam) {
-                    double rad = Math.toRadians(yaw);
-                    lungeDirX = (float) Math.sin(rad);
-                    lungeDirZ = (float) -Math.cos(rad);
-                    state = State.LUNGING;
-                    stateDuration = WARDEN_SLAM_LUNGE_TIME;
-                    stateTimer = stateDuration;
-                    lungeHitDealt = false;
-                    slamTriggered = true;
-                } else {
-                    if (hasLos) {
-                        fireWardenFanVolley(map, doors, effectiveScale, player, outProjectiles);
-                    }
-                    state = State.PURSUING;
-                    cooldown = WARDEN_COOLDOWN / effectiveScale;
-                    preferSlamNext = dist <= WARDEN_SLAM_TRIGGER_RANGE * 1.4f;
-                }
-            }
-            return;
-        }
-
-        if (state == State.LUNGING) {
-            stateTimer -= dt;
-            float step = WARDEN_SLAM_LUNGE_SPEED * phaseScale * dt;
-            float beforeX = position.x;
-            float beforeZ = position.y;
-            moveSolid(map, worldBlockers, doors, player, lungeDirX * step, lungeDirZ * step, false);
-            walkPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * 5.0f;
-            float nowDist = Vector2.dst(position.x, position.y, player.position.x, player.position.y);
-            float contactDist = Player.RADIUS + kind.radius + 0.24f;
-            if (!lungeHitDealt && nowDist <= contactDist) {
-                player.damage(WARDEN_SLAM_DAMAGE * damageScale, position.x, position.y);
-                lungeHitDealt = true;
-                keepOutsidePlayer(map, worldBlockers, doors, player);
-                enterWardenRecovering(effectiveScale);
-                return;
-            }
-            if (stateTimer <= 0f) {
-                keepOutsidePlayer(map, worldBlockers, doors, player);
-                enterWardenRecovering(effectiveScale);
-            }
+            float rate = speedScale * (overdrive ? WARDEN_OVERDRIVE_COMBO_RATE : 1f);
+            float damage = damageScale * (overdrive ? WARDEN_OVERDRIVE_DAMAGE_SCALE : 1f);
+            stepWardenCombo(dt * rate, dt, turnScale, damage, speedScale, map, player, worldBlockers, doors);
             return;
         }
 
         if (state == State.RECOVERING) {
             stateTimer -= dt;
-            if (stateTimer <= 0f) {
-                state = State.PURSUING;
-                cooldown = (WARDEN_COOLDOWN * 0.65f) / effectiveScale;
-            }
-            return;
+            if (stateTimer > 0f) return;
+            // It chases again in this same step, so that with the player still in reach the next combo follows
+            // the recovery at once, with no step of chasing in between.
+            state = State.PURSUING;
         }
 
+        // It runs at a player it can see, or saw a moment ago, and walks along the way to one it cannot.
+        unseenTime = hasLos ? 0f : Math.min(WARDEN_CHASE_MEMORY, unseenTime + dt);
+        chasing = unseenTime < WARDEN_CHASE_MEMORY;
+        float speed = chasing ? WARDEN_RUN_SPEED * (overdrive ? WARDEN_OVERDRIVE_SPEED_SCALE : 1f) : kind.moveSpeed;
         float moveX = 0f;
         float moveZ = 0f;
         if (hasLos && dist > 1e-4f) {
-            yaw = turnToward(yaw, yawToward(dx, dz), 320f * phaseScale * dt);
-            boolean solidBlocking = sidestepping
-                || isSolidBlockingPath(worldBlockers, dx / dist, dz / dist, dist - (Player.RADIUS + kind.radius));
-            if (dist > 1.35f || solidBlocking) {
+            yaw = turnToward(yaw, yawToward(dx, dz), WARDEN_TURN_RATE * turnScale * dt);
+            if (dist > WARDEN_ATTACK_RANGE) {
                 steerTowardVisiblePlayer(map, pathfinder, doors, dx, dz, dist);
                 moveX = steerDir.x;
                 moveZ = steerDir.y;
@@ -676,106 +703,97 @@ public final class Enemy implements Damageable {
         } else if (pathfinder != null && pathfinder.nextDirection(map, doors, position.x, position.y, steerDir)) {
             moveX = steerDir.x;
             moveZ = steerDir.y;
-            yaw = turnToward(yaw, yawToward(moveX, moveZ), 280f * phaseScale * dt);
+            yaw = turnToward(yaw, yawToward(moveX, moveZ), 280f * turnScale * dt);
         }
 
         if (Math.hypot(moveX, moveZ) > 1e-4f) {
-            float step = kind.moveSpeed * phaseScale * dt;
-            float beforeX = position.x;
-            float beforeZ = position.y;
-            stepRoundSolids(map, worldBlockers, doors, player, moveX, moveZ, step);
-            walkPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * 5.5f;
+            stepRoundSolids(map, worldBlockers, doors, player, moveX, moveZ, speed * dt);
+            groundSpeed = speed;
         }
 
-        if (hasLos && cooldown <= 0f) {
-            float nowDx = player.position.x - position.x;
-            float nowDz = player.position.y - position.y;
-            float nowDist = (float) Math.hypot(nowDx, nowDz);
-            boolean facingPlayer = nowDist <= 1e-4f
-                || Math.abs(angleDiff(yaw, yawToward(nowDx, nowDz))) <= FORWARD_FIRE_ARC_DEG;
-            float slamContactDist = Player.RADIUS + kind.radius + 0.24f;
-            boolean slamBlocked = nowDist > 1e-4f
-                && isSolidBlockingPath(worldBlockers, nowDx / nowDist, nowDz / nowDist, nowDist - slamContactDist);
-            if (facingPlayer && !slamBlocked && nowDist <= WARDEN_SLAM_TRIGGER_RANGE
-                && (preferSlamNext || nowDist <= 1.75f)) {
-                double rad = Math.toRadians(yaw);
-                lungeDirX = (float) Math.sin(rad);
-                lungeDirZ = (float) -Math.cos(rad);
-                windupIsSlam = true;
-                state = State.WINDUP;
-                stateDuration = WARDEN_SLAM_WINDUP_TIME / effectiveScale;
-                stateTimer = stateDuration;
-                return;
-            }
-            if (facingPlayer && nowDist <= WARDEN_VOLLEY_RANGE) {
-                windupIsSlam = false;
-                state = State.WINDUP;
-                stateDuration = WARDEN_WINDUP_TIME / effectiveScale;
-                stateTimer = stateDuration;
-                preferSlamNext = nowDist <= WARDEN_SLAM_TRIGGER_RANGE * 1.5f;
-            }
+        if (hasLos && cooldown <= 0f && dist <= WARDEN_ATTACK_RANGE
+            && (dist < 1e-4f || Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= WARDEN_ATTACK_FACING_DEG)) {
+            state = State.WINDUP;
+            comboTime = 0f;
+            punchesThrown = 0;
+            punchesHeard = 0;
+            punchesLanded = 0;
         }
     }
 
-    private void enterWardenRecovering(float effectiveScale) {
-        state = State.RECOVERING;
-        stateDuration = WARDEN_SLAM_RECOVER_TIME / effectiveScale;
-        stateTimer = stateDuration;
-        preferSlamNext = false;
+    /**
+     * Advances the Warden's combo by {@code clipDt} seconds of its clip. It turns slowly toward the player, lunges
+     * along its facing into each punch, and at the moment a punch lands hurts a player who is then in reach and in
+     * front of it. The combo always runs to the end of the clip, hit or miss, and the Warden then recovers.
+     */
+    private void stepWardenCombo(float clipDt, float dt, float turnScale, float damage, float speedScale,
+                                 GameMap map, Player player, List<? extends Damageable> worldBlockers,
+                                 List<Door> doors) {
+        float dx = player.position.x - position.x;
+        float dz = player.position.y - position.y;
+        if (Math.hypot(dx, dz) > 1e-4f) {
+            yaw = turnToward(yaw, yawToward(dx, dz), WARDEN_COMBO_TURN_RATE * turnScale * dt);
+        }
+
+        float from = comboTime;
+        comboTime = Math.min(WARDEN_COMBO_TIME, comboTime + clipDt);
+        float lunge = 0f;
+        for (int i = 0; i < WARDEN_PUNCH_TIMES.length; i++) {
+            lunge += WARDEN_LUNGE_DISTANCE[i] * lungeShare(i, from, comboTime);
+        }
+        if (lunge > 0f) {
+            double rad = Math.toRadians(yaw);
+            float dirX = (float) Math.sin(rad);
+            float dirZ = (float) -Math.cos(rad);
+            // In short pieces, and no further than the player: a lunge that slid round them would carry the
+            // Warden past and leave them behind its back for the punch.
+            float contact = Player.RADIUS + kind.radius;
+            for (float left = lunge; left > 0f; left -= WARDEN_LUNGE_MAX_STEP) {
+                float piece = Math.min(left, WARDEN_LUNGE_MAX_STEP);
+                float fromX = position.x;
+                float fromZ = position.y;
+                moveSolid(map, worldBlockers, doors, player, dirX * piece, dirZ * piece, false);
+                if (Vector2.dst(position.x, position.y, player.position.x, player.position.y) < contact) {
+                    position.set(fromX, fromZ);
+                    break;
+                }
+            }
+        }
+
+        // A long step can pass more than one punch; each still lands.
+        while (punchesThrown < WARDEN_PUNCH_TIMES.length && comboTime >= WARDEN_PUNCH_TIMES[punchesThrown]) {
+            if (isInPunchReach(map, doors, player)
+                && player.damage(WARDEN_PUNCH_DAMAGE[punchesThrown] * damage, position.x, position.y) > 0f) {
+                punchesLanded++;
+            }
+            punchesThrown++;
+        }
+
+        if (comboTime >= WARDEN_COMBO_TIME) {
+            state = State.RECOVERING;
+            float recover = WARDEN_RECOVER_TIME * (isOverdrive() ? WARDEN_OVERDRIVE_RECOVER_SCALE : 1f);
+            stateDuration = recover / speedScale;
+            stateTimer = stateDuration;
+        }
     }
 
-    private void fireWardenFanVolley(GameMap map, List<Door> doors, float effectiveScale, Player player,
-                                     List<EnemyProjectile> outProjectiles) {
-        shootRecoil = 1f;
-        if (outProjectiles == null) return;
-        boolean overdrive = isOverdrive();
-        int count = overdrive ? WARDEN_FAN_PHASE2 : WARDEN_FAN_PHASE1;
-        float spreadDeg = overdrive ? WARDEN_FAN_SPREAD_DEG_PHASE2 : WARDEN_FAN_SPREAD_DEG_PHASE1;
+    /** @return the share of punch {@code i}'s lunge that falls between two times of the clip */
+    private static float lungeShare(int i, float from, float to) {
+        float end = WARDEN_PUNCH_TIMES[i];
+        float start = end - WARDEN_LUNGE_TIME[i];
+        float overlap = Math.min(to, end) - Math.max(from, start);
+        return overlap <= 0f ? 0f : overlap / WARDEN_LUNGE_TIME[i];
+    }
 
-        double rad = Math.toRadians(yaw);
-        float fx = (float) Math.sin(rad);
-        float fz = (float) -Math.cos(rad);
-        float rx = (float) Math.cos(rad);
-        float rz = (float) Math.sin(rad);
-        float fwd = -WorldModels.WARDEN_MUZZLE_Z;
-        Vector3 leftMuzzle = new Vector3(
-            position.x + fx * fwd - rx * WorldModels.WARDEN_MUZZLE_X,
-            WorldModels.WARDEN_MUZZLE_Y,
-            position.y + fz * fwd - rz * WorldModels.WARDEN_MUZZLE_X);
-        Vector3 rightMuzzle = new Vector3(
-            position.x + fx * fwd + rx * WorldModels.WARDEN_MUZZLE_X,
-            WorldModels.WARDEN_MUZZLE_Y,
-            position.y + fz * fwd + rz * WorldModels.WARDEN_MUZZLE_X);
-        Vector3 chestOrigin = new Vector3(
-            position.x + fx * fwd,
-            WorldModels.WARDEN_MUZZLE_Y,
-            position.y + fz * fwd);
-        pullMuzzleClearOfWalls(map, doors, leftMuzzle);
-        pullMuzzleClearOfWalls(map, doors, rightMuzzle);
-        pullMuzzleClearOfWalls(map, doors, chestOrigin);
-        Vector3 baseAim = clampedAimVector(
-            chestOrigin.x, chestOrigin.y, chestOrigin.z,
-            player.position.x, player.getAimTargetY() - 0.02f, player.position.y,
-            FORWARD_FIRE_ARC_DEG, MAX_BOLT_PITCH_DEG);
-
-        for (int i = 0; i < count; i++) {
-            float offsetDeg = count <= 1 ? 0f : -spreadDeg * 0.5f + spreadDeg * i / (count - 1f);
-            Vector3 selectedMuzzle = Math.abs(offsetDeg) < 0.5f
-                ? (alternateBarrel ? rightMuzzle : leftMuzzle)
-                : (offsetDeg < 0f ? leftMuzzle : rightMuzzle);
-            Vector3 muzzle = new Vector3(selectedMuzzle);
-            double aRad = Math.toRadians(offsetDeg);
-            float cos = (float) Math.cos(aRad);
-            float sin = (float) Math.sin(aRad);
-            Vector3 aim = new Vector3(
-                baseAim.x * cos - baseAim.z * sin,
-                baseAim.y,
-                baseAim.x * sin + baseAim.z * cos).nor();
-            ensureFirstStepClearOfWalls(map, doors, muzzle, aim);
-            outProjectiles.add(new EnemyProjectile(
-                muzzle, aim, WARDEN_BOLT_SPEED * effectiveScale, WARDEN_BOLT_DAMAGE, this));
-        }
-        alternateBarrel = !alternateBarrel;
+    /** @return whether a punch landing now hits the player: in sight, within reach and within the frontal arc */
+    private boolean isInPunchReach(GameMap map, List<Door> doors, Player player) {
+        float dx = player.position.x - position.x;
+        float dz = player.position.y - position.y;
+        float dist = (float) Math.hypot(dx, dz);
+        if (dist > WARDEN_PUNCH_REACH) return false;
+        if (dist < 1e-4f) return true;
+        if (Math.abs(angleDiff(yaw, yawToward(dx, dz))) > WARDEN_PUNCH_ARC_DEG) return false;
+        return Hitscan.hasLineOfSight(map, doors, position.x, position.y, player.position.x, player.position.y);
     }
 
     private void updateDrone(float dt, GameMap map, Pathfinder pathfinder, float dx, float dz, float dist,
@@ -1116,29 +1134,6 @@ public final class Enemy implements Damageable {
             if (Vector2.dst(fromX, fromZ, simPos.x, simPos.y) < simStep * STALL_RATIO) {
                 return false;
             }
-        }
-        return false;
-    }
-
-    /**
-     * @return whether any live solid blocker stops a circle of {@code kind.radius} travelling along
-     *     {@code (dirX, dirZ)} strictly before covering {@code maxTravel}
-     */
-    private boolean isSolidBlockingPath(List<? extends Damageable> worldBlockers, float dirX, float dirZ,
-                                        float maxTravel) {
-        if (maxTravel <= 0f || worldBlockers == null) return false;
-        for (int i = 0; i < worldBlockers.size(); i++) {
-            Damageable solid = worldBlockers.get(i);
-            if (solid == this || solid.isDestroyed()) continue;
-            float relX = solid.getX() - position.x;
-            float relZ = solid.getZ() - position.y;
-            float along = relX * dirX + relZ * dirZ;
-            if (along <= 0f) continue;
-            float sumR = solid.getRadius() + kind.radius - 1e-3f;
-            float perp = Math.abs(relZ * dirX - relX * dirZ);
-            if (perp >= sumR) continue;
-            float hitTravel = along - (float) Math.sqrt(sumR * sumR - perp * perp);
-            if (hitTravel < maxTravel) return true;
         }
         return false;
     }

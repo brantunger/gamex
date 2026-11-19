@@ -231,8 +231,6 @@ public final class SoundManager implements Disposable {
             case HAZARD_ZAP:
             case PLAYER_DASH:
                 return 0.72f;
-            case BOSS_SHOOT:
-                return 0.80f;
             case BOSS_SLAM:
                 return 0.88f;
             case BOSS_OVERDRIVE:
