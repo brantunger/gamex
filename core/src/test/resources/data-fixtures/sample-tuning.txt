@@ -1,0 +1,13 @@
+// A sample tuning file, read by TuningFileTest from the test classpath. It shows every kind of value the loader
+// reads; the format is described in the Javadoc of io.github.brantunger.gamex.data.TuningFile.
+pistol.fire_interval: 0.3
+pistol.pellets: 8
+pistol.auto: false
+pistol.name: SERVICE PISTOL
+
+// A comma-separated list of numbers.
+pistol.falloff: 0.60, 1.10, 1.27
+
+// A key the loading code declares as repeated may appear on several lines.
+hint: HOLD FIRE TO CHARGE.
+hint: RELEASE TO LAUNCH.
