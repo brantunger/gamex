@@ -1,0 +1,5 @@
+// GAMEX_DEMO=stages: the Select Stage screen with every stage open, over Lockdown Wing. No input is played.
+screen: stage_select
+stage: 04_lockdown_wing
+loadout: fresh
+unlock_all_stages: true

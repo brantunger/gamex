@@ -1,0 +1,12 @@
+// GAMEX_DEMO=scattergun: the Training Range with the Combat Scattergun in hand. The player steps forward and
+// fires at the range targets.
+screen: playing
+stage: training_range
+loadout: custom
+loadout.health: 100
+loadout.armor: 0
+loadout.shells: 16
+loadout.weapon: scattergun
+
+1-18: move_forward
+24: fire

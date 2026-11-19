@@ -28,6 +28,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -329,9 +331,22 @@ class TunedSimulationTest {
         return found;
     }
 
+    /** @return each {@code new Name()} with nothing between the brackets in the text, with where it is */
+    private static List<String> emptyCalls(Path file, String text, String name) {
+        List<String> found = new ArrayList<>();
+        Matcher call = Pattern.compile("new\\s+" + name + "\\s*\\(\\s*\\)").matcher(text);
+        while (call.find()) {
+            int line = 1 + (int) text.substring(0, call.start()).chars().filter(c -> c == '\n').count();
+            found.add(file + ":" + line + " calls new " + name + "() with no arguments");
+        }
+        return found;
+    }
+
     /**
-     * The constructors of {@link GameSimulation} and {@code MenuState} that read the tuning files themselves are for
-     * tests. The game reads them once in {@code MainGame.create()}, so no main source may call the short forms.
+     * The constructors of {@link GameSimulation}, {@code MenuState}, {@code InputController}, {@code GameSettings}
+     * and {@link MainGame} that read the tuning files themselves are for tests. The launcher reads the window and
+     * settings defaults once and the game reads the rest once in {@code MainGame.create()}, so no main source may
+     * call the short forms.
      */
     @Test
     void noMainSourceBuildsASimulationOrTheMenusWithoutTheLoadedTuning() throws IOException {
@@ -348,7 +363,10 @@ class TunedSimulationTest {
                 String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
                 scanned++;
                 offenders.addAll(shortCalls(source, text, "GameSimulation", 7));
-                offenders.addAll(shortCalls(source, text, "MenuState", 5));
+                offenders.addAll(shortCalls(source, text, "MenuState", 6));
+                offenders.addAll(shortCalls(source, text, "InputController", 3));
+                offenders.addAll(shortCalls(source, text, "MainGame", 5));
+                offenders.addAll(emptyCalls(source, text, "GameSettings"));
             }
         }
         assertTrue(scanned > 50, "only " + scanned + " sources were found");
@@ -359,5 +377,57 @@ class TunedSimulationTest {
         assertEquals(1, shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d);", "GameSimulation", 7).size());
         assertEquals(0,
             shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d, w, g);", "GameSimulation", 7).size());
+        assertEquals(1, shortCalls(sample, "new App(new MainGame(w, h, forced), config);", "MainGame", 5).size());
+        assertEquals(0, shortCalls(sample, "new App(new MainGame(w, h, f, win,\n set), c);", "MainGame", 5).size());
+        assertEquals(1, emptyCalls(sample, "settings = new GameSettings();", "GameSettings").size());
+        assertEquals(1, emptyCalls(sample, "settings = new GameSettings(\n);", "GameSettings").size());
+        assertEquals(0, emptyCalls(sample, "settings = new GameSettings(defaults);", "GameSettings").size());
+        assertEquals(0, emptyCalls(sample, "store = new GameSettingsStore();", "GameSettings").size());
+    }
+
+    private static int count(String text, String part) {
+        int count = 0;
+        for (int at = text.indexOf(part); at >= 0; at = text.indexOf(part, at + 1)) count++;
+        return count;
+    }
+
+    /**
+     * The launcher and the game must not read different copies of the window and settings defaults: the launcher
+     * reads each file once and hands the two objects to {@link MainGame}, which reads neither file once it is
+     * built. (That the launcher hands them over is the check above: it may not call a short constructor.)
+     */
+    @Test
+    void theWindowAndSettingsDefaultsAreReadOnceByTheLauncherAndNotAgainByTheGame() throws IOException {
+        String launcher = new String(Files.readAllBytes(
+            Paths.get("../desktop/src/main/java/io/github/brantunger/gamex/desktop/DesktopLauncher.java")),
+            StandardCharsets.UTF_8);
+        assertEquals(1, count(launcher, "WindowDefaults.load("));
+        assertEquals(1, count(launcher, "SettingsDefaults.load("));
+
+        String game = new String(Files.readAllBytes(
+            Paths.get("src/main/java/io/github/brantunger/gamex/MainGame.java")), StandardCharsets.UTF_8);
+        int create = game.indexOf("public void create()");
+        assertTrue(create > 0, "MainGame.create() was not found");
+        assertEquals(0, count(game.substring(create), "Defaults.load("),
+            "past its constructors, MainGame uses the defaults it was given");
+
+        // Nothing else in the main sources reads them: the renderers, the settings and the overlay are handed them.
+        List<String> readers = new ArrayList<>();
+        for (String root : new String[] {"src/main/java", "../desktop/src/main/java", "../tools/src/main/java"}) {
+            List<Path> sources;
+            try (Stream<Path> walk = Files.walk(Paths.get(root))) {
+                sources = walk.filter(p -> p.toString().endsWith(".java")).toList();
+            }
+            for (Path source : sources) {
+                String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
+                if (count(text, "WindowDefaults.load(") + count(text, "SettingsDefaults.load(") > 0) {
+                    readers.add(source.getFileName().toString());
+                }
+            }
+        }
+        readers.sort(null);
+        // GameSettings and MainGame read them in their tests-only constructors alone, which the check above keeps
+        // out of the main sources.
+        assertEquals(List.of("DesktopLauncher.java", "GameSettings.java", "MainGame.java"), readers);
     }
 }

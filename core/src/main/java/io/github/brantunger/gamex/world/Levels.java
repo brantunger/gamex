@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.world;
 
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.data.TuningFile;
+import io.github.brantunger.gamex.hud.TextTemplate;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,12 @@ import java.util.regex.Pattern;
  * stage without the header starts with the pistol alone. The header counts for campaign stages only: from the
  * menu the Training Range is entered with the pistol alone, and {@link #trainingRange()} refuses a file that holds
  * the header.
+ *
+ * <p>A {@code briefing} line may hold placeholders in braces, which the menus fill in when they show it:
+ * {@code {key:action}} for the name of the key bound to an action and {@code {rail.zoom_factor}} for that value of
+ * {@code data/weapons.txt} (see {@link TextTemplate}). {@code Levels} is given neither the key names nor the
+ * tuning, so here a line keeps its placeholders; a brace without its partner and an unknown placeholder are
+ * rejected.
  *
  * <p>The campaign's stages are the files listed in {@link #CAMPAIGN_PATH}, in play order; {@link #stage(String)}
  * finds one of them by its {@code id}. {@link #FIRST_PATH} and {@link #TRAINING_RANGE_PATH} are not campaign stages
@@ -71,7 +78,10 @@ public final class Levels {
         public final String id;
         /** Uppercase stage title shown in briefings and tallies. */
         public final String title;
-        /** Short retro terminal log lines displayed before entering the stage. */
+        /**
+         * Short retro terminal log lines displayed before entering the stage, as written: a line may hold
+         * placeholders for the menus to fill in.
+         */
         public final List<String> briefing;
         /** Par clear time in seconds. */
         public final float parSeconds;
@@ -84,6 +94,8 @@ public final class Levels {
          * pistol is always among them, and is the only one when the stage has no such header. Unmodifiable.
          */
         public final Set<WeaponSlot> startingWeapons;
+        /** The file the stage was read from, as error messages name it; null for a stage built in code. */
+        public final String path;
 
         Stage(String id, String title, float parSeconds, boolean completeOnAllTargets, GameMap map,
               String... briefing) {
@@ -92,6 +104,12 @@ public final class Levels {
 
         Stage(String id, String title, float parSeconds, boolean completeOnAllTargets, GameMap map,
               Set<WeaponSlot> startingWeapons, String... briefing) {
+            this(null, id, title, parSeconds, completeOnAllTargets, map, startingWeapons, briefing);
+        }
+
+        Stage(String path, String id, String title, float parSeconds, boolean completeOnAllTargets, GameMap map,
+              Set<WeaponSlot> startingWeapons, String... briefing) {
+            this.path = path;
             this.id = id;
             this.title = title;
             this.parSeconds = parSeconds;
@@ -269,6 +287,8 @@ public final class Levels {
                 throw new IllegalArgumentException("Empty 'briefing' line in " + assetPath
                     + " at line " + line.line);
             }
+            TextTemplate.checkPlaceholders(line.value, "'briefing' in " + assetPath + " at line " + line.line,
+                Collections.emptyList());
             briefing.add(line.value);
         }
         Set<WeaponSlot> startingWeapons = parseLoadout(header, loadoutAllowed);
@@ -301,7 +321,7 @@ public final class Levels {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid map layout in " + assetPath + ": " + e.getMessage(), e);
         }
-        return new Stage(id, title, parSeconds, completeOnAllTargets, map, startingWeapons,
+        return new Stage(assetPath, id, title, parSeconds, completeOnAllTargets, map, startingWeapons,
             briefing.toArray(new String[0]));
     }
 

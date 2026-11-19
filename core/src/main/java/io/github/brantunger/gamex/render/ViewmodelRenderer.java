@@ -23,6 +23,7 @@ import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
@@ -46,8 +47,6 @@ public final class ViewmodelRenderer implements Disposable {
 
     private static final Logger log = LoggerFactory.getLogger(ViewmodelRenderer.class);
 
-    static final int DEFAULT_VIEWPORT_WIDTH = 1280;
-    static final int DEFAULT_VIEWPORT_HEIGHT = 720;
     private static final float FIELD_OF_VIEW = 52f;
     private static final float NEAR = 0.02f;
     private static final float FAR = 4f;
@@ -132,21 +131,23 @@ public final class ViewmodelRenderer implements Disposable {
     /**
      * @param textures the textures of the muzzle flash and the charge glow; the caller keeps ownership of them
      * @param palettes the colours of the weapons and the hand
+     * @param window the size the camera takes until the window reports its own
      */
-    public ViewmodelRenderer(ProceduralTextures textures, Palettes palettes) {
-        this(Gdx.graphics, textures, palettes, null);
+    public ViewmodelRenderer(ProceduralTextures textures, Palettes palettes, WindowDefaults window) {
+        this(Gdx.graphics, textures, palettes, window, null);
     }
 
-    ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, Palettes palettes, ResourceBackend backend) {
+    ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, Palettes palettes, WindowDefaults window,
+                      ResourceBackend backend) {
         railAccentReady = palettes.railLance.accent(RailLanceModel.Accent.READY.name);
         railAccentRecharging = palettes.railLance.accent(RailLanceModel.Accent.RECHARGING.name);
         railAccentEmpty = palettes.railLance.accent(RailLanceModel.Accent.EMPTY.name);
         ResourceBackend active = backend != null ? backend : createGlBackend();
         try {
             // The camera never moves: it sits at the origin of view space, looking down negative z.
-            int initialWidth = initialViewportWidth(graphics);
-            int initialHeight = initialViewportHeight(graphics);
-            camera = createViewmodelCamera(graphics);
+            int initialWidth = initialViewportWidth(graphics, window);
+            int initialHeight = initialViewportHeight(graphics, window);
+            camera = createViewmodelCamera(graphics, window);
             resize(initialWidth, initialHeight);
 
             // The shader text is read from assets/shaders/; a missing file stops the start here, by name.
@@ -296,23 +297,23 @@ public final class ViewmodelRenderer implements Disposable {
             obj -> HandModel.packIndexed(obj, palette));
     }
 
-    static int initialViewportWidth(Graphics graphics) {
+    static int initialViewportWidth(Graphics graphics, WindowDefaults window) {
         return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
             ? graphics.getWidth()
-            : DEFAULT_VIEWPORT_WIDTH;
+            : window.width;
     }
 
-    static int initialViewportHeight(Graphics graphics) {
+    static int initialViewportHeight(Graphics graphics, WindowDefaults window) {
         return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
             ? graphics.getHeight()
-            : DEFAULT_VIEWPORT_HEIGHT;
+            : window.height;
     }
 
-    static PerspectiveCamera createViewmodelCamera(Graphics graphics) {
+    static PerspectiveCamera createViewmodelCamera(Graphics graphics, WindowDefaults window) {
         PerspectiveCamera cam = new PerspectiveCamera();
         cam.fieldOfView = FIELD_OF_VIEW;
-        cam.viewportWidth = initialViewportWidth(graphics);
-        cam.viewportHeight = initialViewportHeight(graphics);
+        cam.viewportWidth = initialViewportWidth(graphics, window);
+        cam.viewportHeight = initialViewportHeight(graphics, window);
         cam.near = NEAR;
         cam.far = FAR;
         cam.position.setZero();

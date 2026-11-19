@@ -1,0 +1,4 @@
+// GAMEX_DEMO=title: the Title screen over Outer Breach. No input is played.
+screen: title
+stage: 01_outer_breach
+loadout: fresh

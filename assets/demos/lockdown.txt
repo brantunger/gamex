@@ -1,0 +1,8 @@
+// GAMEX_DEMO=lockdown: Lockdown Wing. The player walks to the bulkhead door, opens it and walks through.
+screen: playing
+stage: 04_lockdown_wing
+loadout: fresh
+
+1-18: move_forward
+25: interact
+45-85: move_forward

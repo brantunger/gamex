@@ -9,7 +9,9 @@ import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.hud.GlyphCheck;
 import io.github.brantunger.gamex.hud.PixelFont;
+import io.github.brantunger.gamex.hud.TextTemplate;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -200,13 +203,53 @@ class LevelsTest {
             if (stage.briefing.size() > BRIEFING_BOX_LINES) {
                 problems.add(stage.id + " has " + stage.briefing.size() + " briefing lines");
             }
-            for (String line : stage.briefing) {
-                // The screen draws each line behind a "> " prompt.
+            for (String raw : stage.briefing) {
+                // The screen draws each line behind a "> " prompt, with its placeholders filled in.
+                String line = TestTuning.STRINGS.fill(raw, "a briefing of " + stage.id);
                 float width = PixelFont.width("> " + line, BRIEFING_PIXEL_SIZE);
                 if (width > BRIEFING_BOX_WIDTH) problems.add(stage.id + " line is " + width + " wide: " + line);
             }
         }
         assertTrue(problems.isEmpty(), problems.size() + " problems: " + String.join("; ", problems));
+    }
+
+    @Test
+    void everyShippedTitleAndBriefingCanBeDrawnOnceItsPlaceholdersAreTakenOut() {
+        List<Levels.Stage> stages = new ArrayList<>();
+        stages.add(Levels.trainingRange());
+        stages.addAll(Levels.campaign());
+        int placeholders = 0;
+        for (Levels.Stage stage : stages) {
+            assertEquals(-1, GlyphCheck.firstUndrawable(TestTuning.FONT, stage.title), stage.title);
+            for (String line : stage.briefing) {
+                String literal = TextTemplate.checkPlaceholders(line, stage.id, Collections.emptyList());
+                assertEquals(-1, GlyphCheck.firstUndrawable(TestTuning.FONT, literal), stage.id + ": " + line);
+                if (!literal.equals(line)) placeholders++;
+            }
+        }
+        assertEquals(1, placeholders, "the Rail Lance briefing of the Security Hub quotes a key and a value");
+    }
+
+    @Test
+    void aBriefingKeepsItsPlaceholdersAndABrokenOneFailsNamingTheFileAndTheLine() {
+        String head = "id: s1\ntitle: S1\npar: 30\ncomplete_on_all_targets: false\n";
+        String map = "\n#####\n#.>.#\n#####\n";
+        Levels.Stage stage = Levels.parseStage("levels/custom.map",
+            head + "briefing: PRESS {key:jump} AND ZOOM {rail.zoom_factor}X\n" + map);
+        assertEquals(Arrays.asList("PRESS {key:jump} AND ZOOM {rail.zoom_factor}X"), stage.briefing);
+
+        String where = " in 'briefing' in levels/custom.map at line 6";
+        String[][] broken = {
+            {"PRESS {key:fly}", "Unknown action in placeholder {key:fly}" + where},
+            {"PRESS {jump}", "Unknown placeholder {jump}" + where},
+            {"PRESS {key:jump", "'{' without '}' after it" + where},
+            {"PRESS key:jump}", "'}' without '{' before it" + where},
+        };
+        for (String[] each : broken) {
+            String message = assertThrows(IllegalArgumentException.class, () -> Levels.parseStage(
+                "levels/custom.map", head + "briefing: FIRST LINE\nbriefing: " + each[0] + "\n" + map)).getMessage();
+            assertTrue(message.startsWith(each[1]), message);
+        }
     }
 
     @Test

@@ -618,7 +618,7 @@ class GameSimulationTest {
         PlayerInput input = new PlayerInput();
 
         // Closed bulkhead shows interact prompt and blocks movement into the east hall.
-        assertEquals("[E] OPEN BULKHEAD", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.OPEN_BULKHEAD, sim.getInteractionPrompt());
         input.moveForward = 1f;
         for (int i = 0; i < 40; i++) sim.update(FRAME, input);
         assertTrue(sim.player.position.x < 3.5f, "blocked by closed bulkhead: " + sim.player.position.x);
@@ -653,12 +653,12 @@ class GameSimulationTest {
         PlayerInput input = new PlayerInput();
 
         // Attempt Amber bulkhead before picking up Amber keycard.
-        assertEquals("NEEDS AMBER KEYCARD", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.NEEDS_AMBER, sim.getInteractionPrompt());
         input.interact = true;
         sim.update(FRAME, input);
         input.interact = false;
         assertFalse(sim.doors.get(0).isOpening());
-        assertEquals("NEEDS AMBER KEYCARD", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.NEEDS_AMBER, sim.getToast().id);
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.DOOR_LOCKED));
 
         // Walk west to pick up Amber keycard.
@@ -671,20 +671,20 @@ class GameSimulationTest {
         // Walk east up to Amber bulkhead and unlock it.
         input.moveForward = 1f;
         for (int i = 0; i < 45; i++) sim.update(FRAME, input);
-        assertEquals("[E] UNLOCK AMBER BULKHEAD", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.UNLOCK_AMBER, sim.getInteractionPrompt());
         input.moveForward = 0f;
         input.interact = true;
         sim.update(FRAME, input);
         input.interact = false;
         assertTrue(sim.doors.get(0).isOpening());
-        assertEquals("AMBER BULKHEAD UNLOCKED", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.AMBER_UNLOCKED, sim.getToast().id);
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.DOOR_OPEN));
 
         // Let Amber door open, cross through, confirm Cyan bulkhead still refuses.
         for (int i = 0; i < 35; i++) sim.update(FRAME, input);
         input.moveForward = 1f;
         for (int i = 0; i < 45; i++) sim.update(FRAME, input);
-        assertEquals("NEEDS CYAN KEYCARD", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.NEEDS_CYAN, sim.getInteractionPrompt());
     }
 
     @Test
@@ -708,12 +708,12 @@ class GameSimulationTest {
         assertEquals(Enemy.State.DORMANT, sim.enemies.get(0).getState());
 
         // Activating the console overrides every L lockdown door simultaneously and wakes the ambush drone.
-        assertEquals("[E] OVERRIDE LOCKDOWN", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.OVERRIDE_CONSOLE, sim.getInteractionPrompt());
         input.interact = true;
         sim.update(FRAME, input);
         input.interact = false;
         assertTrue(sim.consoles.get(0).isActivated());
-        assertEquals("LOCKDOWN OVERRIDDEN", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.LOCKDOWN_OVERRIDDEN, sim.getToast().id);
         assertTrue(sim.doors.get(0).isOpening());
         assertTrue(sim.doors.get(1).isOpening());
         assertTrue(sim.enemies.get(0).getState() != Enemy.State.DORMANT);
@@ -831,7 +831,7 @@ class GameSimulationTest {
         input.fire = true;
         sim.update(FRAME, input);
         input.fire = false;
-        assertEquals("OUT OF SHELLS", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.OUT_OF_SHELLS, sim.getToast().id);
         assertEquals(WeaponSlot.PISTOL, sim.getTargetWeapon());
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
         for (int i = 0; i < 15; i++) sim.update(FRAME, input);
@@ -940,11 +940,11 @@ class GameSimulationTest {
         // Move close to sealed M bulkhead and verify prompt + locked toast.
         sim.player.position.set(4.5f, 1.3f);
         sim.player.look(90f, 0f); // face south toward M at (4.5, 2.5)
-        assertEquals("SEALED BY THE WARDEN", sim.getInteractionPrompt());
+        assertEquals(GameSimulation.InteractionPrompt.SEALED_BY_WARDEN, sim.getInteractionPrompt());
         input.interact = true;
         sim.update(FRAME, input);
         input.interact = false;
-        assertEquals("SEALED BY THE WARDEN", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.SEALED_BY_WARDEN, sim.getToast().id);
         assertFalse(bossDoor.isOpening());
 
         // Turn back toward Warden and drop HP below 50%: wakes HUD boss bar & triggers Overdrive event.
@@ -954,7 +954,7 @@ class GameSimulationTest {
         sim.update(FRAME, input);
         assertNotNull(sim.getActiveBoss());
         assertTrue(sim.getActiveBoss().isOverdrive());
-        assertEquals("WARDEN OVERDRIVE", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.WARDEN_OVERDRIVE, sim.getToast().id);
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.BOSS_OVERDRIVE));
 
         // Destroying Warden emits BOSS_DESTROYED, clears active boss HUD, and opens all M extraction bulkheads.
@@ -963,7 +963,7 @@ class GameSimulationTest {
         assertTrue(warden.isDestroyed());
         assertNull(sim.getActiveBoss());
         assertTrue(bossDoor.isOpening());
-        assertEquals("WARDEN DESTROYED - EXTRACTION UNSEALED", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.WARDEN_DESTROYED, sim.getToast().id);
         List<SoundEvent> events = sim.drainSoundEvents();
         assertEquals(1, countSound(events, SoundEvent.Type.BOSS_DESTROYED));
         assertEquals(1, countSound(events, SoundEvent.Type.DOOR_OPEN));
@@ -1138,7 +1138,7 @@ class GameSimulationTest {
         input.fire = true;
         sim.update(FRAME, input);
         input.fire = false;
-        assertEquals("OUT OF SLUGS", sim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.OUT_OF_SLUGS, sim.getToast().id);
         assertEquals(WeaponSlot.SCATTERGUN, sim.getTargetWeapon());
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
         for (int i = 0; i < 12; i++) sim.update(FRAME, input);
@@ -1663,7 +1663,7 @@ class GameSimulationTest {
         scatterSim.drainSoundEvents();
         input.fire = true;
         scatterSim.update(FRAME, input);
-        assertEquals("OUT OF SHELLS", scatterSim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.OUT_OF_SHELLS, scatterSim.getToast().id);
         assertEquals(WeaponSlot.PISTOL, scatterSim.getTargetWeapon());
         assertEquals(1, countSound(scatterSim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
 
@@ -1680,7 +1680,7 @@ class GameSimulationTest {
         railSim.drainSoundEvents();
         input.fire = true;
         railSim.update(FRAME, input);
-        assertEquals("OUT OF SLUGS", railSim.getToastMessage());
+        assertEquals(GameSimulation.ToastId.OUT_OF_SLUGS, railSim.getToast().id);
         assertEquals(WeaponSlot.PISTOL, railSim.getTargetWeapon());
         assertEquals(1, countSound(railSim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
     }
@@ -2071,7 +2071,7 @@ class GameSimulationTest {
         // Collect the medkit (+) and decay the toast into its fade-out window so toastAlpha sits strictly in (0, 1).
         sim.player.position.set(2.4f, 1.5f);
         sim.update(0.05f, idle);
-        assertNotNull(sim.getToastMessage());
+        assertNotNull(sim.getToast());
         for (int i = 0; i < 34; i++) {
             sim.update(0.05f, idle);
         }
@@ -2108,7 +2108,7 @@ class GameSimulationTest {
             assertEquals(timeBefore, sim.getTime(), 1e-6f, "time after " + badDt);
             assertEquals(hitMarkerBefore, sim.getHitMarker(), 1e-6f, "hitMarker after " + badDt);
             assertEquals(toastAlphaBefore, sim.getToastAlpha(), 1e-6f, "toastAlpha after " + badDt);
-            assertNotNull(sim.getToastMessage());
+            assertNotNull(sim.getToast());
             assertEquals(swapProgressBefore, sim.getSwapProgress(), 1e-6f, "swapProgress after " + badDt);
             assertEquals(beamProgressBefore, sim.railBeams.get(0).getProgress(), 1e-6f, "railBeam after " + badDt);
             assertEquals(doorProgressBefore, door.getOpenProgress(), 1e-6f, "door after " + badDt);

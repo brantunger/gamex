@@ -1,0 +1,10 @@
+// GAMEX_DEMO=breach: Outer Breach. The player runs in, dashes, sidesteps, turns and then fires the pistol.
+screen: playing
+stage: 01_outer_breach
+loadout: fresh
+
+1-155: move_forward
+25: dash
+115-135: move_right
+136-150: turn -1.2
+150-: fire

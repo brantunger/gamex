@@ -38,9 +38,6 @@ class DifficultyTuningTest {
         assertEquals("NORMAL", Difficulty.NORMAL.name());
         assertEquals("HARD", Difficulty.HARD.name());
         assertSame(Difficulty.HARD, Difficulty.valueOf("HARD"));
-        assertEquals("EASY", Difficulty.EASY.label);
-        assertEquals("NORMAL", Difficulty.NORMAL.label);
-        assertEquals("HARD", Difficulty.HARD.label);
     }
 
     @Test

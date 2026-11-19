@@ -135,7 +135,7 @@ class GdxPreferencesStoreTest {
             assertDoesNotThrow(() -> settings.save(store));
             assertEquals(1, stub.flushCalls);
 
-            GameSettings reloadedInSession = GameSettings.load(store);
+            GameSettings reloadedInSession = GameSettings.load(store, SettingsDefaults.load());
             assertEquals(100f, reloadedInSession.getFov(), 1e-6f);
             assertEquals(0.4f, reloadedInSession.getMasterVolume(), 1e-6f);
             assertTrue(reloadedInSession.isFullscreen());

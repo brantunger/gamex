@@ -11,7 +11,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
+import io.github.brantunger.gamex.settings.SettingsDefaults;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
 
 import javax.imageio.ImageIO;
@@ -31,7 +34,102 @@ import java.util.Map;
 
 class DesktopLauncherTest {
 
-    private static final int[] DEFAULT_SIZE = {1280, 720};
+    /** The shipped {@code assets/data/window.txt}, read without libGDX. */
+    private static final WindowDefaults WINDOW = WindowDefaults.load();
+    /** The shipped {@code assets/data/settings.txt}, read the same way. */
+    private static final SettingsDefaults SETTINGS = SettingsDefaults.load();
+    private static final int[] DEFAULT_SIZE = {WINDOW.width, WINDOW.height};
+
+    private static WindowDefaults window(int width, int height) {
+        return WindowDefaults.parse("window.txt", "window.width: " + width + "\nwindow.height: " + height + "\n");
+    }
+
+    private static SettingsDefaults settingsWithFullscreen(boolean fullscreen) {
+        return SettingsDefaults.parse("settings.txt", String.join("\n",
+            "sensitivity.default: 0.12", "sensitivity.min: 0.03", "sensitivity.max: 0.40", "sensitivity.step: 0.01",
+            "fov.default: 70", "fov.min: 60", "fov.max: 110", "fov.step: 5",
+            "volume.default: 0.80", "volume.min: 0.0", "volume.max: 1.0", "volume.step: 0.10",
+            "invert_y.default: false", "view_bob.default: true", "fullscreen.default: " + fullscreen));
+    }
+
+    @Test
+    void theShippedWindowFileHoldsTheSizeTheLauncherHeldBeforeTheMove() {
+        assertEquals(1280, WINDOW.width);
+        assertEquals(720, WINDOW.height);
+        assertEquals(160, DesktopLauncher.MIN_WINDOW_WIDTH);
+        assertEquals(120, DesktopLauncher.MIN_WINDOW_HEIGHT);
+        assertEquals(7680, DesktopLauncher.MAX_WINDOW_WIDTH);
+        assertEquals(4320, DesktopLauncher.MAX_WINDOW_HEIGHT);
+    }
+
+    @Test
+    void theLauncherReadsItsTwoFilesWhereTheGameReadsItsOwn(@TempDir Path temp) throws IOException {
+        // libGDX reads a file under the working directory if it is there and from the classpath otherwise. A copy
+        // in an assets folder under the working directory (a jar started in the project root) is not one it reads.
+        String otherWindow = "window.width: 1024\nwindow.height: 768\n";
+        String otherSettings = new String(Files.readAllBytes(resolveDesktopFile("../assets/data/settings.txt")),
+            StandardCharsets.UTF_8).replace("fullscreen.default: " + SETTINGS.fullscreen,
+            "fullscreen.default: " + !SETTINGS.fullscreen);
+        Path inAssets = Files.createDirectories(temp.resolve("assets").resolve("data"));
+        Files.write(inAssets.resolve("window.txt"), otherWindow.getBytes(StandardCharsets.UTF_8));
+        Files.write(inAssets.resolve("settings.txt"), otherSettings.getBytes(StandardCharsets.UTF_8));
+        String configuredBefore = System.getProperty("gamex.assets");
+        System.setProperty("gamex.assets", temp.resolve("assets").toString());
+        try {
+            WindowDefaults window = DesktopLauncher.loadWindowDefaults(temp);
+            assertArrayEquals(DEFAULT_SIZE, new int[] {window.width, window.height}, "the copy on the classpath");
+            assertEquals(SETTINGS.fullscreen, DesktopLauncher.loadSettingsDefaults(temp).fullscreen,
+                "the copy on the classpath");
+
+            Path loose = Files.createDirectories(temp.resolve("data"));
+            Files.write(loose.resolve("window.txt"), otherWindow.getBytes(StandardCharsets.UTF_8));
+            Files.write(loose.resolve("settings.txt"), otherSettings.getBytes(StandardCharsets.UTF_8));
+            window = DesktopLauncher.loadWindowDefaults(temp);
+            assertArrayEquals(new int[] {1024, 768}, new int[] {window.width, window.height}, "the loose copy");
+            assertEquals(!SETTINGS.fullscreen, DesktopLauncher.loadSettingsDefaults(temp).fullscreen,
+                "the loose copy");
+        } finally {
+            if (configuredBefore == null) {
+                System.clearProperty("gamex.assets");
+            } else {
+                System.setProperty("gamex.assets", configuredBefore);
+            }
+        }
+    }
+
+    @Test
+    void windowSizeFallsBackToTheSizeOfTheWindowFileItIsGiven() {
+        WindowDefaults other = window(1024, 768);
+        for (String input : new String[] {null, "", "   "}) {
+            List<String> warnings = captureWarnings(
+                () -> assertArrayEquals(new int[] {1024, 768}, DesktopLauncher.windowSize(input, other)));
+            assertEquals(List.of(), warnings, "expected no warning for blank input: '" + input + "'");
+        }
+        List<String> warnings = captureWarnings(
+            () -> assertArrayEquals(new int[] {1024, 768}, DesktopLauncher.windowSize("800", other)));
+        assertEquals(List.of("GAMEX_WINDOW is not a size between 160x120 and 7680x4320 like 800x600: '800'; using "
+            + "1024x768"), warnings);
+        assertArrayEquals(new int[] {800, 600}, DesktopLauncher.windowSize("800x600", other));
+    }
+
+    @Test
+    void aStartWithNothingSavedIsFullscreenExactlyWhenTheSettingsFileSaysSo() {
+        assertFalse(SETTINGS.fullscreen);
+        SettingsDefaults fullscreen = settingsWithFullscreen(true);
+        assertTrue(DesktopLauncher.shouldStartFullscreen(null, null, null, fullscreen));
+        assertTrue(DesktopLauncher.shouldStartFullscreen(null, null, new MapKeyValueStore(), fullscreen));
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, new MapKeyValueStore(),
+            settingsWithFullscreen(false)));
+        assertFalse(DesktopLauncher.shouldStartFullscreen("1600x900", null, null, fullscreen));
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, "out.png", null, fullscreen));
+
+        // A saved choice wins over the default.
+        MapKeyValueStore store = new MapKeyValueStore();
+        GameSettings saved = new GameSettings(fullscreen);
+        saved.setFullscreen(false);
+        saved.save(store);
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, store, fullscreen));
+    }
 
     private static Path resolveDesktopFile(String relativePath) {
         Path fromDesktop = Paths.get(relativePath);
@@ -69,7 +167,7 @@ class DesktopLauncherTest {
     void windowSizeUsesDefaultSilentlyWhenMissingOrBlank() {
         for (String input : new String[] {null, "", "   "}) {
             List<String> warnings = captureWarnings(
-                () -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input)));
+                () -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input, WINDOW)));
             assertEquals(List.of(), warnings, "expected no warning for blank input: '" + input + "'");
         }
     }
@@ -77,12 +175,12 @@ class DesktopLauncherTest {
     @Test
     void windowSizeParsesValidDimensionsWithinBoundsSilently() {
         List<String> warnings = captureWarnings(() -> {
-            assertArrayEquals(new int[] {800, 600}, DesktopLauncher.windowSize("800x600"));
-            assertArrayEquals(new int[] {1920, 1080}, DesktopLauncher.windowSize(" 1920X1080 "));
+            assertArrayEquals(new int[] {800, 600}, DesktopLauncher.windowSize("800x600", WINDOW));
+            assertArrayEquals(new int[] {1920, 1080}, DesktopLauncher.windowSize(" 1920X1080 ", WINDOW));
             assertArrayEquals(new int[] {DesktopLauncher.MIN_WINDOW_WIDTH, DesktopLauncher.MIN_WINDOW_HEIGHT},
-                DesktopLauncher.windowSize("160x120"));
+                DesktopLauncher.windowSize("160x120", WINDOW));
             assertArrayEquals(new int[] {DesktopLauncher.MAX_WINDOW_WIDTH, DesktopLauncher.MAX_WINDOW_HEIGHT},
-                DesktopLauncher.windowSize("7680x4320"));
+                DesktopLauncher.windowSize("7680x4320", WINDOW));
         });
         assertEquals(List.of(), warnings);
     }
@@ -96,7 +194,7 @@ class DesktopLauncherTest {
         };
         for (String input : invalid) {
             List<String> warnings = captureWarnings(
-                () -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input)));
+                () -> assertArrayEquals(DEFAULT_SIZE, DesktopLauncher.windowSize(input, WINDOW)));
             assertEquals(List.of("GAMEX_WINDOW is not a size between 160x120 and 7680x4320 like 800x600: '" + input
                 + "'; using 1280x720"), warnings);
         }
@@ -137,21 +235,21 @@ class DesktopLauncherTest {
 
     @Test
     void shouldStartFullscreenHonorsSavedSettingUnlessOverriddenByWindowOrScreenshotEnv() {
-        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, null));
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, null, SETTINGS));
 
         MapKeyValueStore store = new MapKeyValueStore();
         GameSettings settings = new GameSettings();
         settings.setFullscreen(false);
         settings.save(store);
-        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, store));
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, null, store, SETTINGS));
 
         settings.setFullscreen(true);
         settings.save(store);
-        assertTrue(DesktopLauncher.shouldStartFullscreen(null, null, store));
-        assertTrue(DesktopLauncher.shouldStartFullscreen("   ", "", store));
+        assertTrue(DesktopLauncher.shouldStartFullscreen(null, null, store, SETTINGS));
+        assertTrue(DesktopLauncher.shouldStartFullscreen("   ", "", store, SETTINGS));
 
-        assertFalse(DesktopLauncher.shouldStartFullscreen(null, "out.png", store));
-        assertFalse(DesktopLauncher.shouldStartFullscreen("1600x900", null, store));
+        assertFalse(DesktopLauncher.shouldStartFullscreen(null, "out.png", store, SETTINGS));
+        assertFalse(DesktopLauncher.shouldStartFullscreen("1600x900", null, store, SETTINGS));
     }
 
     @Test
@@ -169,7 +267,7 @@ class DesktopLauncherTest {
         settings.save(store);
         for (String windowEnv : new String[] {null, "", "   ", "1600x900", "fullscreen"}) {
             assertEquals(!DesktopLauncher.isWindowForced(windowEnv),
-                DesktopLauncher.shouldStartFullscreen(windowEnv, null, store),
+                DesktopLauncher.shouldStartFullscreen(windowEnv, null, store, SETTINGS),
                 "the launcher and the game agree for GAMEX_WINDOW='" + windowEnv + "'");
         }
     }

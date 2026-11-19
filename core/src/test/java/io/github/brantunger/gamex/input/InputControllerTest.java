@@ -32,8 +32,6 @@ import java.util.Set;
 class InputControllerTest {
 
     private static final float FRAME = 1f / 60f;
-    /** The index of the FIELD OF VIEW row on the Settings screen. */
-    private static final int FOV_ROW = 2;
 
     private Input previousInput;
     private Graphics previousGraphics;
@@ -128,7 +126,7 @@ class InputControllerTest {
         if (screen == MenuState.Screen.STAGE_SELECT) {
             MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.TITLE);
-            menu.setSelectedIndex(menu.getOptions().indexOf("SELECT STAGE"));
+            assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
             menu.confirm();
             assertEquals(screen, menu.getScreen());
             return menu;
@@ -136,7 +134,7 @@ class InputControllerTest {
         if (screen == MenuState.Screen.DIFFICULTY_SELECT) {
             MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.TITLE);
-            menu.setSelectedIndex(menu.getOptions().indexOf("START CAMPAIGN"));
+            assertTrue(menu.selectId(MenuState.OptionId.START_CAMPAIGN));
             menu.confirm();
             assertEquals(screen, menu.getScreen());
             return menu;
@@ -144,7 +142,7 @@ class InputControllerTest {
         if (screen == MenuState.Screen.BRIEFING) {
             MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.TITLE);
-            menu.setSelectedIndex(menu.getOptions().indexOf("TRAINING RANGE"));
+            assertTrue(menu.selectId(MenuState.OptionId.TRAINING_RANGE));
             menu.confirm();
             assertEquals(screen, menu.getScreen());
             return menu;
@@ -159,7 +157,7 @@ class InputControllerTest {
             menu.onStageCleared(new Player(1.5f, 1.5f, 0f, 100f, 0f), 30f, 5, 5, 0f);
         } else if (screen == MenuState.Screen.TITLE) {
             menu.escape();
-            menu.setSelectedIndex(menu.getOptions().indexOf("RETURN TO TITLE"));
+            assertTrue(menu.selectId(MenuState.OptionId.RETURN_TO_TITLE));
             menu.confirm();
         }
         assertEquals(screen, menu.getScreen());
@@ -170,11 +168,10 @@ class InputControllerTest {
     private static MenuState settingsMenuOnFov(GameSettings settings) {
         MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         menu.escape();
-        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
-        menu.setSelectedIndex(FOV_ROW);
-        assertTrue(menu.getOptions().get(menu.getSelectedIndex()).startsWith("FIELD OF VIEW"));
+        assertTrue(menu.selectId(MenuState.OptionId.SET_FOV));
         return menu;
     }
 
@@ -219,13 +216,21 @@ class InputControllerTest {
         return controller.poll(out);
     }
 
-    /** @return a window y coordinate inside the row of {@code option} on the current screen, at the centre x */
-    private static int rowY(MenuState menu, String option) {
-        int index = menu.getOptions().indexOf(option);
+    /** @return a window y coordinate inside the first row with the id on the current screen, at the centre x */
+    private static int rowY(MenuState menu, MenuState.OptionId option) {
+        List<MenuState.Option> options = menu.getMenuOptions();
+        for (int index = 0; index < options.size(); index++) {
+            if (options.get(index).id == option) return rowY(menu, index);
+        }
+        return fail("no row for " + option);
+    }
+
+    /** @return a window y coordinate inside the row at {@code index} on the current screen, at the centre x */
+    private static int rowY(MenuState menu, int index) {
         for (int y = 0; y < 720; y++) {
             if (HudRenderer.optionAt(1280, 720, 640, y, menu) == index) return y + 2;
         }
-        return fail("no row for " + option);
+        return fail("no row " + index);
     }
 
     @Test
@@ -287,7 +292,7 @@ class InputControllerTest {
         InputController controller = new InputController(menu, new GameSettings());
 
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q));
-        menu.setSelectedIndex(menu.getOptions().indexOf("SETTINGS"));
+        assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ENTER));
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q), "Q does nothing in Settings");
@@ -304,7 +309,7 @@ class InputControllerTest {
         for (MenuState.Screen screen : List.of(MenuState.Screen.TITLE, MenuState.Screen.PAUSED)) {
             MenuState menu = menuOn(screen);
             InputController controller = new InputController(menu, new GameSettings());
-            menu.setSelectedIndex(menu.getOptions().indexOf("QUIT"));
+            assertTrue(menu.selectId(MenuState.OptionId.QUIT));
 
             assertEquals(MenuState.Command.QUIT, poll(controller, FRAME, Input.Keys.ENTER), "QUIT row on " + screen);
         }
@@ -376,7 +381,7 @@ class InputControllerTest {
             MenuState menu = menuOn(MenuState.Screen.PLAYING);
             InputController controller = new InputController(menu, new GameSettings());
             minimiseWithKeyFlagged(controller, key);
-            menu.setSelectedIndex(menu.getOptions().indexOf("RESUME"));
+            assertTrue(menu.selectId(MenuState.OptionId.RESUME));
 
             for (int frame = 1; frame <= 3; frame++) {
                 assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), "minimised frame " + frame);
@@ -408,12 +413,12 @@ class InputControllerTest {
             InputController controller = new InputController(menu, settings);
             minimiseWithKeyFlagged(controller, key);
             assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
-            assertEquals(FOV_ROW, menu.getSelectedIndex());
+            assertEquals(MenuState.OptionId.SET_FOV, menu.getSelectedOption().id);
 
             for (int frame = 1; frame <= 3; frame++) {
                 String at = "minimised frame " + frame + " with " + Input.Keys.toString(key);
                 assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), at);
-                assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), at);
+                assertEquals(new GameSettings().getFov(), settings.getFov(), at);
             }
         }
     }
@@ -425,7 +430,9 @@ class InputControllerTest {
             MenuState menu = settingsMenuOnFov(settings);
             InputController controller = new InputController(menu, settings);
             boolean lowers = key == Input.Keys.LEFT || key == Input.Keys.A;
-            float adjusted = GameSettings.DEFAULT_FOV + (lowers ? -GameSettings.FOV_STEP : GameSettings.FOV_STEP);
+            GameSettings expected = new GameSettings();
+            expected.adjustFov(lowers ? -1 : 1);
+            float adjusted = expected.getFov();
             String name = Input.Keys.toString(key);
 
             assertEquals(MenuState.Command.NONE, poll(controller, FRAME, key), name);
@@ -442,7 +449,7 @@ class InputControllerTest {
         InputController controller = new InputController(menu, new GameSettings());
         controller.pause();
         mouseX = 640;
-        mouseY = rowY(menu, "RESUME");
+        mouseY = rowY(menu, MenuState.OptionId.RESUME);
         leftJustPressed = true;
 
         for (int frame = 1; frame <= 3; frame++) {
@@ -456,7 +463,7 @@ class InputControllerTest {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
         InputController controller = new InputController(menu, new GameSettings());
         int x = 640;
-        int y = rowY(menu, "QUIT");
+        int y = rowY(menu, MenuState.OptionId.QUIT);
 
         click(controller, x, y, Input.Buttons.RIGHT);
         assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), "a right click confirms nothing");
@@ -496,7 +503,7 @@ class InputControllerTest {
     void spaceHeldFromConfirmingResumeDoesNotJumpUntilItIsPressedAgain() {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
         InputController controller = new InputController(menu, new GameSettings());
-        menu.setSelectedIndex(menu.getOptions().indexOf("RESUME"));
+        assertTrue(menu.selectId(MenuState.OptionId.RESUME));
 
         held.add(Input.Keys.SPACE);
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.SPACE));
@@ -517,7 +524,7 @@ class InputControllerTest {
         InputController controller = new InputController(menu, new GameSettings());
 
         leftHeld = true;
-        click(controller, 640, rowY(menu, "RESUME"), Input.Buttons.LEFT);
+        click(controller, 640, rowY(menu, MenuState.OptionId.RESUME), Input.Buttons.LEFT);
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME));
         assertTrue(menu.isPlaying());
         poll(controller, FRAME);
@@ -650,7 +657,7 @@ class InputControllerTest {
             MenuState menuClick = menuOn(MenuState.Screen.PLAYING);
             InputController clickController = new InputController(menuClick, new GameSettings());
             MenuState probePaused = menuOn(MenuState.Screen.PAUSED);
-            click(clickController, 640, rowY(probePaused, "RESUME"), Input.Buttons.LEFT);
+            click(clickController, 640, rowY(probePaused, MenuState.OptionId.RESUME), Input.Buttons.LEFT);
             clickController.pause();
 
             assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME),
@@ -699,8 +706,7 @@ class InputControllerTest {
                 // Same-frame left mouse click on default option row with horizontal key pressed.
                 MenuState clickMenu = menuOn(screen);
                 InputController clickCtrl = new InputController(clickMenu, new GameSettings());
-                String defaultOption = clickMenu.getOptions().get(clickMenu.getSelectedIndex());
-                click(clickCtrl, 640, rowY(clickMenu, defaultOption), Input.Buttons.LEFT);
+                click(clickCtrl, 640, rowY(clickMenu, clickMenu.getSelectedIndex()), Input.Buttons.LEFT);
                 assertEquals(expectedCmd, poll(clickCtrl, FRAME, hKey), context + " + click");
                 assertNotEquals(screen, clickMenu.getScreen(), context + " + click must confirm");
             }
@@ -747,6 +753,39 @@ class InputControllerTest {
     }
 
     @Test
+    void aClickOnASettingsRowChangesItsValueAndAClickOnAnyOtherRowConfirmsIt() {
+        int rows = settingsMenuOnFov(new GameSettings()).getMenuOptions().size();
+        int settingRows = 0;
+        for (int row = 0; row < rows; row++) {
+            GameSettings settings = new GameSettings();
+            MenuState menu = settingsMenuOnFov(settings);
+            InputController controller = new InputController(menu, settings);
+            MenuState.Option option = menu.getMenuOptions().get(row);
+            // Left of the centre: one step down for a slider, the other state for a switch.
+            click(controller, 500, rowY(menu, row), Input.Buttons.LEFT);
+            MenuState.Command command = poll(controller, FRAME);
+            if (option.id.isSetting()) {
+                settingRows++;
+                assertEquals(MenuState.Screen.SETTINGS, menu.getScreen(), option.id + " stays on Settings");
+                assertEquals(option.id, menu.getSelectedOption().id);
+                assertNotEquals(option.label, menu.getSelectedOption().label, option.id + " shows a new value");
+                // A click steps the way its side of the row says; confirming the row would step up.
+                GameSettings start = new GameSettings();
+                assertTrue(settings.getMouseSensitivity() <= start.getMouseSensitivity(), option.id.name());
+                assertTrue(settings.getFov() <= start.getFov(), option.id.name());
+                assertTrue(settings.getMasterVolume() <= start.getMasterVolume(), option.id.name());
+                assertEquals(option.id == MenuState.OptionId.SET_FULLSCREEN
+                    ? MenuState.Command.APPLY_DISPLAY : MenuState.Command.NONE, command, option.id.name());
+            } else {
+                assertEquals(MenuState.OptionId.BACK, option.id, "the one row of Settings that is no setting");
+                assertEquals(MenuState.Command.NONE, command);
+                assertEquals(MenuState.Screen.PAUSED, menu.getScreen(), "a click on BACK leaves Settings");
+            }
+        }
+        assertEquals(6, settingRows);
+    }
+
+    @Test
     void opposingHorizontalSettingsKeysCancelOutWithoutSteppingSlidersFlippingTogglesOrSwallowingConfirm() {
         GameSettings settings = new GameSettings();
         MenuState menu = settingsMenuOnFov(settings);
@@ -761,16 +800,14 @@ class InputControllerTest {
         };
         for (int[] keys : opposingHorizontal) {
             assertEquals(MenuState.Command.NONE, poll(controller, FRAME, keys));
-            assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), 1e-6f,
+            assertEquals(new GameSettings().getFov(), settings.getFov(), 1e-6f,
                 "opposing horizontal keys must not step FOV");
             assertTrue(menu.drainSoundEvents().isEmpty(),
                 "opposing horizontal keys must emit no sound");
         }
 
-        // Boolean toggle rows (such as FULLSCREEN at index 5) must neither flip nor emit APPLY_DISPLAY.
-        int fullscreenRow = 5;
-        assertTrue(menu.getOptions().get(fullscreenRow).startsWith("FULLSCREEN"));
-        menu.setSelectedIndex(fullscreenRow);
+        // Boolean toggle rows (such as FULLSCREEN) must neither flip nor emit APPLY_DISPLAY.
+        assertTrue(menu.selectId(MenuState.OptionId.SET_FULLSCREEN));
         menu.drainSoundEvents();
         boolean initialFullscreen = settings.isFullscreen();
         for (int[] keys : opposingHorizontal) {
@@ -781,7 +818,7 @@ class InputControllerTest {
         }
 
         // Cancelled A + D falls through cleanly to same-frame Enter confirm or mouse click on BACK.
-        menu.setSelectedIndex(menu.getOptions().indexOf("BACK"));
+        assertTrue(menu.selectId(MenuState.OptionId.BACK));
         menu.drainSoundEvents();
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.A, Input.Keys.D, Input.Keys.ENTER));
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen(),
@@ -789,7 +826,7 @@ class InputControllerTest {
 
         MenuState clickSettings = settingsMenuOnFov(settings);
         InputController clickCtrl = new InputController(clickSettings, settings);
-        click(clickCtrl, 640, rowY(clickSettings, "BACK"), Input.Buttons.LEFT);
+        click(clickCtrl, 640, rowY(clickSettings, MenuState.OptionId.BACK), Input.Buttons.LEFT);
         assertEquals(MenuState.Command.NONE, poll(clickCtrl, FRAME, Input.Keys.LEFT, Input.Keys.RIGHT));
         assertEquals(MenuState.Screen.PAUSED, clickSettings.getScreen(),
             "cancelled Left+Right on Settings must fall through to same-frame mouse click");

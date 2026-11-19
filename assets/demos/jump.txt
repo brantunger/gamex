@@ -1,0 +1,14 @@
+// GAMEX_DEMO=jump: the Training Range. The player walks at the shock grate and jumps over it. Frame 19 is the
+// frame on which the walk from x = 9.8 is a quarter of a cell short of the grate.
+screen: playing
+stage: training_range
+loadout: custom
+loadout.health: 100
+loadout.armor: 0
+loadout.shells: 16
+loadout.weapon: scattergun
+position: 9.8, 15.5
+look: 0, -14
+
+1-: move_forward
+19-23: jump

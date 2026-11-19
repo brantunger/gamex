@@ -7,15 +7,18 @@ import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.audio.SoundManager;
 import io.github.brantunger.gamex.audio.SoundVolumes;
 import io.github.brantunger.gamex.debug.DemoRun;
+import io.github.brantunger.gamex.debug.DemoScene;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.hud.PixelFont;
+import io.github.brantunger.gamex.hud.TextFit;
+import io.github.brantunger.gamex.hud.TextValues;
+import io.github.brantunger.gamex.hud.UiStrings;
 import io.github.brantunger.gamex.input.InputController;
-import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.input.KeyBindings;
 import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.weapon.WeaponTuning;
 import io.github.brantunger.gamex.render.Palettes;
 import io.github.brantunger.gamex.render.ProceduralTextures;
@@ -29,7 +32,8 @@ import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
-import io.github.brantunger.gamex.world.Enemy;
+import io.github.brantunger.gamex.settings.SettingsDefaults;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.world.EnemyTuning;
 import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.WorldTuning;
@@ -44,12 +48,14 @@ public class MainGame extends ApplicationAdapter {
     /** Short delay after player death before the Death menu overlays the lowered view, in seconds. */
     static final float DEATH_MENU_DELAY = 0.45f;
     static final float MAX_BACKDROP_DT = 0.1f;
-    private static final int DEFAULT_WINDOW_WIDTH = 1280;
-    private static final int DEFAULT_WINDOW_HEIGHT = 720;
-    static final int MIN_WINDOW_WIDTH = 160;
-    static final int MIN_WINDOW_HEIGHT = 120;
+    static final int MIN_WINDOW_WIDTH = WindowDefaults.MIN_WIDTH;
+    static final int MIN_WINDOW_HEIGHT = WindowDefaults.MIN_HEIGHT;
 
     private final PlayerInput input = new PlayerInput();
+    /** The window size of {@code assets/data/window.txt}, as the launcher loaded it; not read again here. */
+    private final WindowDefaults windowDefaults;
+    /** The settings defaults of {@code assets/data/settings.txt}, as the launcher loaded them; not read again. */
+    private final SettingsDefaults settingsDefaults;
     KeyValueStore settingsStore;
     GameSettings settings;
     private SaveData saveData;
@@ -84,30 +90,68 @@ public class MainGame extends ApplicationAdapter {
     /** Whether the launcher forced a windowed start, which the saved fullscreen setting must not undo. */
     private final boolean forceWindowed;
 
-    /** Creates the game using the default windowed fallback size of 1280x720. */
+    /**
+     * Creates the game with the window and settings defaults files read here and now, and the size the window file
+     * holds as the windowed fallback size. This is for tests only: the launcher loads the two files once and uses
+     * {@link #MainGame(int, int, boolean, WindowDefaults, SettingsDefaults)}.
+     */
     public MainGame() {
-        this(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
+        this(WindowDefaults.load(), SettingsDefaults.load());
+    }
+
+    /**
+     * Creates the game with the size of {@code windowDefaults} as the windowed fallback size. This is for tests
+     * only, as {@link #MainGame()} is.
+     * @param windowDefaults the window size to fall back to
+     * @param settingsDefaults what each setting starts at, and its range and step
+     */
+    MainGame(WindowDefaults windowDefaults, SettingsDefaults settingsDefaults) {
+        this(windowDefaults.width, windowDefaults.height, false, windowDefaults, settingsDefaults);
     }
 
     /**
      * Creates the game with an initial windowed fallback size used if launched in fullscreen and later switched to
-     * windowed mode.
+     * windowed mode, and the window and settings defaults files read here and now. This is for tests only, as
+     * {@link #MainGame()} is.
      */
     public MainGame(int initialWindowWidth, int initialWindowHeight) {
         this(initialWindowWidth, initialWindowHeight, false);
     }
 
     /**
+     * Creates the game with an initial windowed fallback size, says whether the launcher forced a windowed start,
+     * and reads the window and settings defaults files here and now. This is for tests only, as {@link #MainGame()}
+     * is.
+     * @param initialWindowWidth the windowed fallback width in pixels
+     * @param initialWindowHeight the windowed fallback height in pixels
+     * @param forceWindowed true when the launcher forced a windowed start
+     */
+    public MainGame(int initialWindowWidth, int initialWindowHeight, boolean forceWindowed) {
+        this(initialWindowWidth, initialWindowHeight, forceWindowed, WindowDefaults.load(), SettingsDefaults.load());
+    }
+
+    /**
      * Creates the game with an initial windowed fallback size and says whether the launcher forced a windowed start.
+     * The two defaults objects are the ones the launcher opened the window with, so that the launcher and the game
+     * cannot read different copies of the files; the game does not read the files again.
      * @param initialWindowWidth the windowed fallback width in pixels
      * @param initialWindowHeight the windowed fallback height in pixels
      * @param forceWindowed true when the launcher forced a windowed start (for example {@code GAMEX_WINDOW}), so
      *     that startup does not switch to fullscreen for a saved fullscreen setting; the setting itself is kept
+     * @param windowDefaults the window size of {@code assets/data/window.txt}, which the renderers size their
+     *     cameras and the overlay with until the window reports its own size
+     * @param settingsDefaults what each setting starts at, and its range and step, from
+     *     {@code assets/data/settings.txt}
      */
-    public MainGame(int initialWindowWidth, int initialWindowHeight, boolean forceWindowed) {
+    public MainGame(int initialWindowWidth, int initialWindowHeight, boolean forceWindowed,
+                    WindowDefaults windowDefaults, SettingsDefaults settingsDefaults) {
+        if (windowDefaults == null) throw new IllegalArgumentException("Window defaults must not be null");
+        if (settingsDefaults == null) throw new IllegalArgumentException("Settings defaults must not be null");
         this.windowedWidth = Math.max(MIN_WINDOW_WIDTH, initialWindowWidth);
         this.windowedHeight = Math.max(MIN_WINDOW_HEIGHT, initialWindowHeight);
         this.forceWindowed = forceWindowed;
+        this.windowDefaults = windowDefaults;
+        this.settingsDefaults = settingsDefaults;
     }
 
     int getWindowedWidth() {
@@ -129,6 +173,11 @@ public class MainGame extends ApplicationAdapter {
         font = PixelFont.load();
         Palettes palettes = Palettes.load();
         RenderSettings renderSettings = RenderSettings.load();
+        KeyBindings bindings = KeyBindings.load(font);
+        UiStrings strings = UiStrings.load(font, bindings::hint,
+            TextValues.of(weaponTuning, difficultyTuning, worldTuning));
+        // A line too long for its box, in the text or through a long key name, stops the start here.
+        TextFit.require(strings, difficultyTuning, settingsDefaults, Levels.campaign(), Levels.trainingRange());
         demoRun = DemoRun.fromEnvironment();
         if (demoRun != null) {
             if (demoRun.getScript().isEmpty()) {
@@ -139,74 +188,23 @@ public class MainGame extends ApplicationAdapter {
                     + " written", demoRun.getScript());
             }
             settingsStore = new MapKeyValueStore();
-            settings = new GameSettings();
+            settings = new GameSettings(settingsDefaults);
             saveData = new SaveData(new MapKeyValueStore());
-            String script = demoRun.getScript();
-            boolean showTitle = "title".equals(script);
-            boolean showStages = "stages".equals(script);
-            if (showStages) {
+            // The screen, the level, the loadout and where the player stands are the header block of the script's
+            // file in assets/demos/.
+            DemoScene scene = demoRun.getScene();
+            if (scene.unlockAllStages) {
                 saveData.unlockStage(Levels.campaign().size() - 1);
             }
-            MenuState.Screen startScreen = showTitle
-                ? MenuState.Screen.TITLE
-                : (showStages ? MenuState.Screen.STAGE_SELECT : MenuState.Screen.PLAYING);
-            menuState = new MenuState(settings, saveData, startScreen, difficultyTuning, weaponTuning);
-            if ("lockdown".equals(script) || showStages) {
-                Levels.Stage lockdown = Levels.stage("04_lockdown_wing");
-                simulation = new GameSimulation(lockdown.map, menuState.getActiveLoadout(),
-                    lockdown.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-            } else if ("scattergun".equals(script)) {
-                Levels.Stage range = Levels.trainingRange();
-                simulation = new GameSimulation(range.map,
-                    new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    range.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-            } else if ("raillance".equals(script)) {
-                Levels.Stage hub = Levels.stage("03_security_hub");
-                simulation = new GameSimulation(hub.map,
-                    new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 8, true, 6, WeaponSlot.RAIL_LANCE),
-                    hub.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-                simulation.player.position.set(4.5f, 4.5f);
-                simulation.player.look(0f, -1f);
-            } else if ("warden".equals(script)) {
-                Levels.Stage warden = Levels.stage("06_warden_core");
-                simulation = new GameSimulation(warden.map,
-                    new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    warden.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-                simulation.player.position.set(23.5f, 13.6f);
-                simulation.player.look(-90f, -4f);
-            } else if ("wardenidle".equals(script)) {
-                // Behind the Warden's shoulder, as it faces its door, and out of its hearing, so it stands as it does
-                // before a fight. The turret and the drone that would open fire on the player there, and the rest
-                // of the stage's hostiles with them, are taken out of the picture.
-                Levels.Stage warden = Levels.stage("06_warden_core");
-                simulation = new GameSimulation(warden.map,
-                    new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    warden.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-                for (Enemy enemy : simulation.enemies) {
-                    if (enemy.getKind() != Enemy.Kind.WARDEN) enemy.damage(Float.MAX_VALUE);
-                }
-                simulation.player.position.set(26.8f, 5.2f);
-                simulation.player.look(135f, -4f);
-            } else if ("jump".equals(script)) {
-                Levels.Stage range = Levels.trainingRange();
-                simulation = new GameSimulation(range.map,
-                    new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    range.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-                simulation.player.position.set(9.8f, 15.5f);
-                simulation.player.look(0f, -14f);
-            } else if ("breach".equals(script) || showTitle) {
-                Levels.Stage breach = Levels.stage("01_outer_breach");
-                simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(),
-                    breach.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
-            } else {
-                simulation = new GameSimulation(Levels.first(), PlayerLoadout.fresh(), false, enemyTuning,
-                    difficultyTuning, weaponTuning, worldTuning);
-            }
+            menuState = new MenuState(settings, saveData, scene.startScreen, difficultyTuning, weaponTuning,
+                strings);
+            simulation = scene.createSimulation(enemyTuning, difficultyTuning, weaponTuning, worldTuning);
         } else {
             settingsStore = new GdxPreferencesStore(Gdx.app.getPreferences(GameSettings.PREFERENCES_NAME));
-            settings = GameSettings.load(settingsStore);
+            settings = GameSettings.load(settingsStore, settingsDefaults);
             saveData = new SaveData(new GdxPreferencesStore(Gdx.app.getPreferences(SaveData.PREFERENCES_NAME)));
-            menuState = new MenuState(settings, saveData, MenuState.Screen.TITLE, difficultyTuning, weaponTuning);
+            menuState = new MenuState(settings, saveData, MenuState.Screen.TITLE, difficultyTuning, weaponTuning,
+                strings);
             Levels.Stage initialStage = menuState.getActiveStage();
             simulation = new GameSimulation(initialStage.map, menuState.getActiveLoadout(),
                 initialStage.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
@@ -220,11 +218,12 @@ public class MainGame extends ApplicationAdapter {
         }
 
         textures = new ProceduralTextures(wallTextures);
-        worldRenderer = new WorldRenderer(simulation.map, textures, palettes.world, renderSettings);
-        viewmodelRenderer = new ViewmodelRenderer(textures, palettes);
-        hudRenderer = new HudRenderer(textures, font);
+        worldRenderer = new WorldRenderer(simulation.map, textures, palettes.world, renderSettings, windowDefaults,
+            settingsDefaults);
+        viewmodelRenderer = new ViewmodelRenderer(textures, palettes, windowDefaults);
+        hudRenderer = new HudRenderer(textures, font, strings, windowDefaults);
         soundManager = new SoundManager(demoRun != null, soundVolumes);
-        if (demoRun == null) controller = new InputController(menuState, settings);
+        if (demoRun == null) controller = new InputController(menuState, settings, bindings);
         syncDisplayViewport();
         log.info("Game created at {}x{}, fullscreen {}", Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
             Gdx.graphics.isFullscreen());

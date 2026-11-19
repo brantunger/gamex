@@ -20,16 +20,13 @@ import java.util.zip.Deflater;
  * <ul>
  *  <li>{@code GAMEX_SCREENSHOT}: the path of the PNG to write. Without it, the game runs normally.</li>
  *  <li>{@code GAMEX_SCREENSHOT_FRAME}: the frame to save, counted from 1; the default is {@value #DEFAULT_FRAME}.</li>
- *  <li>{@code GAMEX_DEMO}: set to {@code action} to play a short script instead of standing still: the player turns
- *  towards a pillar, holds the blast button, releases it, and fires the pistol. Set to {@code targets} to turn
- *  towards the nearest canister and keep firing the pistol at it. Set to {@code breach} to turn, dash and then fire
- *  the pistol. Set to {@code scattergun} to deploy in the Training Range holding the Combat Scattergun and fire at
- *  range targets. Set to {@code raillance} to engage 1.8x tactical zoom down the Security Hub corridor and fire a
- *  piercing Rail Lance beam. Values also read by {@code MainGame} through {@link #getScript()}: {@code breach} loads Outer
- *  Breach, {@code title} shows the Title screen over Outer Breach, {@code lockdown} opens a bulkhead door in Stage 04,
- *  {@code stages} shows the unlocked 6-stage Select Stage screen, {@code warden} stages the Stage 06 Warden
- *  boss encounter across live Shock Grates, {@code wardenidle} watches the Warden stand before it has noticed the
- *  player, and {@code jump} vaults airborne over the Training Range Shock Grate.</li>
+ *  <li>{@code GAMEX_DEMO}: the name of a demo script to play instead of standing still in the original first level.
+ *  The script {@code name} is the file {@code assets/demos/name.txt}, which holds the scene the run starts with (the
+ *  screen, the stage, what the player carries, and where the player stands and looks) and the input played frame by
+ *  frame; {@link DemoScript} and {@link DemoScene} give the format. The scripts that ship are {@code action},
+ *  {@code targets}, {@code breach}, {@code title}, {@code lockdown}, {@code stages}, {@code scattergun},
+ *  {@code raillance}, {@code warden}, {@code wardenidle} and {@code jump}; each file says in its first lines what it
+ *  shows. A name with no file stops the start, saying so.</li>
  *  <li>{@code GAMEX_VIEWMODEL_ORBIT}: set to {@code yaw} or {@code yaw,pitch} in degrees to draw only the pistol and
  *  hand, on a plain background, seen from outside: 0 is from behind, 90 the left side, 180 the front, and a pitch
  *  of 90 is from above.</li>
@@ -46,20 +43,11 @@ public final class DemoRun {
     /** The frame that is saved when {@code GAMEX_SCREENSHOT_FRAME} is not set. */
     public static final int DEFAULT_FRAME = 60;
 
-    private static final int CHARGE_FROM_FRAME = 5;
-    private static final int CHARGE_UNTIL_FRAME = 50;
-    private static final int FIRE_FROM_FRAME = 57;
-    /** The turn, in degrees, that points the player at a pillar near the spawn. */
-    private static final float SCRIPT_TURN = -24f;
-    /** The turn, in degrees, that points the player at the canister in the spawn hall. */
-    private static final float TARGET_TURN = 71.57f;
-    private static final int TARGET_FIRE_FROM_FRAME = 30;
-    /** The frame on which the walk from x = 9.8 is a quarter of a cell short of the Training Range's Shock Grate. */
-    private static final int JUMP_FROM_FRAME = 19;
-
     private final String path;
     private final int captureFrame;
     private final String script;
+    /** The script {@link #script} names, or null when it names none. */
+    private final DemoScript demoScript;
     private final float[] orbit;
     private int frame;
     private boolean captured;
@@ -72,10 +60,15 @@ public final class DemoRun {
         this.path = path == null ? "" : path.trim();
         this.captureFrame = Math.max(1, captureFrame);
         this.script = script == null ? "" : script.trim().toLowerCase(Locale.ROOT);
+        this.demoScript = this.script.isEmpty() ? null : DemoScript.load(this.script);
         this.orbit = parseOrbit(orbitText);
     }
 
-    /** @return the run described by the environment, or null when {@code GAMEX_SCREENSHOT} is not set. */
+    /**
+     * @return the run described by the environment, or null when {@code GAMEX_SCREENSHOT} is not set
+     * @throws IllegalArgumentException if {@code GAMEX_DEMO} names a script that has no file in
+     *     {@code assets/demos/}, or whose file breaks the format
+     */
     public static DemoRun fromEnvironment() {
         return fromEnvironment(
             System.getenv("GAMEX_SCREENSHOT"),
@@ -156,6 +149,11 @@ public final class DemoRun {
         return script;
     }
 
+    /** @return the scene the run starts with: that of its script, or {@link DemoScene#STANDING} without one */
+    public DemoScene getScene() {
+        return demoScript == null ? DemoScene.STANDING : demoScript.scene;
+    }
+
     /**
      * Starts the next frame and fills in its scripted input.
      * @param out the input to fill
@@ -163,36 +161,7 @@ public final class DemoRun {
     public void nextFrame(PlayerInput out) {
         frame++;
         out.clear();
-        if ("action".equals(script)) {
-            if (frame == 1) out.yawDelta = SCRIPT_TURN;
-            out.charge = frame >= CHARGE_FROM_FRAME && frame < CHARGE_UNTIL_FRAME;
-            out.fire = frame >= FIRE_FROM_FRAME;
-        } else if ("targets".equals(script)) {
-            if (frame == 1) out.yawDelta = TARGET_TURN;
-            out.fire = frame >= TARGET_FIRE_FROM_FRAME;
-        } else if ("breach".equals(script)) {
-            out.moveForward = frame <= 155 ? 1f : 0f;
-            if (frame == 25) out.dash = true;
-            if (frame >= 115 && frame <= 135) out.moveStrafe = 1f;
-            if (frame > 135 && frame <= 150) out.yawDelta = -1.2f;
-            out.fire = frame >= 150;
-        } else if ("lockdown".equals(script)) {
-            if (frame <= 18) out.moveForward = 1f;
-            if (frame == 25) out.interact = true;
-            if (frame >= 45 && frame <= 85) out.moveForward = 1f;
-        } else if ("scattergun".equals(script)) {
-            if (frame <= 18) out.moveForward = 1f;
-            if (frame == 24) out.fire = true;
-        } else if ("raillance".equals(script)) {
-            out.charge = frame >= 6 && frame <= 38;
-            out.fire = frame == 24;
-        } else if ("warden".equals(script)) {
-            if (frame == 1 || frame == 3) out.fire = true;
-            if (frame >= 5 && frame <= 14) out.moveForward = 0.5f;
-        } else if ("jump".equals(script)) {
-            out.moveForward = 1f;
-            out.jump = frame >= JUMP_FROM_FRAME && frame < JUMP_FROM_FRAME + 5;
-        }
+        if (demoScript != null) demoScript.apply(frame, out);
     }
 
     @FunctionalInterface

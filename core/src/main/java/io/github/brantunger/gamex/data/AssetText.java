@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -33,6 +34,9 @@ import java.util.List;
  *   <li>the classpath.</li>
  * </ol>
  * Which copy was read (the path of the file, or the classpath) is logged at debug level in both cases.
+ *
+ * <p>The desktop launcher reads two files before libGDX is up and the game reads the rest after; it uses
+ * {@link #readAsInternal}, which looks where {@code Gdx.files.internal} will, so that both read the same copy.
  */
 public final class AssetText {
 
@@ -90,6 +94,36 @@ public final class AssetText {
         candidates.add(workingDir.resolve(Paths.get("..", "assets", assetPath)));
         candidates.add(workingDir.resolve(Paths.get("assets", assetPath)));
         candidates.add(workingDir.resolve(assetPath));
+        String text = readFirst(kind, assetPath, candidates);
+        if (text != null) return text;
+        throw new IllegalStateException("The " + kind + " asset " + assetPath + " was not found. Set the system "
+            + "property gamex.assets to the assets folder, or run from the root project or a subproject. Tried: "
+            + absolute(candidates));
+    }
+
+    /**
+     * Reads a text file without libGDX from the places {@code Gdx.files.internal} looks in once libGDX is up: the
+     * file at that path under the working directory if there is one, and the copy on the classpath otherwise. The
+     * {@code gamex.assets} property and the {@code assets} folders {@link #read} tries without libGDX are not
+     * looked in. The desktop launcher reads with this before it creates the window, so that it and the game read
+     * the same copy of a file.
+     * @param kind what the file is, in one lower-case word used by the error messages
+     * @param assetPath internal path inside {@code assets/}
+     * @param workingDir the directory that stands for the working directory
+     * @return the file's contents, decoded as UTF-8
+     * @throws IllegalStateException if the file is in neither place; the message names the path tried
+     * @throws UncheckedIOException if the file is found and cannot be read
+     */
+    public static String readAsInternal(String kind, String assetPath, Path workingDir) {
+        List<Path> candidates = Collections.singletonList(workingDir.resolve(assetPath));
+        String text = readFirst(kind, assetPath, candidates);
+        if (text != null) return text;
+        throw new IllegalStateException("The " + kind + " asset " + assetPath + " was not found on the classpath or"
+            + " at " + absolute(candidates).get(0));
+    }
+
+    /** @return the text of the first candidate that is a regular file, else of the classpath copy, else null */
+    private static String readFirst(String kind, String assetPath, List<Path> candidates) {
         for (Path candidate : candidates) {
             if (!Files.isRegularFile(candidate)) continue;
             try {
@@ -113,13 +147,15 @@ public final class AssetText {
                 throw new UncheckedIOException("Failed to read " + kind + " resource " + resourcePath, e);
             }
         }
+        return null;
+    }
+
+    private static List<Path> absolute(List<Path> candidates) {
         List<Path> tried = new ArrayList<>(candidates.size());
         for (Path candidate : candidates) {
             tried.add(candidate.toAbsolutePath().normalize());
         }
-        throw new IllegalStateException("The " + kind + " asset " + assetPath + " was not found. Set the system "
-            + "property gamex.assets to the assets folder, or run from the root project or a subproject. Tried: "
-            + tried);
+        return tried;
     }
 
     /**

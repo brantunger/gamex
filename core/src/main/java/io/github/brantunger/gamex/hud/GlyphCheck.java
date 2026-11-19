@@ -4,8 +4,9 @@ package io.github.brantunger.gamex.hud;
  * Checks that player-visible text can be drawn with a loaded {@link PixelFont}. A character can be drawn if it is a
  * space or the font has a glyph for it; lower-case letters count, because the font draws them as capitals. Anything
  * else would be left blank on screen. Text read from a tuning file with {@code TuningFile.getDisplayString} or
- * {@code getDisplayStrings} is checked as it is read. Stage titles and briefings are not checked when a stage is
- * loaded; {@code LevelsTest} and {@code PixelFontTest} check the shipped ones.
+ * {@code getDisplayStrings} is checked as it is read, and so is every line of {@code data/strings.txt} (see
+ * {@link TextTemplate}). Stage titles and briefings are not checked when a stage is loaded: {@link MenuState}
+ * checks them when the menus are built, at start-up.
  */
 public final class GlyphCheck {
 

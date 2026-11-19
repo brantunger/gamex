@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.hud.MenuState.OptionId;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -15,9 +16,10 @@ import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
-/** Covers the menu flows around a run and every row of the saved-run (CONTINUE) table. */
+/**
+ * Covers the menu flows around a run and every row of the saved-run (CONTINUE) table. Options are picked by id and
+ * never by label, so {@link RenamedLabelsFlowTest} runs every test here again with every label reworded.
+ */
 class MenuStateFlowTest {
 
     /** A saved run that no default loadout matches, so an overwrite or a fallback is visible. */
@@ -25,21 +27,44 @@ class MenuStateFlowTest {
         WeaponSlot.RAIL_LANCE);
     private static final int OLD_RUN_STAGE = 4;
 
-    private static int indexOf(MenuState menu, String prefix) {
-        List<String> options = menu.getOptions();
-        for (int i = 0; i < options.size(); i++) {
-            if (options.get(i).startsWith(prefix)) return i;
-        }
-        throw new AssertionError("no option " + prefix + " in " + options);
+    /** @return the text the menus under test show. */
+    UiStrings strings() {
+        return TestTuning.STRINGS;
     }
 
-    private static MenuState.Command choose(MenuState menu, String prefix) {
-        menu.setSelectedIndex(indexOf(menu, prefix));
+    private MenuState newMenu(GameSettings settings, SaveData saveData, MenuState.Screen startScreen) {
+        return new MenuState(settings, saveData, startScreen, TestTuning.DIFFICULTY, TestTuning.WEAPONS, strings());
+    }
+
+    private static boolean hasOption(MenuState menu, OptionId id) {
+        for (MenuState.Option option : menu.getMenuOptions()) {
+            if (option.id == id) return true;
+        }
+        return false;
+    }
+
+    private static void select(MenuState menu, OptionId id) {
+        assertTrue(menu.selectId(id), "no option " + id + " in " + menu.getOptions());
+    }
+
+    private static MenuState.Command choose(MenuState menu, OptionId id) {
+        select(menu, id);
         return menu.confirm();
     }
 
-    private static MenuState titleMenu(MapKeyValueStore store) {
-        return new MenuState(new GameSettings(), new SaveData(store), MenuState.Screen.TITLE);
+    private static MenuState.Command choose(MenuState menu, Difficulty difficulty) {
+        assertTrue(menu.selectId(OptionId.DIFFICULTY, difficulty.ordinal()),
+            "no option for " + difficulty + " in " + menu.getOptions());
+        return menu.confirm();
+    }
+
+    private static void selectStage(MenuState menu, int stageIndex) {
+        assertTrue(menu.selectId(OptionId.STAGE, stageIndex),
+            "no option for stage " + stageIndex + " in " + menu.getOptions());
+    }
+
+    private MenuState titleMenu(MapKeyValueStore store) {
+        return newMenu(new GameSettings(), new SaveData(store), MenuState.Screen.TITLE);
     }
 
     private static MapKeyValueStore storeWithOldRun() {
@@ -67,14 +92,14 @@ class MenuStateFlowTest {
         assertLoadout(loadout, save.getSavedLoadout(), message);
     }
 
-    private static MenuState playingStage(MapKeyValueStore store, int stageIndex, Difficulty difficulty) {
+    private MenuState playingStage(MapKeyValueStore store, int stageIndex, Difficulty difficulty) {
         new SaveData(store).unlockStage(stageIndex);
         MenuState menu = titleMenu(store);
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(stageIndex);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, stageIndex);
         menu.confirm();
-        choose(menu, difficulty.label);
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
+        choose(menu, difficulty);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.DEPLOY));
         return menu;
     }
 
@@ -113,8 +138,8 @@ class MenuStateFlowTest {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
 
-        choose(menu, "START CAMPAIGN");
-        choose(menu, "NORMAL");
+        choose(menu, OptionId.START_CAMPAIGN);
+        choose(menu, Difficulty.NORMAL);
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "on the briefing, before DEPLOY");
 
@@ -128,14 +153,14 @@ class MenuStateFlowTest {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
 
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(0);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, 0);
         menu.confirm();
-        choose(menu, "EASY");
+        choose(menu, Difficulty.EASY);
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "on the briefing, before DEPLOY");
 
-        choose(menu, "RETURN TO TITLE");
+        choose(menu, OptionId.RETURN_TO_TITLE);
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after RETURN TO TITLE from the briefing");
     }
@@ -145,11 +170,11 @@ class MenuStateFlowTest {
         MapKeyValueStore store = new MapKeyValueStore();
         MenuState menu = titleMenu(store);
 
-        choose(menu, "START CAMPAIGN");
-        choose(menu, "HARD");
+        choose(menu, OptionId.START_CAMPAIGN);
+        choose(menu, Difficulty.HARD);
         assertFalse(new SaveData(store).hasSavedRun(), "nothing is saved before DEPLOY");
         menu.escape();
-        assertFalse(menu.getOptions().get(0).startsWith("CONTINUE"), "no CONTINUE row after backing out");
+        assertFalse(hasOption(menu, OptionId.CONTINUE), "no CONTINUE row after backing out");
     }
 
     @Test
@@ -157,11 +182,11 @@ class MenuStateFlowTest {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
 
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(1);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, 1);
         menu.confirm();
-        choose(menu, "EASY");
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
+        choose(menu, Difficulty.EASY);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.DEPLOY));
 
         assertSavedRun(store, 1,
             PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.EASY, TestTuning.DIFFICULTY,
@@ -174,23 +199,23 @@ class MenuStateFlowTest {
     void clearingANonFinalStageSavesTheNextStageWithTheCarryOverAtOnce() {
         PlayerLoadout carry = new PlayerLoadout(40f, 30f, Difficulty.NORMAL, true, 9, WeaponSlot.SCATTERGUN);
         // Each way of leaving the tally without NEXT STAGE; "close" leaves the window shut on the tally.
-        for (String exit : new String[] {"close", "escape", "RETURN TO TITLE"}) {
+        for (String exit : new String[] {"close", "escape", "the Return to Title row"}) {
             MapKeyValueStore store = new MapKeyValueStore();
             MenuState menu = titleMenu(store);
-            choose(menu, "START CAMPAIGN");
-            choose(menu, "NORMAL");
-            choose(menu, "DEPLOY");
+            choose(menu, OptionId.START_CAMPAIGN);
+            choose(menu, Difficulty.NORMAL);
+            choose(menu, OptionId.DEPLOY);
             menu.onStageCleared(carry, 40f, 9, 9, 60f);
             assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
             assertSavedRun(store, 1, carry, "right after the clear");
             assertEquals(1, new SaveData(store).getUnlockedStageIndex(), "stage 02 unlocks on the clear");
 
             if ("escape".equals(exit)) menu.escape();
-            else if (!"close".equals(exit)) choose(menu, exit);
+            else if (!"close".equals(exit)) choose(menu, OptionId.RETURN_TO_TITLE);
             assertSavedRun(store, 1, carry, "after leaving the tally by " + exit);
 
             MenuState relaunched = titleMenu(store);
-            assertEquals(MenuState.Command.LAUNCH_STAGE, choose(relaunched, "CONTINUE"));
+            assertEquals(MenuState.Command.LAUNCH_STAGE, choose(relaunched, OptionId.CONTINUE));
             assertEquals("02_coolant_core", relaunched.getActiveStage().id, "CONTINUE after " + exit);
             assertLoadout(carry, relaunched.getActiveLoadout(), "CONTINUE after " + exit);
         }
@@ -200,17 +225,17 @@ class MenuStateFlowTest {
     void nextStageBriefingAndDeployKeepTheSavedRunAtTheNextStageWithTheCarryOver() {
         MapKeyValueStore store = new MapKeyValueStore();
         MenuState menu = titleMenu(store);
-        choose(menu, "START CAMPAIGN");
-        choose(menu, "NORMAL");
-        choose(menu, "DEPLOY");
+        choose(menu, OptionId.START_CAMPAIGN);
+        choose(menu, Difficulty.NORMAL);
+        choose(menu, OptionId.DEPLOY);
         PlayerLoadout carry = new PlayerLoadout(64f, 12f, Difficulty.NORMAL, true, 5, WeaponSlot.SCATTERGUN);
         menu.onStageCleared(carry, 40f, 9, 9, 36f);
 
-        assertEquals(MenuState.Command.NONE, choose(menu, "NEXT STAGE"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.NEXT_STAGE));
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertSavedRun(store, 1, carry, "on the next stage's briefing");
 
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.DEPLOY));
         assertSavedRun(store, 1, carry, "after DEPLOY of the next stage");
         assertLoadout(carry, menu.getActiveLoadout(), "the next stage starts with the carry-over");
     }
@@ -221,14 +246,14 @@ class MenuStateFlowTest {
         MapKeyValueStore store = new MapKeyValueStore();
         new SaveData(store).saveCampaignRun(1, entry);
         MenuState menu = titleMenu(store);
-        choose(menu, "CONTINUE");
+        choose(menu, OptionId.CONTINUE);
         assertEquals("02_coolant_core", menu.getActiveStage().id);
 
         PlayerLoadout firstCarry = new PlayerLoadout(25f, 5f, Difficulty.HARD, true, 3, WeaponSlot.SCATTERGUN);
         menu.onStageCleared(firstCarry, 50f, 8, 8, 75f);
         assertSavedRun(store, 2, firstCarry, "after the first clear");
 
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
         assertEquals(MenuState.Screen.PLAYING, menu.getScreen());
         assertEquals("02_coolant_core", menu.getActiveStage().id, "the replay is of the cleared stage");
         assertLoadout(entry, menu.getActiveLoadout(), "the replay starts from the stage's entry loadout");
@@ -240,13 +265,13 @@ class MenuStateFlowTest {
         assertSavedRun(store, 2, secondCarry, "after clearing the replay");
 
         // A second replay still starts from the original entry loadout, not from a carry-over.
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
         assertLoadout(entry, menu.getActiveLoadout(), "the second replay starts from the same entry loadout");
         assertSavedRun(store, 2, secondCarry, "the second PLAY AGAIN leaves the saved run alone");
 
         // NEXT STAGE after a replay moves on with the latest carry-over.
         menu.onStageCleared(secondCarry, 45f, 8, 8, 9f);
-        choose(menu, "NEXT STAGE");
+        choose(menu, OptionId.NEXT_STAGE);
         assertEquals("03_security_hub", menu.getActiveStage().id);
         assertLoadout(secondCarry, menu.getActiveLoadout(), "the next stage after a replay");
     }
@@ -256,15 +281,15 @@ class MenuStateFlowTest {
         MapKeyValueStore store = new MapKeyValueStore();
         new SaveData(store).unlockStage(1);
         MenuState menu = titleMenu(store);
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(1);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, 1);
         menu.confirm();
-        choose(menu, "HARD");
-        choose(menu, "DEPLOY");
+        choose(menu, Difficulty.HARD);
+        choose(menu, OptionId.DEPLOY);
 
         PlayerLoadout carry = new PlayerLoadout(19f, 3f, Difficulty.HARD, true, 2, WeaponSlot.PISTOL);
         menu.onStageCleared(carry, 50f, 8, 8, 81f);
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
 
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertLoadout(PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.HARD,
@@ -278,17 +303,17 @@ class MenuStateFlowTest {
     void playAgainAfterNextStageReplaysFromTheCarryOverThatStageWasEnteredWith() {
         MapKeyValueStore store = new MapKeyValueStore();
         MenuState menu = titleMenu(store);
-        choose(menu, "START CAMPAIGN");
-        choose(menu, "NORMAL");
-        choose(menu, "DEPLOY");
+        choose(menu, OptionId.START_CAMPAIGN);
+        choose(menu, Difficulty.NORMAL);
+        choose(menu, OptionId.DEPLOY);
         PlayerLoadout carryA = new PlayerLoadout(58f, 22f, Difficulty.NORMAL, true, 7, WeaponSlot.SCATTERGUN);
         menu.onStageCleared(carryA, 40f, 9, 9, 42f);
-        choose(menu, "NEXT STAGE");
-        choose(menu, "DEPLOY");
+        choose(menu, OptionId.NEXT_STAGE);
+        choose(menu, OptionId.DEPLOY);
         PlayerLoadout carryB = new PlayerLoadout(14f, 0f, Difficulty.NORMAL, true, 1, WeaponSlot.PISTOL);
         menu.onStageCleared(carryB, 50f, 8, 8, 44f);
 
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
 
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertLoadout(carryA, menu.getActiveLoadout(), "the replay starts as stage 02 was entered");
@@ -299,14 +324,14 @@ class MenuStateFlowTest {
     void playAgainInTheTrainingRangeAfterACampaignRunStartsFresh() {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
-        choose(menu, "CONTINUE");
+        choose(menu, OptionId.CONTINUE);
         menu.escape();
-        choose(menu, "RETURN TO TITLE");
+        choose(menu, OptionId.RETURN_TO_TITLE);
 
-        choose(menu, "TRAINING RANGE");
-        choose(menu, "DEPLOY");
+        choose(menu, OptionId.TRAINING_RANGE);
+        choose(menu, OptionId.DEPLOY);
         menu.onStageCleared(new PlayerLoadout(12f, 0f, Difficulty.NORMAL), 30f, 6, 6, 88f);
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
 
         assertEquals(Levels.trainingRange().id, menu.getActiveStage().id);
         assertLoadout(PlayerLoadout.fresh(Difficulty.NORMAL), menu.getActiveLoadout(),
@@ -321,16 +346,16 @@ class MenuStateFlowTest {
         MapKeyValueStore store = new MapKeyValueStore();
         new SaveData(store).saveCampaignRun(last, entry);
         MenuState menu = titleMenu(store);
-        choose(menu, "CONTINUE");
+        choose(menu, OptionId.CONTINUE);
         assertEquals("06_warden_core", menu.getActiveStage().id);
 
         PlayerLoadout carry = new PlayerLoadout(80f, 0f, Difficulty.EASY, true, 1, true, 1, WeaponSlot.SCATTERGUN);
         menu.onStageCleared(carry, 88f, 10, 10, 22f);
         assertTrue(menu.isCampaignCompleted());
         assertFalse(new SaveData(store).hasSavedRun(), "the final clear clears the saved run");
-        assertFalse(menu.getOptions().contains("NEXT STAGE"));
+        assertFalse(hasOption(menu, OptionId.NEXT_STAGE));
 
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
         assertFalse(menu.isCampaignCompleted());
         assertLoadout(entry, menu.getActiveLoadout(), "the final stage replays from its entry loadout");
         assertFalse(new SaveData(store).hasSavedRun(), "PLAY AGAIN after the final stage saves nothing");
@@ -340,7 +365,7 @@ class MenuStateFlowTest {
     void continueLaunchesTheSavedStageWithTheSavedLoadoutAndLeavesTheSaveAlone() {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
-        assertEquals("CONTINUE CAMPAIGN", menu.getOptions().get(0));
+        assertEquals(OptionId.CONTINUE, menu.getMenuOptions().get(0).id);
 
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm());
         assertEquals(MenuState.Screen.PLAYING, menu.getScreen());
@@ -356,7 +381,7 @@ class MenuStateFlowTest {
             store.putInteger("run.stageIndex", stored);
             MenuState menu = titleMenu(store);
 
-            assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
+            assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.CONTINUE));
             int expected = stored < 0 ? 0 : Levels.campaign().size() - 1;
             assertEquals(Levels.campaign().get(expected).id, menu.getActiveStage().id, "stored index " + stored);
         }
@@ -366,24 +391,24 @@ class MenuStateFlowTest {
     void deathRestartsAndReturnToTitleLeaveTheSavedRunUnchanged() {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
-        choose(menu, "CONTINUE");
+        choose(menu, OptionId.CONTINUE);
 
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.quickRestart());
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after an R restart in play");
 
         menu.escape();
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "RESTART STAGE"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.RESTART));
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after pause RESTART");
 
         menu.onPlayerDied();
         assertEquals(MenuState.Screen.DEAD, menu.getScreen());
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after death");
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "RETRY"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.RETRY));
         assertLoadout(OLD_RUN, menu.getActiveLoadout(), "a retry starts from the entry loadout");
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after a retry");
 
         menu.escape();
-        assertEquals(MenuState.Command.NONE, choose(menu, "RETURN TO TITLE"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.RETURN_TO_TITLE));
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after RETURN TO TITLE from pause");
     }
@@ -393,23 +418,23 @@ class MenuStateFlowTest {
         MapKeyValueStore store = storeWithOldRun();
         MenuState menu = titleMenu(store);
 
-        assertEquals(MenuState.Command.NONE, choose(menu, "TRAINING RANGE"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.TRAINING_RANGE));
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertEquals(Levels.trainingRange().id, menu.getActiveStage().id);
         assertLoadout(PlayerLoadout.fresh(Difficulty.NORMAL), menu.getActiveLoadout(), "Training Range loadout");
 
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.DEPLOY));
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after DEPLOY into the Training Range");
 
         menu.onStageCleared(new PlayerLoadout(12f, 0f, Difficulty.NORMAL), 30f, 6, 6, 88f);
         assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
         assertNotNull(menu.getLastSummary());
         assertFalse(menu.isCampaignCompleted());
-        assertFalse(menu.getOptions().contains("NEXT STAGE"), "the Training Range has no next stage");
+        assertFalse(hasOption(menu, OptionId.NEXT_STAGE), "the Training Range has no next stage");
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after clearing the Training Range");
         assertEquals(OLD_RUN_STAGE, new SaveData(store).getUnlockedStageIndex());
 
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.PLAY_AGAIN));
         assertLoadout(PlayerLoadout.fresh(Difficulty.NORMAL), menu.getActiveLoadout(), "Training Range replay");
         assertSavedRun(store, OLD_RUN_STAGE, OLD_RUN, "after PLAY AGAIN in the Training Range");
     }
@@ -418,20 +443,20 @@ class MenuStateFlowTest {
 
     @Test
     void pauseMenuResumesRestartsAndReturnsToTitle() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
 
         menu.escape();
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
-        assertEquals(MenuState.Command.NONE, choose(menu, "RESUME"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.RESUME));
         assertEquals(MenuState.Screen.PLAYING, menu.getScreen());
 
         menu.escape();
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "RESTART STAGE"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.RESTART));
         assertEquals(MenuState.Screen.PLAYING, menu.getScreen());
 
         menu.escape();
-        assertEquals(MenuState.Command.NONE, choose(menu, "RETURN TO TITLE"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.RETURN_TO_TITLE));
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertEquals(MenuState.Command.NONE, menu.escape(), "Esc does nothing on the Title");
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
@@ -440,7 +465,7 @@ class MenuStateFlowTest {
     @Test
     void deathScreenReturnsToTitleByItsRowAndByEscape() {
         for (boolean byEscape : new boolean[] {false, true}) {
-            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.PLAYING);
             menu.onPlayerDied();
             assertEquals(MenuState.Screen.DEAD, menu.getScreen());
@@ -448,14 +473,14 @@ class MenuStateFlowTest {
             assertEquals(MenuState.Screen.DEAD, menu.getScreen(), "a second death report changes nothing");
 
             if (byEscape) assertEquals(MenuState.Command.NONE, menu.escape());
-            else assertEquals(MenuState.Command.NONE, choose(menu, "RETURN TO TITLE"));
+            else assertEquals(MenuState.Command.NONE, choose(menu, OptionId.RETURN_TO_TITLE));
             assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         }
     }
 
     @Test
     void quickRestartWorksInPlayOnPauseAndOnDeathOnly() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.quickRestart());
 
@@ -479,7 +504,7 @@ class MenuStateFlowTest {
 
     @Test
     void onWindowPausedPausesPlayAndLeavesMenusAlone() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         menu.onWindowPaused();
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
@@ -495,30 +520,31 @@ class MenuStateFlowTest {
     @Test
     void fullscreenToggleReturnsApplyDisplayAndOtherSettingsDoNot() {
         GameSettings settings = new GameSettings();
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
-        choose(menu, "SETTINGS");
+        MenuState menu = newMenu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        choose(menu, OptionId.SETTINGS);
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
 
-        menu.setSelectedIndex(indexOf(menu, "FULLSCREEN"));
+        select(menu, OptionId.SET_FULLSCREEN);
         assertEquals(MenuState.Command.APPLY_DISPLAY, menu.adjustHorizontal(1));
         assertTrue(settings.isFullscreen());
-        assertEquals("FULLSCREEN: < ON >", menu.getOptions().get(5));
+        assertEquals(strings().format(UiText.MENU_SETTINGS_FULLSCREEN, strings().get(UiText.MENU_SETTINGS_ON)),
+            menu.getSelectedOption().label);
         assertEquals(MenuState.Command.APPLY_DISPLAY, menu.confirm(), "Enter on the row toggles it too");
         assertFalse(settings.isFullscreen());
 
-        menu.setSelectedIndex(indexOf(menu, "SENSITIVITY"));
+        select(menu, OptionId.SET_SENSITIVITY);
         assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(1));
         assertEquals(0.13f, settings.getMouseSensitivity(), 1e-4f);
-        menu.setSelectedIndex(indexOf(menu, "INVERT"));
+        select(menu, OptionId.SET_INVERT_Y);
         assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(-1));
         assertTrue(settings.isInvertY());
-        menu.setSelectedIndex(indexOf(menu, "VIEW BOB"));
+        select(menu, OptionId.SET_VIEW_BOB);
         assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(1));
         assertFalse(settings.isViewBob());
         assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(0), "a zero step does nothing");
         assertFalse(settings.isViewBob());
 
-        assertEquals(MenuState.Command.NONE, choose(menu, "BACK"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.BACK));
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(1), "no adjusting outside Settings");
     }
@@ -526,44 +552,44 @@ class MenuStateFlowTest {
     @Test
     void quitRowQuitsAtOnceFromTitleAndPause() {
         MenuState title = titleMenu(new MapKeyValueStore());
-        assertEquals(MenuState.Command.QUIT, choose(title, "QUIT"));
+        assertEquals(MenuState.Command.QUIT, choose(title, OptionId.QUIT));
 
-        MenuState paused = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState paused = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         paused.escape();
-        assertEquals(MenuState.Command.QUIT, choose(paused, "QUIT"));
+        assertEquals(MenuState.Command.QUIT, choose(paused, OptionId.QUIT));
     }
 
     @Test
     void escapeFromStageSelectAndDifficultySelectGoesBackOneScreen() {
         MenuState menu = titleMenu(new MapKeyValueStore());
 
-        choose(menu, "SELECT STAGE");
+        choose(menu, OptionId.SELECT_STAGE);
         assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
         menu.escape();
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
 
         // Difficulty Select opened from Stage Select goes back to Stage Select, by Esc and by BACK.
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(0);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, 0);
         menu.confirm();
         assertEquals(MenuState.Screen.DIFFICULTY_SELECT, menu.getScreen());
         menu.escape();
         assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
-        menu.setSelectedIndex(0);
+        selectStage(menu, 0);
         menu.confirm();
-        assertEquals(MenuState.Command.NONE, choose(menu, "BACK"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.BACK));
         assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
-        assertEquals(MenuState.Command.NONE, choose(menu, "BACK"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.BACK));
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
 
         // Difficulty Select opened from Start Campaign goes back to the Title.
-        choose(menu, "START CAMPAIGN");
+        choose(menu, OptionId.START_CAMPAIGN);
         assertEquals(MenuState.Screen.DIFFICULTY_SELECT, menu.getScreen());
         menu.escape();
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
-        choose(menu, "START CAMPAIGN");
-        choose(menu, "BACK");
+        choose(menu, OptionId.START_CAMPAIGN);
+        choose(menu, OptionId.BACK);
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
     }
 
@@ -592,7 +618,7 @@ class MenuStateFlowTest {
         assertFalse(menu.isQuitPromptVisible(), "the prompt expires after the window");
         assertEquals(MenuState.Command.NONE, menu.requestQuit(), "a press after the window starts over");
 
-        choose(menu, "SELECT STAGE");
+        choose(menu, OptionId.SELECT_STAGE);
         assertFalse(menu.isQuitPromptVisible(), "leaving the Title cancels the pending quit");
         assertEquals(MenuState.Command.NONE, menu.requestQuit(), "the quit key does nothing on Stage Select");
         assertFalse(menu.isQuitPromptVisible());
@@ -602,7 +628,7 @@ class MenuStateFlowTest {
 
     @Test
     void quitKeyWorksOnPauseAndNotInPlayOrOnOtherScreens() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         assertEquals(MenuState.Command.NONE, menu.requestQuit());
         assertEquals(MenuState.Command.NONE, menu.requestQuit(), "no quit key in play");
@@ -624,17 +650,17 @@ class MenuStateFlowTest {
     @Test
     void settingsRemembersWhetherItWasOpenedFromTitleOrPause() {
         MenuState menu = titleMenu(new MapKeyValueStore());
-        choose(menu, "SETTINGS");
+        choose(menu, OptionId.SETTINGS);
         assertEquals(MenuState.Screen.TITLE, menu.getSettingsReturnScreen());
         menu.escape();
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
 
-        choose(menu, "TRAINING RANGE");
-        choose(menu, "DEPLOY");
+        choose(menu, OptionId.TRAINING_RANGE);
+        choose(menu, OptionId.DEPLOY);
         menu.escape();
-        choose(menu, "SETTINGS");
+        choose(menu, OptionId.SETTINGS);
         assertEquals(MenuState.Screen.PAUSED, menu.getSettingsReturnScreen());
-        assertEquals(MenuState.Command.NONE, choose(menu, "BACK"));
+        assertEquals(MenuState.Command.NONE, choose(menu, OptionId.BACK));
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
     }
 
@@ -648,7 +674,7 @@ class MenuStateFlowTest {
         assertFalse(menu.isInTrainingRange());
 
         // Training Range briefing -> Esc and RETURN TO TITLE both restore Stage 01 and clear inTrainingRange.
-        choose(menu, "TRAINING RANGE");
+        choose(menu, OptionId.TRAINING_RANGE);
         assertEquals(Levels.trainingRange().id, menu.getActiveStage().id);
         assertTrue(menu.isInTrainingRange());
         menu.escape();
@@ -656,29 +682,29 @@ class MenuStateFlowTest {
         assertEquals(outerBreachId, menu.getActiveStage().id);
         assertFalse(menu.isInTrainingRange());
 
-        choose(menu, "TRAINING RANGE");
-        choose(menu, "RETURN TO TITLE");
+        choose(menu, OptionId.TRAINING_RANGE);
+        choose(menu, OptionId.RETURN_TO_TITLE);
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertEquals(outerBreachId, menu.getActiveStage().id);
         assertFalse(menu.isInTrainingRange());
 
         // Settings opened from Title after Training Range keeps Outer Breach backdrop.
-        choose(menu, "SETTINGS");
+        choose(menu, OptionId.SETTINGS);
         assertEquals(outerBreachId, menu.getActiveStage().id);
         menu.escape();
         assertEquals(outerBreachId, menu.getActiveStage().id);
 
         // Stage 03 briefing -> Esc restores Outer Breach without touching the saved OLD_RUN.
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(2);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, 2);
         menu.confirm();
-        choose(menu, "NORMAL");
+        choose(menu, Difficulty.NORMAL);
         assertEquals("03_security_hub", menu.getActiveStage().id);
         menu.escape();
         assertEquals(outerBreachId, menu.getActiveStage().id);
 
         // CONTINUE CAMPAIGN still loads OLD_RUN from SaveData rather than Title's activeStage (01_outer_breach).
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.CONTINUE));
         assertEquals(Levels.campaign().get(OLD_RUN_STAGE).id, menu.getActiveStage().id);
         assertLoadout(OLD_RUN, menu.getActiveLoadout(), "CONTINUE after Title backdrop reset");
 
@@ -688,28 +714,28 @@ class MenuStateFlowTest {
 
         // Deploying Stage 03 saves Stage 03, PAUSED -> RETURN TO TITLE resets backdrop to Outer Breach, and CONTINUE
         // resumes Stage 03 rather than Outer Breach.
-        choose(menu, "SELECT STAGE");
-        menu.setSelectedIndex(2);
+        choose(menu, OptionId.SELECT_STAGE);
+        selectStage(menu, 2);
         menu.confirm();
-        choose(menu, "NORMAL");
-        choose(menu, "DEPLOY");
+        choose(menu, Difficulty.NORMAL);
+        choose(menu, OptionId.DEPLOY);
         menu.escape();
-        choose(menu, "RETURN TO TITLE");
+        choose(menu, OptionId.RETURN_TO_TITLE);
         assertEquals(outerBreachId, menu.getActiveStage().id);
-        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, OptionId.CONTINUE));
         assertEquals("03_security_hub", menu.getActiveStage().id);
         assertLoadout(PlayerLoadout.forStage(Levels.stage("03_security_hub"), Difficulty.NORMAL,
                 TestTuning.DIFFICULTY, TestTuning.WEAPONS),
             menu.getActiveLoadout(),
             "CONTINUE resumes deployed Stage 03");
         menu.escape();
-        choose(menu, "RETURN TO TITLE");
+        choose(menu, OptionId.RETURN_TO_TITLE);
         assertEquals(outerBreachId, menu.getActiveStage().id);
 
-        choose(menu, "TRAINING RANGE");
-        choose(menu, "DEPLOY");
+        choose(menu, OptionId.TRAINING_RANGE);
+        choose(menu, OptionId.DEPLOY);
         menu.onStageCleared(PlayerLoadout.fresh(), 25f, 11, 11, 0f);
-        choose(menu, "RETURN TO TITLE");
+        choose(menu, OptionId.RETURN_TO_TITLE);
         assertEquals(outerBreachId, menu.getActiveStage().id);
         assertFalse(menu.isInTrainingRange());
     }

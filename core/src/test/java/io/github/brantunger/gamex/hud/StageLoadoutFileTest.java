@@ -93,14 +93,6 @@ class StageLoadoutFileTest {
         return temp.resolve(Levels.LEVELS_DIR);
     }
 
-    private static int indexOf(MenuState menu, String prefix) {
-        List<String> options = menu.getOptions();
-        for (int i = 0; i < options.size(); i++) {
-            if (options.get(i).startsWith(prefix)) return i;
-        }
-        throw new AssertionError("no option " + prefix + " in " + options);
-    }
-
     /** @return the loadout the briefing shows after picking a stage and a difficulty on {@code SELECT STAGE}. */
     private static PlayerLoadout selectStage(String stageId, Difficulty difficulty) {
         List<Levels.Stage> campaign = Levels.campaign();
@@ -112,11 +104,11 @@ class StageLoadoutFileTest {
         SaveData save = new SaveData(new MapKeyValueStore());
         save.unlockStage(campaign.size() - 1);
         MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
-        menu.setSelectedIndex(indexOf(menu, "SELECT STAGE"));
+        assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
         menu.confirm();
-        menu.setSelectedIndex(index);
+        assertTrue(menu.selectId(MenuState.OptionId.STAGE, index));
         menu.confirm();
-        menu.setSelectedIndex(indexOf(menu, difficulty.label));
+        assertTrue(menu.selectId(MenuState.OptionId.DIFFICULTY, difficulty.ordinal()));
         menu.confirm();
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertEquals(stageId, menu.getActiveStage().id);

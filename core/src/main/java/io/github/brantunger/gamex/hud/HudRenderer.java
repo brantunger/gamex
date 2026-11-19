@@ -7,10 +7,12 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.render.ProceduralTextures;
 import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
@@ -19,7 +21,6 @@ import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Pickup;
 
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Draws the 2D overlay on top of the finished 3D view: combat HUD (crosshair, hit-markers, directional hurt vignette,
@@ -31,15 +32,11 @@ import java.util.Locale;
  */
 public final class HudRenderer implements Disposable {
 
-    static final int DEFAULT_WIDTH = 1280;
-    static final int DEFAULT_HEIGHT = 720;
     static final float HUD_REFERENCE_SPAN = 720f;
     private static final int ENERGY_SEGMENTS = 10;
     private static final float MENU_BOX_WIDTH = 520f;
     private static final float MENU_ROW_HEIGHT = 34f;
     private static final float MENU_ROW_STEP = 42f;
-    /** Label drawn in front of {@link GameSimulation#getObjectiveText()}. */
-    static final String OBJECTIVE_PREFIX = "OBJECTIVE: ";
     /** Left edge of the status column, in HUD units. */
     static final float STATUS_LEFT = 28f;
     /** Font pixel size of the objective line, in HUD units. */
@@ -52,11 +49,14 @@ public final class HudRenderer implements Disposable {
     static final float OBJECTIVE_ROW_DROP = 24f;
     /** Gap between the top of the window and the top of the objective line's lower row, in HUD units. */
     static final float OBJECTIVE_LOW_TOP = 110f;
-    /** Right edge the objective line is given room up to, in HUD units; the longest line ends at 409.6. */
+    /**
+     * Right edge the objective line is given room up to, in HUD units; the longest line of the shipped text ends at
+     * 409.6.
+     */
     static final float OBJECTIVE_RIGHT_LIMIT = 410f;
     /**
      * Half the width kept free around the centre of the window for the boss bar's panel and the toast boxes, in HUD
-     * units; the widest toast box is 450.8 wide.
+     * units; the widest toast box of the shipped text is 450.8 wide.
      */
     static final float CENTRE_HALF_WIDTH = 226f;
     /** Width of the boss health bar, in HUD units. */
@@ -85,10 +85,70 @@ public final class HudRenderer implements Disposable {
     static final float MEDAL_PIXEL = 2.4f;
     /** Width of the Select Stage panel, in HUD units. */
     static final float STAGE_SELECT_PANEL_WIDTH = 620f;
+    /** Font pixel size of the tally's rank line, in HUD units. */
+    static final float TALLY_RANK_PIXEL = 4f;
+    /** Font pixel size of the tally's title after a stage, in HUD units. */
+    static final float TALLY_TITLE_PIXEL = 5.8f;
+    /** Font pixel size of the tally's title after the last stage, in HUD units. */
+    static final float TALLY_CAMPAIGN_TITLE_PIXEL = 5.6f;
+    /** Font pixel size of the stage's title on the tally, in HUD units. */
+    static final float TALLY_STAGE_PIXEL = 3.2f;
+    /** Font pixel size of the note under the stage's title after the last stage, in HUD units. */
+    static final float TALLY_NOTE_PIXEL = 2.4f;
+    /** Width of the Title panel, in HUD units. */
+    static final float TITLE_PANEL_WIDTH = 600f;
+    /** Font pixel size of the game's name on the Title screen, in HUD units. */
+    static final float TITLE_NAME_PIXEL = 12f;
+    /** Font pixel size of the line under the game's name, in HUD units. */
+    static final float TITLE_SUBTITLE_PIXEL = 3f;
+    /** Font pixel size of the Select Stage title, in HUD units. */
+    static final float STAGE_SELECT_TITLE_PIXEL = 5.5f;
+    /** Font pixel size of the line under the Select Stage title, in HUD units. */
+    static final float STAGE_SELECT_HINT_PIXEL = 2.2f;
+    /** Width of the Select Difficulty panel, in HUD units. */
+    static final float DIFFICULTY_PANEL_WIDTH = 580f;
+    /** Font pixel size of the Select Difficulty title, in HUD units. */
+    static final float DIFFICULTY_TITLE_PIXEL = 5.5f;
+    /** Width of the Briefing panel, in HUD units. */
+    static final float BRIEFING_PANEL_WIDTH = 660f;
+    /** Font pixel size of the stage's title on the Briefing screen, in HUD units. */
+    static final float BRIEFING_TITLE_PIXEL = 5.2f;
+    /** Font pixel size of the line under the briefing's title, in HUD units. */
+    static final float BRIEFING_META_PIXEL = 2.5f;
+    /** Font pixel size of the Pause title, in HUD units. */
+    static final float PAUSE_TITLE_PIXEL = 6.5f;
+    /** Font pixel size of the Settings title, in HUD units. */
+    static final float SETTINGS_TITLE_PIXEL = 5.8f;
+    /** Width of the Death panel, in HUD units. */
+    static final float DEATH_PANEL_WIDTH = 560f;
+    /** Font pixel size of the Death title, in HUD units. */
+    static final float DEATH_TITLE_PIXEL = 6.5f;
+    /** Font pixel size of the line under the Death title, in HUD units. */
+    static final float DEATH_SURVIVED_PIXEL = 2.5f;
+    /** Font pixel size of the label over the boss health bar, in HUD units. */
+    static final float BOSS_LABEL_PIXEL = 2.3f;
+    /** Room a line of text is given clear of each side of the panel it is drawn in, in HUD units. */
+    static final float PANEL_TEXT_MARGIN = 20f;
+    /** Width of the Pause panel, in HUD units; the narrower of the two panels the quit prompt is drawn in. */
+    static final float PAUSE_PANEL_WIDTH = 560f;
+    /** Font pixel size of the quit prompt on the Title and Pause screens, in HUD units. */
+    static final float QUIT_PROMPT_PIXEL = 2.8f;
+    /** Width of the Settings panel, in HUD units. */
+    static final float SETTINGS_PANEL_WIDTH = 600f;
+    /** Font pixel size of the help line on the Settings screen, in HUD units. */
+    static final float SETTINGS_HELP_PIXEL = 2.2f;
+    /** Width of the box the briefing's lines are drawn in, in HUD units. */
+    static final float BRIEFING_LOG_WIDTH = 580f;
+    /** How many lines the box of the briefing has room for, one under the other. */
+    static final int BRIEFING_LINES = 3;
+    /** Font pixel size of a briefing line, in HUD units. */
+    static final float BRIEFING_LINE_PIXEL = 2.4f;
     /** Width of a menu option row, in HUD units. */
     static final float OPTION_ROW_WIDTH = MENU_BOX_WIDTH;
     /** Font pixel size of a menu option row, in HUD units. */
     static final float OPTION_PIXEL = 2.8f;
+    /** Font pixel size of the line of key hints at the foot of the Title screen, in HUD units. */
+    static final float TITLE_FOOTER_PIXEL = 2.0f;
     /** Font pixel size of the centre-screen interaction prompt, in HUD units. */
     static final float INTERACTION_PROMPT_PIXEL = 2.4f;
     /** Horizontal padding inside the interaction prompt box, in HUD units. */
@@ -97,11 +157,19 @@ public final class HudRenderer implements Disposable {
     static final float INTERACTION_PROMPT_PAD_Y = 5f;
     /** Minimum Rail Lance zoom fraction above which tactical rangefinder brackets are drawn. */
     static final float RAIL_ZOOM_OPTIC_THRESHOLD = 0.05f;
+    /** Red, green, blue and alpha of the prompt in front of something the player can use now. */
+    private static final float[] PROMPT_USABLE_COLOUR = {0.62f, 1f, 0.86f, 0.95f};
+    /** Red, green, blue and alpha of the prompt in front of a bulkhead that stays shut. */
+    private static final float[] PROMPT_BLOCKED_COLOUR = {1f, 0.72f, 0.30f, 0.95f};
 
     private final SpriteBatch batch;
     private final Matrix4 fallbackProjection = new Matrix4();
     private final ProceduralTextures textures;
     private final PixelFont font;
+    private final UiStrings strings;
+    /** The toast whose words {@link #toastText} holds, so they are put together once and not on every frame. */
+    private GameSimulation.Toast shownToast;
+    private String toastText;
     private float width;
     private float height;
     /** One HUD unit in pixels. */
@@ -110,19 +178,25 @@ public final class HudRenderer implements Disposable {
     /**
      * @param textures the textures to draw with; the caller keeps ownership of them
      * @param font the loaded font all text is drawn with
+     * @param strings the text of the HUD and the menu screens, as loaded at start-up
+     * @param window the size the overlay takes until the window reports its own
      */
-    public HudRenderer(ProceduralTextures textures, PixelFont font) {
-        this(textures, font, new SpriteBatch());
+    public HudRenderer(ProceduralTextures textures, PixelFont font, UiStrings strings, WindowDefaults window) {
+        this(textures, font, strings, window, new SpriteBatch());
     }
 
-    HudRenderer(ProceduralTextures textures, PixelFont font, SpriteBatch batch) {
+    HudRenderer(ProceduralTextures textures, PixelFont font, UiStrings strings, WindowDefaults window,
+                SpriteBatch batch) {
+        if (strings == null) throw new IllegalArgumentException("Strings must not be null");
+        if (window == null) throw new IllegalArgumentException("Window defaults must not be null");
         this.textures = textures;
         this.font = font;
+        this.strings = strings;
         this.batch = batch;
         int initialWidth = Gdx.graphics != null ? Gdx.graphics.getWidth() : 0;
         int initialHeight = Gdx.graphics != null ? Gdx.graphics.getHeight() : 0;
         if (initialWidth <= 0 || initialHeight <= 0) {
-            resize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+            resize(window.width, window.height);
         } else {
             resize(initialWidth, initialHeight);
         }
@@ -347,9 +421,25 @@ public final class HudRenderer implements Disposable {
         return height * 0.5f - offset * unit;
     }
 
+    /**
+     * @param prompt an interaction prompt
+     * @return the red, green, blue and alpha it is drawn in. The colour goes by the prompt's kind and never by its
+     *     words, so a reworded prompt keeps its colour.
+     */
+    static float[] promptColour(GameSimulation.InteractionPrompt prompt) {
+        return sharedPromptColour(prompt).clone();
+    }
+
+    /** @return the array {@link #promptColour} copies, which drawing reads on every frame and must not write to */
+    private static float[] sharedPromptColour(GameSimulation.InteractionPrompt prompt) {
+        return prompt.kind == GameSimulation.InteractionPrompt.Kind.USABLE
+            ? PROMPT_USABLE_COLOUR : PROMPT_BLOCKED_COLOUR;
+    }
+
     private void drawInteractionPrompt(GameSimulation simulation) {
-        String prompt = simulation.getInteractionPrompt();
-        if (prompt == null) return;
+        GameSimulation.InteractionPrompt shown = simulation.getInteractionPrompt();
+        if (shown == null) return;
+        String prompt = strings.prompt(shown);
         float pixel = INTERACTION_PROMPT_PIXEL * unit;
         float textW = PixelFont.width(prompt, pixel);
         float padX = INTERACTION_PROMPT_PAD_X * unit;
@@ -360,8 +450,8 @@ public final class HudRenderer implements Disposable {
         float bottom = interactionPromptBottomY(height, unit, simulation.getActiveWeapon(), simulation.getZoom());
         batch.setColor(0.06f, 0.08f, 0.14f, 0.78f);
         rect(cx - boxW * 0.5f, bottom, boxW, boxH);
-        if (prompt.startsWith("[E]")) batch.setColor(0.62f, 1f, 0.86f, 0.95f);
-        else batch.setColor(1f, 0.72f, 0.30f, 0.95f);
+        float[] colour = sharedPromptColour(shown);
+        batch.setColor(colour[0], colour[1], colour[2], colour[3]);
         font.drawCentred(batch, textures.white, prompt, cx, bottom + padY, pixel);
     }
 
@@ -516,7 +606,7 @@ public final class HudRenderer implements Disposable {
         float bottom = chargeBottomY(height, unit, simulation.getActiveWeapon(), simulation.getZoom());
         if (charger.isRefused() || player.isDashRefused()) {
             batch.setColor(1f, 0.35f, 0.3f, 0.95f);
-            font.drawCentred(batch, textures.white, "LOW ENERGY", centreX, bottom, 3f * unit);
+            font.drawCentred(batch, textures.white, strings.get(UiText.HUD_LOW_ENERGY), centreX, bottom, 3f * unit);
             return;
         }
         if (!charger.isCharging()) return;
@@ -528,7 +618,8 @@ public final class HudRenderer implements Disposable {
         batch.setColor(1f, 1f, 1f, 0.9f);
         rect(left + barWidth * charger.getMinCharge() - unit, bottom - 4f * unit, 2f * unit,
             barHeight + 8f * unit);
-        font.drawCentred(batch, textures.white, "CHARGE", centreX, bottom - 26f * unit, 3f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.HUD_CHARGE), centreX, bottom - 26f * unit,
+            3f * unit);
     }
 
     private void drawVitalsAndEnergy(GameSimulation simulation) {
@@ -568,7 +659,7 @@ public final class HudRenderer implements Disposable {
             rect(left + span * from, energyBottom - 6f * unit, span * (energy.getFraction() - from), 3f * unit);
         }
         batch.setColor(0.8f, 0.72f, 1f, 0.95f);
-        font.draw(batch, textures.white, "ENERGY [SHIFT: DASH]", left,
+        font.draw(batch, textures.white, strings.get(UiText.HUD_ENERGY), left,
             energyBottom + segmentHeight + 6f * unit, 2.3f * unit);
 
         // Health bar.
@@ -583,8 +674,8 @@ public final class HudRenderer implements Disposable {
         rect(left, healthY, barW * hpFrac, barH);
         batch.setColor(0.9f, 1f, 0.94f, 0.95f);
         int shownHp = player.isDead() ? 0 : Math.max(1, Math.round(player.getHealth()));
-        font.draw(batch, textures.white, "HP " + shownHp, left + barW + 10f * unit, healthY + unit,
-            2.6f * unit);
+        font.draw(batch, textures.white, strings.format(UiText.HUD_HP, Integer.toString(shownHp)),
+            left + barW + 10f * unit, healthY + unit, 2.6f * unit);
 
         // Armor bar.
         float armorY = 90f * unit;
@@ -596,7 +687,8 @@ public final class HudRenderer implements Disposable {
             rect(left, armorY, barW * armorFrac, barH);
         }
         batch.setColor(0.72f, 0.90f, 1f, 0.95f);
-        font.draw(batch, textures.white, "ARMOR " + Math.round(player.getArmor()),
+        font.draw(batch, textures.white,
+            strings.format(UiText.HUD_ARMOR, Integer.toString(Math.round(player.getArmor()))),
             left + barW + 10f * unit, armorY + unit, 2.6f * unit);
 
         // Active weapon slots and held security keycards.
@@ -604,7 +696,7 @@ public final class HudRenderer implements Disposable {
         boolean pistolSelected = selectedWeapon == WeaponSlot.PISTOL;
         batch.setColor(pistolSelected ? 0.80f : 0.45f, pistolSelected ? 1f : 0.58f,
             pistolSelected ? 0.88f : 0.52f, pistolSelected ? 0.95f : 0.65f);
-        font.draw(batch, textures.white, (pistolSelected ? "> " : "  ") + "1: PISTOL [INF]",
+        font.draw(batch, textures.white, weaponRow(pistolSelected, strings.get(UiText.HUD_WEAPON_PISTOL)),
             left, 114f * unit, 2.4f * unit);
 
         boolean showScatterRow = simulation.hasScattergun() || simulation.getShells() > 0;
@@ -612,8 +704,8 @@ public final class HudRenderer implements Disposable {
             boolean scatterSelected = selectedWeapon == WeaponSlot.SCATTERGUN;
             if (!simulation.hasScattergun()) {
                 batch.setColor(0.75f, 0.58f, 0.44f, 0.72f);
-                font.draw(batch, textures.white, "  SHELLS [" + simulation.getShells() + "/"
-                    + simulation.getMaxShells() + "]", left, 136f * unit, 2.4f * unit);
+                font.draw(batch, textures.white, weaponRow(false, ammoRow(strings, UiText.HUD_AMMO_SHELLS,
+                    simulation.getShells(), simulation.getMaxShells())), left, 136f * unit, 2.4f * unit);
             } else {
                 if (simulation.getShells() <= 0) {
                     batch.setColor(0.95f, 0.42f, 0.36f, scatterSelected ? 0.96f : 0.72f);
@@ -622,8 +714,8 @@ public final class HudRenderer implements Disposable {
                 } else {
                     batch.setColor(0.55f, 0.52f, 0.48f, 0.68f);
                 }
-                font.draw(batch, textures.white, (scatterSelected ? "> " : "  ")
-                    + "2: SCATTERGUN [" + simulation.getShells() + "/" + simulation.getMaxShells() + "]",
+                font.draw(batch, textures.white, weaponRow(scatterSelected, ammoRow(strings,
+                    UiText.HUD_WEAPON_SCATTERGUN, simulation.getShells(), simulation.getMaxShells())),
                     left, 136f * unit, 2.4f * unit);
             }
         }
@@ -634,8 +726,8 @@ public final class HudRenderer implements Disposable {
             float railY = showScatterRow ? 158f * unit : 136f * unit;
             if (!simulation.hasRailLance()) {
                 batch.setColor(0.42f, 0.72f, 0.80f, 0.72f);
-                font.draw(batch, textures.white, "  SLUGS [" + simulation.getSlugs() + "/"
-                    + simulation.getMaxSlugs() + "]", left, railY, 2.4f * unit);
+                font.draw(batch, textures.white, weaponRow(false, ammoRow(strings, UiText.HUD_AMMO_SLUGS,
+                    simulation.getSlugs(), simulation.getMaxSlugs())), left, railY, 2.4f * unit);
             } else {
                 if (simulation.getSlugs() <= 0) {
                     batch.setColor(0.95f, 0.42f, 0.36f, railSelected ? 0.96f : 0.72f);
@@ -644,8 +736,8 @@ public final class HudRenderer implements Disposable {
                 } else {
                     batch.setColor(0.44f, 0.62f, 0.68f, 0.70f);
                 }
-                font.draw(batch, textures.white, (railSelected ? "> " : "  ")
-                    + "3: RAIL LANCE [" + simulation.getSlugs() + "/" + simulation.getMaxSlugs() + "]",
+                font.draw(batch, textures.white, weaponRow(railSelected, ammoRow(strings,
+                    UiText.HUD_WEAPON_RAIL_LANCE, simulation.getSlugs(), simulation.getMaxSlugs())),
                     left, railY, 2.4f * unit);
             }
         }
@@ -656,14 +748,24 @@ public final class HudRenderer implements Disposable {
         float keySize = 2.4f * unit;
         if (simulation.hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
             batch.setColor(1f, 0.76f, 0.22f, 0.96f);
-            String badge = "[AMBER KEY]";
+            String badge = strings.get(UiText.HUD_KEY_AMBER);
             font.draw(batch, textures.white, badge, keyX, keyY, keySize);
             keyX += PixelFont.width(badge, keySize) + 14f * unit;
         }
         if (simulation.hasKeycard(Pickup.Kind.CYAN_KEYCARD)) {
             batch.setColor(0.26f, 0.94f, 1f, 0.96f);
-            font.draw(batch, textures.white, "[CYAN KEY]", keyX, keyY, keySize);
+            font.draw(batch, textures.white, strings.get(UiText.HUD_KEY_CYAN), keyX, keyY, keySize);
         }
+    }
+
+    /** @return a row of the weapon list, behind the marker of the selected weapon or the room kept for it. */
+    static String weaponRow(boolean selected, String row) {
+        return (selected ? "> " : "  ") + row;
+    }
+
+    /** @return a line that shows an amount of ammunition and the most that is carried. */
+    static String ammoRow(UiStrings strings, UiText row, int ammo, int max) {
+        return strings.format(row, Integer.toString(ammo), Integer.toString(max));
     }
 
     /**
@@ -689,27 +791,27 @@ public final class HudRenderer implements Disposable {
             int remaining = simulation.getEnemiesRemaining();
             if (remaining > 0) batch.setColor(1f, 0.52f, 0.46f, 0.95f);
             else batch.setColor(0.55f, 1f, 0.82f, 0.95f);
-            String hostiles = "HOSTILES " + remaining + "/" + simulation.enemies.size();
+            String hostiles = strings.format(UiText.HUD_HOSTILES, Integer.toString(remaining),
+                Integer.toString(simulation.enemies.size()));
             font.draw(batch, textures.white, hostiles, 28f * unit, topY, pixel);
         } else {
             batch.setColor(0.8f, 1f, 0.88f, 0.92f);
-            String targets = "TARGETS " + simulation.getTargetsRemaining() + "/" + simulation.targets.size();
+            String targets = strings.format(UiText.HUD_TARGETS,
+                Integer.toString(simulation.getTargetsRemaining()), Integer.toString(simulation.targets.size()));
             font.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
         }
 
-        String objective = simulation.getObjectiveText();
+        GameSimulation.Objective objective = simulation.getObjective();
         if (objective != null) {
             float objectivePixel = OBJECTIVE_PIXEL * unit;
             float objectiveY = objectiveBottomY(width, height, unit);
             batch.setColor(0.55f, 0.95f, 1f, 0.9f);
-            // Drawn in two parts, so the line is not built anew each frame.
-            font.draw(batch, textures.white, OBJECTIVE_PREFIX, STATUS_LEFT * unit, objectiveY, objectivePixel);
-            font.draw(batch, textures.white, objective,
-                STATUS_LEFT * unit + PixelFont.width(OBJECTIVE_PREFIX, objectivePixel) + objectivePixel, objectiveY,
+            // The whole line was put together at load, so none is built anew each frame.
+            font.draw(batch, textures.white, strings.objectiveLine(objective), STATUS_LEFT * unit, objectiveY,
                 objectivePixel);
         }
 
-        String timer = "TIME " + formatTime(simulation.getTime());
+        String timer = strings.format(UiText.HUD_TIME, TextFormat.stopwatch(simulation.getTime()));
         batch.setColor(0.86f, 0.88f, 0.95f, 0.9f);
         font.draw(batch, textures.white, timer,
             width - 28f * unit - PixelFont.width(timer, pixel), topY, pixel);
@@ -725,14 +827,14 @@ public final class HudRenderer implements Disposable {
         float barH = 14f * unit;
         float left = (width - barW) * 0.5f;
         float barBottom = height - BOSS_BAR_BOTTOM * unit;
-        float labelPix = 2.3f * unit;
+        float labelPix = BOSS_LABEL_PIXEL * unit;
         float labelH = PixelFont.height(labelPix);
 
         batch.setColor(0.05f, 0.06f, 0.11f, 0.80f);
         rect(left - BOSS_PANEL_PAD_X * unit, barBottom - BOSS_PANEL_PAD_Y * unit,
             barW + 2f * BOSS_PANEL_PAD_X * unit, barH + labelH + 22f * unit);
 
-        String title = overdrive ? "WARDEN // OVERDRIVE" : "WARDEN";
+        String title = strings.get(overdrive ? UiText.HUD_BOSS_OVERDRIVE : UiText.HUD_BOSS);
         if (overdrive) batch.setColor(0.42f, 0.86f, 1.00f, 0.98f);
         else batch.setColor(1.00f, 0.44f, 0.28f, 0.98f);
         font.drawCentred(batch, textures.white, title, width * 0.5f, barBottom + barH + 6f * unit, labelPix);
@@ -749,8 +851,13 @@ public final class HudRenderer implements Disposable {
     }
 
     private void drawToast(GameSimulation simulation) {
-        String msg = simulation.getToastMessage();
-        if (msg == null) return;
+        GameSimulation.Toast toast = simulation.getToast();
+        if (toast == null) return;
+        if (toast != shownToast) {
+            shownToast = toast;
+            toastText = strings.toast(toast);
+        }
+        String msg = toastText;
         float alpha = simulation.getToastAlpha();
         float pixel = TOAST_PIXEL * unit;
         float textW = PixelFont.width(msg, pixel);
@@ -773,20 +880,20 @@ public final class HudRenderer implements Disposable {
         float cx = width * 0.5f;
         float cy = height * 0.5f;
 
-        drawPanel(cx, cy + 6f * unit, 600f * unit, 488f * unit);
+        drawPanel(cx, cy + 6f * unit, TITLE_PANEL_WIDTH * unit, 488f * unit);
         batch.setColor(0.76f, 0.56f, 1f, 1f);
-        font.drawCentred(batch, textures.white, "GAMEX", cx, cy + 168f * unit, 12f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_TITLE_NAME), cx, cy + 168f * unit,
+            TITLE_NAME_PIXEL * unit);
         batch.setColor(0.62f, 0.95f, 0.88f, 0.95f);
-        font.drawCentred(batch, textures.white, "SECTOR BREACH // TACTICAL FPS", cx, cy + 130f * unit,
-            3f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_TITLE_SUBTITLE), cx, cy + 130f * unit,
+            TITLE_SUBTITLE_PIXEL * unit);
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.TITLE));
         drawQuitPrompt(menuState, cx, cy - 222f * unit);
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
-        font.drawCentred(batch, textures.white,
-            "WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
-            cx, 32f * unit, 2.0f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_TITLE_FOOTER), cx, 32f * unit,
+            TITLE_FOOTER_PIXEL * unit);
     }
 
     private void drawStageSelectScreen(MenuState menuState) {
@@ -795,10 +902,11 @@ public final class HudRenderer implements Disposable {
         float cy = height * 0.5f;
         drawPanel(cx, cy + 4f * unit, STAGE_SELECT_PANEL_WIDTH * unit, 468f * unit);
         batch.setColor(0.55f, 0.95f, 1f, 1f);
-        font.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 174f * unit, 5.5f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_STAGE_SELECT_TITLE), cx,
+            cy + 174f * unit, STAGE_SELECT_TITLE_PIXEL * unit);
         batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
-        font.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 144f * unit,
-            2.2f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_STAGE_SELECT_HINT), cx,
+            cy + 144f * unit, STAGE_SELECT_HINT_PIXEL * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
         // Medals of the highlighted stage, in the strip under BACK.
         String detail = menuState.getStageSelectDetail();
@@ -812,9 +920,10 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.62f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy, 580f * unit, 340f * unit);
+        drawPanel(cx, cy, DIFFICULTY_PANEL_WIDTH * unit, 340f * unit);
         batch.setColor(0.78f, 0.62f, 1f, 1f);
-        font.drawCentred(batch, textures.white, "SELECT DIFFICULTY", cx, cy + 112f * unit, 5.5f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_DIFFICULTY_TITLE), cx,
+            cy + 112f * unit, DIFFICULTY_TITLE_PIXEL * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.DIFFICULTY_SELECT));
     }
 
@@ -823,23 +932,23 @@ public final class HudRenderer implements Disposable {
         Levels.Stage stage = menuState.getActiveStage();
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy, 660f * unit, 420f * unit);
+        drawPanel(cx, cy, BRIEFING_PANEL_WIDTH * unit, 420f * unit);
 
         batch.setColor(0.55f, 0.95f, 1f, 1f);
-        font.drawCentred(batch, textures.white, stage.title, cx, cy + 144f * unit, 5.2f * unit);
+        font.drawCentred(batch, textures.white, stage.title, cx, cy + 144f * unit, BRIEFING_TITLE_PIXEL * unit);
 
-        String meta = "DIFFICULTY: " + menuState.getActiveLoadout().difficulty.label
-            + "   //   PAR TIME: " + formatTime(stage.parSeconds);
+        String meta = briefingMetaLine(strings, menuState.getActiveLoadout().difficulty, stage.parSeconds);
         batch.setColor(0.76f, 0.72f, 0.95f, 0.9f);
-        font.drawCentred(batch, textures.white, meta, cx, cy + 108f * unit, 2.5f * unit);
+        font.drawCentred(batch, textures.white, meta, cx, cy + 108f * unit, BRIEFING_META_PIXEL * unit);
 
         // Terminal log box.
         batch.setColor(0.04f, 0.06f, 0.10f, 0.85f);
-        rect(cx - 290f * unit, cy - 42f * unit, 580f * unit, 128f * unit);
+        rect(cx - BRIEFING_LOG_WIDTH * 0.5f * unit, cy - 42f * unit, BRIEFING_LOG_WIDTH * unit, 128f * unit);
         batch.setColor(0.68f, 0.98f, 0.82f, 0.95f);
-        for (int i = 0; i < stage.briefing.size(); i++) {
-            font.drawCentred(batch, textures.white, "> " + stage.briefing.get(i), cx,
-                cy + (52f - i * 32f) * unit, 2.4f * unit);
+        List<String> briefing = menuState.getActiveBriefing();
+        for (int i = 0; i < briefing.size(); i++) {
+            font.drawCentred(batch, textures.white, briefingRow(briefing.get(i)), cx,
+                cy + (52f - i * 32f) * unit, BRIEFING_LINE_PIXEL * unit);
         }
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.BRIEFING));
@@ -849,9 +958,10 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.62f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy - 10f * unit, 560f * unit, 370f * unit);
+        drawPanel(cx, cy - 10f * unit, PAUSE_PANEL_WIDTH * unit, 370f * unit);
         batch.setColor(0.8f, 0.72f, 1f, 1f);
-        font.drawCentred(batch, textures.white, "PAUSED", cx, cy + 114f * unit, 6.5f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_PAUSED_TITLE), cx, cy + 114f * unit,
+            PAUSE_TITLE_PIXEL * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.PAUSED));
         drawQuitPrompt(menuState, cx, cy - 178f * unit);
     }
@@ -860,12 +970,13 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.70f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy, 600f * unit, 472f * unit);
+        drawPanel(cx, cy, SETTINGS_PANEL_WIDTH * unit, 472f * unit);
         batch.setColor(0.78f, 0.65f, 1f, 1f);
-        font.drawCentred(batch, textures.white, "SETTINGS", cx, cy + 168f * unit, 5.8f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_SETTINGS_TITLE), cx, cy + 168f * unit,
+            SETTINGS_TITLE_PIXEL * unit);
         batch.setColor(0.66f, 0.78f, 0.86f, 0.88f);
-        font.drawCentred(batch, textures.white, "LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", cx,
-            cy + 140f * unit, 2.2f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_SETTINGS_HELP), cx,
+            cy + 140f * unit, SETTINGS_HELP_PIXEL * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.SETTINGS));
     }
 
@@ -873,16 +984,18 @@ public final class HudRenderer implements Disposable {
         drawBackdropShade(0.55f);
         float cx = width * 0.5f;
         float cy = height * 0.5f;
-        drawPanel(cx, cy, 560f * unit, 310f * unit);
+        drawPanel(cx, cy, DEATH_PANEL_WIDTH * unit, 310f * unit);
         batch.setColor(1f, 0.30f, 0.34f, 1f);
-        font.drawCentred(batch, textures.white, "SIGNAL LOST", cx, cy + 78f * unit, 6.5f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_DEAD_TITLE), cx, cy + 78f * unit,
+            DEATH_TITLE_PIXEL * unit);
         if (simulation != null) {
-            String tally = simulation.enemies.isEmpty()
-                ? "TARGETS " + simulation.getTargetsDestroyed() + "/" + simulation.targets.size()
-                : "HOSTILES " + simulation.getEnemiesDestroyed() + "/" + simulation.enemies.size();
-            String sub = "SURVIVED " + formatTime(simulation.getTime()) + "   //   " + tally;
+            String sub = simulation.enemies.isEmpty()
+                ? survivedLine(strings, simulation.getTime(), false, simulation.getTargetsDestroyed(),
+                    simulation.targets.size())
+                : survivedLine(strings, simulation.getTime(), true, simulation.getEnemiesDestroyed(),
+                    simulation.enemies.size());
             batch.setColor(0.90f, 0.80f, 0.82f, 0.92f);
-            font.drawCentred(batch, textures.white, sub, cx, cy + 32f * unit, 2.5f * unit);
+            font.drawCentred(batch, textures.white, sub, cx, cy + 32f * unit, DEATH_SURVIVED_PIXEL * unit);
         }
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.DEAD));
     }
@@ -899,17 +1012,19 @@ public final class HudRenderer implements Disposable {
 
         if (campaignDone) {
             batch.setColor(1f, 0.88f, 0.36f, 1f);
-            font.drawCentred(batch, textures.white, "CAMPAIGN COMPLETE", cx, cy + 174f * unit, 5.6f * unit);
+            font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_COMPLETE_CAMPAIGN), cx,
+                cy + 174f * unit, TALLY_CAMPAIGN_TITLE_PIXEL * unit);
         } else {
             batch.setColor(0.52f, 1f, 0.82f, 1f);
-            font.drawCentred(batch, textures.white, "STAGE COMPLETE", cx, cy + 174f * unit, 5.8f * unit);
+            font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_COMPLETE_STAGE), cx,
+                cy + 174f * unit, TALLY_TITLE_PIXEL * unit);
         }
         batch.setColor(0.78f, 0.84f, 1f, 0.95f);
-        font.drawCentred(batch, textures.white, stage.title, cx, cy + 138f * unit, 3.2f * unit);
+        font.drawCentred(batch, textures.white, stage.title, cx, cy + 138f * unit, TALLY_STAGE_PIXEL * unit);
         if (campaignDone) {
             batch.setColor(0.52f, 1f, 0.82f, 0.95f);
-            font.drawCentred(batch, textures.white, "SECTOR CLEARED - ALL STAGES COMPLETE", cx,
-                cy + 112f * unit, 2.4f * unit);
+            font.drawCentred(batch, textures.white, strings.get(UiText.SCREEN_COMPLETE_CAMPAIGN_NOTE), cx,
+                cy + 112f * unit, TALLY_NOTE_PIXEL * unit);
         }
 
         if (sum != null) {
@@ -917,26 +1032,27 @@ public final class HudRenderer implements Disposable {
             boolean hostiles = !stage.map.getEnemySpawns().isEmpty();
 
             batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            font.drawCentred(batch, textures.white, tallyTimeLine(sum, stage.parSeconds), cx, cy + 86f * unit,
-                statPix);
+            font.drawCentred(batch, textures.white, tallyTimeLine(strings, sum, stage.parSeconds), cx,
+                cy + 86f * unit, statPix);
             if (sum.newBestTime) batch.setColor(1f, 0.88f, 0.36f, 1f);
             font.drawCentred(batch, textures.white,
-                tallyBestLine(sum, menuState.getActiveLoadout().difficulty.label), cx, cy + 62f * unit, statPix);
-            batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            font.drawCentred(batch, textures.white, tallyClearedLine(sum, hostiles), cx, cy + 38f * unit,
+                tallyBestLine(strings, sum, menuState.getActiveLoadout().difficulty), cx, cy + 62f * unit,
                 statPix);
-            font.drawCentred(batch, textures.white, tallyStatsLine(sum), cx, cy + 14f * unit, statPix);
+            batch.setColor(0.92f, 0.95f, 1f, 0.95f);
+            font.drawCentred(batch, textures.white, tallyClearedLine(strings, sum, hostiles), cx,
+                cy + 38f * unit, statPix);
+            font.drawCentred(batch, textures.white, tallyStatsLine(strings, sum), cx, cy + 14f * unit, statPix);
 
             if (sum.rank == 'S') batch.setColor(1f, 0.88f, 0.36f, 1f);
             else if (sum.rank == 'A') batch.setColor(0.45f, 0.96f, 0.85f, 1f);
             else batch.setColor(0.80f, 0.68f, 1f, 1f);
-            font.drawCentred(batch, textures.white, "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]",
-                cx, cy - 28f * unit, 4f * unit);
+            font.drawCentred(batch, textures.white, tallyRankLine(strings, sum), cx, cy - 28f * unit,
+                TALLY_RANK_PIXEL * unit);
 
             if (!sum.newMedals.isEmpty()) batch.setColor(1f, 0.88f, 0.36f, 1f);
             else if (!sum.medals.isEmpty()) batch.setColor(0.52f, 1f, 0.82f, 0.95f);
             else batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
-            font.drawCentred(batch, textures.white, tallyMedalLine(sum), cx, cy - 58f * unit,
+            font.drawCentred(batch, textures.white, tallyMedalLine(strings, sum), cx, cy - 58f * unit,
                 MEDAL_PIXEL * unit);
         }
 
@@ -947,7 +1063,8 @@ public final class HudRenderer implements Disposable {
     private void drawQuitPrompt(MenuState menuState, float cx, float y) {
         if (!menuState.isQuitPromptVisible()) return;
         batch.setColor(1f, 0.72f, 0.30f, 0.95f);
-        font.drawCentred(batch, textures.white, MenuState.QUIT_PROMPT, cx, y, 2.8f * unit);
+        font.drawCentred(batch, textures.white, strings.get(UiText.MENU_QUIT_PROMPT), cx, y,
+            QUIT_PROMPT_PIXEL * unit);
     }
 
     private void drawBackdropShade(float alpha) {
@@ -979,7 +1096,7 @@ public final class HudRenderer implements Disposable {
                 batch.setColor(0.42f, 0.28f, 0.76f, 0.85f);
                 rect(cx - boxW * 0.5f, bottom, boxW, rowH);
                 batch.setColor(1f, 1f, 1f, 1f);
-                font.drawCentred(batch, textures.white, "> " + options.get(i) + " <", cx,
+                font.drawCentred(batch, textures.white, highlightedRow(options.get(i)), cx,
                     bottom + (rowH - PixelFont.height(textSize)) * 0.5f, textSize);
             } else {
                 batch.setColor(0.12f, 0.13f, 0.20f, 0.65f);
@@ -991,30 +1108,63 @@ public final class HudRenderer implements Disposable {
         }
     }
 
-    /** @return the tally's clear time line, with the stage's par time. */
-    static String tallyTimeLine(SaveData.CompletionSummary sum, float parSeconds) {
-        return "CLEAR TIME: " + formatTime(sum.clearTime) + "  (PAR " + formatTime(parSeconds) + ")";
+    /** @return a menu option as its row shows it while it is highlighted. */
+    static String highlightedRow(String option) {
+        return "> " + option + " <";
+    }
+
+    /** @return a briefing line as the briefing's box shows it. */
+    static String briefingRow(String line) {
+        return "> " + line;
+    }
+
+    /** @return the line under the briefing's title: the difficulty of the run and the stage's par time. */
+    static String briefingMetaLine(UiStrings strings, Difficulty difficulty, float parSeconds) {
+        return strings.format(UiText.SCREEN_BRIEFING_META, strings.label(difficulty),
+            TextFormat.stopwatch(parSeconds));
     }
 
     /**
+     * @param strings the loaded text
+     * @param seconds how long the run lasted
+     * @param hostiles whether the stage has hostiles; otherwise its targets are counted
+     * @param destroyed how many of them were destroyed
+     * @param total how many there are
+     * @return the line under the Death screen's title
+     */
+    static String survivedLine(UiStrings strings, float seconds, boolean hostiles, int destroyed, int total) {
+        String tally = strings.format(hostiles ? UiText.SCREEN_DEAD_HOSTILES : UiText.SCREEN_DEAD_TARGETS,
+            Integer.toString(destroyed), Integer.toString(total));
+        return strings.format(UiText.SCREEN_DEAD_SURVIVED, TextFormat.stopwatch(seconds), tally);
+    }
+
+    /** @return the tally's clear time line, with the stage's par time. */
+    static String tallyTimeLine(UiStrings strings, SaveData.CompletionSummary sum, float parSeconds) {
+        return strings.format(UiText.TALLY_CLEAR_TIME, TextFormat.stopwatch(sum.clearTime),
+            TextFormat.stopwatch(parSeconds));
+    }
+
+    /**
+     * @param strings the loaded text
      * @param sum the run's summary
-     * @param difficultyLabel the label of the difficulty the run was played on
+     * @param difficulty the difficulty the run was played on
      * @return the tally's best time line for that difficulty, marked when this run set it
      */
-    static String tallyBestLine(SaveData.CompletionSummary sum, String difficultyLabel) {
-        return "BEST (" + difficultyLabel + "): " + formatTime(sum.bestTime)
-            + (sum.newBestTime ? "  *NEW BEST!*" : "");
+    static String tallyBestLine(UiStrings strings, SaveData.CompletionSummary sum, Difficulty difficulty) {
+        return strings.format(sum.newBestTime ? UiText.TALLY_BEST_NEW : UiText.TALLY_BEST,
+            strings.label(difficulty), TextFormat.stopwatch(sum.bestTime));
     }
 
     /**
+     * @param strings the loaded text
      * @param sum the run's summary
      * @param hostiles whether the stage has hostiles; otherwise its targets are counted
      * @return the tally's line of hostiles or targets destroyed
      */
-    static String tallyClearedLine(SaveData.CompletionSummary sum, boolean hostiles) {
+    static String tallyClearedLine(UiStrings strings, SaveData.CompletionSummary sum, boolean hostiles) {
         int pct = sum.targetsTotal <= 0 ? 100 : Math.round(sum.targetsDestroyed * 100f / sum.targetsTotal);
-        return (hostiles ? "HOSTILES CLEARED: " : "TARGETS CLEARED: ") + sum.targetsDestroyed + "/"
-            + sum.targetsTotal + " (" + pct + "%)";
+        return strings.format(hostiles ? UiText.TALLY_HOSTILES_CLEARED : UiText.TALLY_TARGETS_CLEARED,
+            Integer.toString(sum.targetsDestroyed), Integer.toString(sum.targetsTotal), Integer.toString(pct));
     }
 
     /**
@@ -1022,39 +1172,34 @@ public final class HudRenderer implements Disposable {
      *     Damage is rounded to the nearest whole and never below 1 once any was taken, so it reads 0 only on a run
      *     that took none and earns {@link Medal#UNTOUCHED}.
      */
-    static String tallyStatsLine(SaveData.CompletionSummary sum) {
+    static String tallyStatsLine(UiStrings strings, SaveData.CompletionSummary sum) {
         int accuracy = sum.accuracyPercent();
         int damage = sum.damageTaken <= 0f ? 0 : Math.max(1, Math.round(sum.damageTaken));
-        return "DAMAGE TAKEN: " + damage + "   PICKUPS: " + sum.pickupsCollected + "/"
-            + sum.pickupsTotal + "   ACCURACY: " + (accuracy < 0 ? "--" : accuracy + "%");
+        return strings.format(UiText.TALLY_STATS, Integer.toString(damage), Integer.toString(sum.pickupsCollected),
+            Integer.toString(sum.pickupsTotal),
+            accuracy < 0 ? strings.get(UiText.TALLY_NO_ACCURACY) : accuracy + "%");
+    }
+
+    /** @return the tally's line of the run's rank and the best rank on the stage. */
+    static String tallyRankLine(UiStrings strings, SaveData.CompletionSummary sum) {
+        return strings.format(UiText.TALLY_RANK, String.valueOf(sum.rank), String.valueOf(sum.bestRank));
     }
 
     /**
      * @return the tally's medal line: the medals this run earned, those earned for the first time between
      *     asterisks, as in {@code MEDALS: *UNTOUCHED*  SWEEP}; a run that could earn none says so
      */
-    static String tallyMedalLine(SaveData.CompletionSummary sum) {
-        if (!sum.medalsRecorded) return "TRAINING RUN - NO MEDALS";
-        if (sum.medals.isEmpty()) return "MEDALS: NONE";
-        StringBuilder line = new StringBuilder("MEDALS:");
-        boolean first = true;
+    static String tallyMedalLine(UiStrings strings, SaveData.CompletionSummary sum) {
+        if (!sum.medalsRecorded) return strings.get(UiText.TALLY_MEDALS_TRAINING);
+        if (sum.medals.isEmpty()) return strings.get(UiText.TALLY_MEDALS_NONE);
+        StringBuilder list = new StringBuilder();
         for (Medal medal : Medal.values()) {
             if (!sum.medals.contains(medal)) continue;
-            line.append(first ? " " : "  ");
-            first = false;
-            if (sum.newMedals.contains(medal)) line.append('*').append(medal.label).append('*');
-            else line.append(medal.label);
+            if (list.length() > 0) list.append("  ");
+            String label = strings.label(medal);
+            list.append(sum.newMedals.contains(medal) ? strings.format(UiText.TALLY_MEDAL_NEW, label) : label);
         }
-        return line.toString();
-    }
-
-    static String formatTime(float seconds) {
-        float clamped = !Float.isFinite(seconds) || seconds < 0f ? 0f : seconds;
-        long totalTenths = (long) Math.floor(clamped * 10.0);
-        long mins = totalTenths / 600L;
-        int secs = (int) ((totalTenths % 600L) / 10L);
-        int tenths = (int) (totalTenths % 10L);
-        return String.format(Locale.ROOT, "%02d:%02d.%d", mins, secs, tenths);
+        return strings.format(UiText.TALLY_MEDALS, list.toString());
     }
 
     private void rect(float x, float y, float rectWidth, float rectHeight) {

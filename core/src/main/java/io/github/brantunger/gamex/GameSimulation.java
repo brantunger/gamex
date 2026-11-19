@@ -41,7 +41,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -97,22 +96,102 @@ public final class GameSimulation {
     private static final float BLAST_SPAWN_DOWN = 0.05f;
     private static final int MAX_QUEUED_SOUNDS = 256;
 
-    /** Objective while an Amber bulkhead bars the way and its keycard is not held. */
-    public static final String OBJECTIVE_AMBER_KEYCARD = "FIND THE AMBER KEYCARD";
-    /** Objective while a Cyan bulkhead bars the way and its keycard is not held. */
-    public static final String OBJECTIVE_CYAN_KEYCARD = "FIND THE CYAN KEYCARD";
-    /** Objective while a lockdown bulkhead bars the way and no security console is overridden. */
-    public static final String OBJECTIVE_CONSOLE = "OVERRIDE THE SECURITY CONSOLE";
-    /** Objective while a living Warden seals the way. */
-    public static final String OBJECTIVE_WARDEN = "DESTROY THE WARDEN";
-    /** Objective once nothing bars the way to the exit pad. */
-    public static final String OBJECTIVE_EXIT = "REACH EXIT PAD";
-    /** Objective of a stage without an exit that clears once every target is destroyed. */
-    public static final String OBJECTIVE_ALL_TARGETS = "DESTROY ALL TARGETS";
-    /** Objective of a stage without an exit that clears once every hostile is destroyed. */
-    public static final String OBJECTIVE_ALL_HOSTILES = "DESTROY ALL HOSTILES";
-    /** Objective of a stage without an exit that clears once every target and hostile is destroyed. */
-    public static final String OBJECTIVE_ALL_TARGETS_AND_HOSTILES = "DESTROY TARGETS AND HOSTILES";
+    /** The next step towards clearing the stage. The HUD has the words for each. */
+    public enum Objective {
+        /** While an Amber bulkhead bars the way and its keycard is not held. */
+        AMBER_KEYCARD,
+        /** While a Cyan bulkhead bars the way and its keycard is not held. */
+        CYAN_KEYCARD,
+        /** While a lockdown bulkhead bars the way and no security console is overridden. */
+        CONSOLE,
+        /** While a living Warden seals the way. */
+        WARDEN,
+        /** Once nothing bars the way to the exit pad. */
+        EXIT,
+        /** On a stage without an exit that clears once every target is destroyed. */
+        ALL_TARGETS,
+        /** On a stage without an exit that clears once every hostile is destroyed. */
+        ALL_HOSTILES,
+        /** On a stage without an exit that clears once every target and hostile is destroyed. */
+        ALL_TARGETS_AND_HOSTILES
+    }
+
+    /** What the player is told in front of a bulkhead or a security console. The HUD has the words for each. */
+    public enum InteractionPrompt {
+        OVERRIDE_CONSOLE(Kind.USABLE),
+        UNLOCK_AMBER(Kind.USABLE),
+        UNLOCK_CYAN(Kind.USABLE),
+        OPEN_BULKHEAD(Kind.USABLE),
+        NEEDS_AMBER(Kind.BLOCKED),
+        NEEDS_CYAN(Kind.BLOCKED),
+        SEALED_BY_CONSOLE(Kind.BLOCKED),
+        SEALED_BY_WARDEN(Kind.BLOCKED);
+
+        /** Whether the interact key does something here. */
+        public enum Kind {
+            /** The interact key opens, unlocks or overrides. */
+            USABLE,
+            /** The bulkhead stays shut for now. */
+            BLOCKED
+        }
+
+        /** Whether the interact key does something here; the HUD colours the prompt by it. */
+        public final Kind kind;
+
+        InteractionPrompt(Kind kind) {
+            this.kind = kind;
+        }
+    }
+
+    /** The notifications shown at the top of the HUD. The HUD has the words for each. */
+    public enum ToastId {
+        OUT_OF_SHELLS,
+        OUT_OF_SLUGS,
+        WARDEN_OVERDRIVE,
+        LOCKDOWN_OVERRIDDEN,
+        AMBER_UNLOCKED,
+        CYAN_UNLOCKED,
+        NEEDS_AMBER,
+        NEEDS_CYAN,
+        SEALED_BY_WARDEN,
+        SEALED_BY_CONSOLE,
+        WARDEN_DESTROYED,
+        /** A pickup gave {@link Toast#amount} of {@link Toast#pickup}. */
+        PICKUP_GAIN,
+        /** A pickup gave the keycard or weapon {@link Toast#pickup}. */
+        PICKUP_GRANT
+    }
+
+    /** One notification: which it is and, for a pickup, what was gained. Immutable. */
+    public static final class Toast {
+        /** Which notification this is. */
+        public final ToastId id;
+        /** The kind of pickup whose label is shown, for the two pickup notifications; otherwise null. */
+        public final Pickup.Kind pickup;
+        /** How much was gained, for {@link ToastId#PICKUP_GAIN}; otherwise 0. */
+        public final int amount;
+
+        /**
+         * @param id which notification this is
+         * @param pickup the kind of pickup whose label is shown, for the two pickup notifications; otherwise null
+         * @param amount how much was gained, for {@link ToastId#PICKUP_GAIN}; otherwise 0
+         */
+        public Toast(ToastId id, Pickup.Kind pickup, int amount) {
+            boolean ofPickup = id == ToastId.PICKUP_GAIN || id == ToastId.PICKUP_GRANT;
+            if (id == null || ofPickup != (pickup != null)) {
+                throw new IllegalArgumentException("A toast of " + id + " cannot show the pickup " + pickup);
+            }
+            this.id = id;
+            this.pickup = pickup;
+            this.amount = amount;
+        }
+
+        /** @return the notification of a collected pickup. */
+        public static Toast of(Pickup.Collected collected) {
+            return new Toast(collected.granted ? ToastId.PICKUP_GRANT : ToastId.PICKUP_GAIN, collected.shown,
+                collected.granted ? 0 : collected.amount);
+        }
+    }
 
     /** The level. */
     public final GameMap map;
@@ -184,9 +263,9 @@ public final class GameSimulation {
      */
     private final boolean[] reachable;
     private final int[] reachQueue;
-    /** The state {@link #reachable} and {@link #objectiveText} were worked out for; -1 before the first time. */
+    /** The state {@link #reachable} and {@link #objective} were worked out for; -1 before the first time. */
     private int objectiveState = -1;
-    private String objectiveText;
+    private Objective objective;
     private int objectiveFloodCount;
     private int shotsFired;
     private int shotsHit;
@@ -196,7 +275,7 @@ public final class GameSimulation {
     private boolean levelCleared;
     private float hitMarkerTimer;
     private boolean hitMarkerKill;
-    private String toastMessage;
+    private Toast toast;
     private float toastTimer;
     private boolean prevJumpInput;
     private boolean prevDashInput;
@@ -509,7 +588,7 @@ public final class GameSimulation {
                 scattergun.updateIdle(dt);
                 if (scattergun.isReady() && (wantPrimary || wantAlt)) {
                     emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
-                    showToast("OUT OF SHELLS");
+                    showToast(ToastId.OUT_OF_SHELLS);
                     smartSwapFromEmptyWeapon(WeaponSlot.SCATTERGUN);
                 }
             } else {
@@ -529,7 +608,7 @@ public final class GameSimulation {
             if (slugs <= 0 && input.fire && railLance.isReadyAfter(dt)) {
                 railLance.updateIdle(dt, input.charge);
                 emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
-                showToast("OUT OF SLUGS");
+                showToast(ToastId.OUT_OF_SLUGS);
                 smartSwapFromEmptyWeapon(WeaponSlot.RAIL_LANCE);
             } else {
                 boolean firedRail = railLance.update(dt, input.fire, input.charge, player.isDashing(), slugs);
@@ -600,7 +679,7 @@ public final class GameSimulation {
                     effects.add(new Effect(Effect.Type.EXPLOSION,
                         new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ()), Vector3.Y,
                         enemyTuning.warden.overdriveBurstSize));
-                    showToast("WARDEN OVERDRIVE");
+                    showToast(ToastId.WARDEN_OVERDRIVE);
                 }
                 // Each punch of the Warden's combo is heard, whether it lands or not.
                 for (int punch = enemy.consumePunchesThrown(); punch > 0; punch--) {
@@ -692,9 +771,9 @@ public final class GameSimulation {
         return hitMarkerKill;
     }
 
-    /** @return current pickup notification text, or null when none is active. */
-    public String getToastMessage() {
-        return toastTimer > 0f ? toastMessage : null;
+    /** @return the notification being shown, or null when none is active. */
+    public Toast getToast() {
+        return toastTimer > 0f ? toast : null;
     }
 
     /** @return pickup notification alpha from 0 to 1. */
@@ -832,28 +911,28 @@ public final class GameSimulation {
     /**
      * @return contextual HUD interaction prompt when near an operable bulkhead or security console, or {@code null}
      */
-    public String getInteractionPrompt() {
+    public InteractionPrompt getInteractionPrompt() {
         if (levelCleared || player.isDead()) return null;
         Object target = findInteractTarget();
-        if (target instanceof SecurityConsole) return "[E] OVERRIDE LOCKDOWN";
+        if (target instanceof SecurityConsole) return InteractionPrompt.OVERRIDE_CONSOLE;
         if (!(target instanceof Door)) return null;
         Door door = (Door) target;
         switch (door.getLockKind()) {
             case AMBER_KEY:
                 return hasKeycard(Pickup.Kind.AMBER_KEYCARD)
-                    ? "[E] UNLOCK AMBER BULKHEAD"
-                    : "NEEDS AMBER KEYCARD";
+                    ? InteractionPrompt.UNLOCK_AMBER
+                    : InteractionPrompt.NEEDS_AMBER;
             case CYAN_KEY:
                 return hasKeycard(Pickup.Kind.CYAN_KEYCARD)
-                    ? "[E] UNLOCK CYAN BULKHEAD"
-                    : "NEEDS CYAN KEYCARD";
+                    ? InteractionPrompt.UNLOCK_CYAN
+                    : InteractionPrompt.NEEDS_CYAN;
             case LOCKDOWN:
-                return "SEALED BY SECURITY CONSOLE";
+                return InteractionPrompt.SEALED_BY_CONSOLE;
             case BOSS:
-                return "SEALED BY THE WARDEN";
+                return InteractionPrompt.SEALED_BY_WARDEN;
             case NONE:
             default:
-                return "[E] OPEN BULKHEAD";
+                return InteractionPrompt.OPEN_BULKHEAD;
         }
     }
 
@@ -926,14 +1005,13 @@ public final class GameSimulation {
      * Names the next step towards clearing the stage, for the HUD. On a stage with an exit pad it is whatever the
      * player still lacks to walk there: a keycard for a locked bulkhead, a console override for a lockdown, the
      * Warden's destruction for a sealed one. Among those, the one the player can reach now comes first.
-     * @return one of the {@code OBJECTIVE_} constants, or null on a stage with neither an exit nor a clear on all
-     *     targets
+     * @return the objective, or null on a stage with neither an exit nor a clear on all targets
      */
-    public String getObjectiveText() {
+    public Objective getObjective() {
         if (!map.hasExit()) {
             if (!completeOnAllTargets) return null;
-            if (enemies.isEmpty()) return OBJECTIVE_ALL_TARGETS;
-            return targets.isEmpty() ? OBJECTIVE_ALL_HOSTILES : OBJECTIVE_ALL_TARGETS_AND_HOSTILES;
+            if (enemies.isEmpty()) return Objective.ALL_TARGETS;
+            return targets.isEmpty() ? Objective.ALL_HOSTILES : Objective.ALL_TARGETS_AND_HOSTILES;
         }
         int state = objectiveStateNow();
         int playerCell = cellIndexAt(player.position.x, player.position.y);
@@ -941,12 +1019,12 @@ public final class GameSimulation {
         // the last flood did not reach. The cell of a bulkhead the player leans on counts as reached.
         if (state != objectiveState || playerCell < 0 || !reachable[playerCell]) {
             objectiveState = state;
-            String previous = objectiveText;
-            objectiveText = computeObjectiveText(playerCell);
-            // The text is worked out again more often than it changes, so only a new one is logged.
-            if (!Objects.equals(previous, objectiveText)) log.debug("Objective changed to '{}'", objectiveText);
+            Objective previous = objective;
+            objective = computeObjective(playerCell);
+            // The objective is worked out again more often than it changes, so only a new one is logged.
+            if (previous != objective) log.debug("Objective changed to '{}'", objective);
         }
-        return objectiveText;
+        return objective;
     }
 
     /** @return how many times the objective has been worked out afresh; a test reads it to pin the caching. */
@@ -1052,26 +1130,26 @@ public final class GameSimulation {
         return beside != null && !canPass(beside) ? -1 : start;
     }
 
-    private String computeObjectiveText(int playerCell) {
+    private Objective computeObjective(int playerCell) {
         objectiveFloodCount++;
         int startCell = floodStartCell(playerCell);
         floodReachable(startCell);
         // Leaning on a bulkhead must not flood again every frame, so its cell counts as reached too.
         if (startCell != playerCell) reachable[playerCell] = true;
-        if (isReachableAt(map.getExitX(), map.getExitZ())) return OBJECTIVE_EXIT;
+        if (isReachableAt(map.getExitX(), map.getExitZ())) return Objective.EXIT;
         // First the steps the player can act on from where they can walk, then any step still open.
         for (int pass = 0; pass < 2; pass++) {
             boolean mustReach = pass == 0;
             if (hasClosedDoor(Door.LockKind.AMBER_KEY) && isKeycardWaiting(Pickup.Kind.AMBER_KEYCARD, mustReach)) {
-                return OBJECTIVE_AMBER_KEYCARD;
+                return Objective.AMBER_KEYCARD;
             }
             if (hasClosedDoor(Door.LockKind.CYAN_KEY) && isKeycardWaiting(Pickup.Kind.CYAN_KEYCARD, mustReach)) {
-                return OBJECTIVE_CYAN_KEYCARD;
+                return Objective.CYAN_KEYCARD;
             }
-            if (hasClosedDoor(Door.LockKind.LOCKDOWN) && isConsoleWaiting(mustReach)) return OBJECTIVE_CONSOLE;
-            if (hasClosedDoor(Door.LockKind.BOSS) && isWardenWaiting(mustReach)) return OBJECTIVE_WARDEN;
+            if (hasClosedDoor(Door.LockKind.LOCKDOWN) && isConsoleWaiting(mustReach)) return Objective.CONSOLE;
+            if (hasClosedDoor(Door.LockKind.BOSS) && isWardenWaiting(mustReach)) return Objective.WARDEN;
         }
-        return OBJECTIVE_EXIT;
+        return Objective.EXIT;
     }
 
     private boolean hasClosedDoor(Door.LockKind kind) {
@@ -1113,11 +1191,12 @@ public final class GameSimulation {
     private void collectPickups() {
         for (int i = 0; i < pickups.size(); i++) {
             Pickup pickup = pickups.get(i);
-            String message = pickup.tryCollect(player, energy, difficultyScales.pickupScale,
+            Pickup.Collected collected = pickup.tryCollect(player, energy, difficultyScales.pickupScale,
                 heldKeycards, pickupArsenal);
-            if (message != null) {
-                log.debug("Picked up {}: {}", pickup.getKind(), message);
-                showToast(message);
+            if (collected != null) {
+                log.debug("Picked up {}: {}", pickup.getKind(), collected);
+                toast = Toast.of(collected);
+                toastTimer = worldTuning.toastTime;
                 emitPlayerSound(pickupSoundFor(pickup.getKind()), 1f);
             }
         }
@@ -1235,8 +1314,8 @@ public final class GameSimulation {
         }
     }
 
-    private void showToast(String message) {
-        toastMessage = message;
+    private void showToast(ToastId id) {
+        toast = new Toast(id, null, 0);
         toastTimer = worldTuning.toastTime;
     }
 
@@ -1263,7 +1342,7 @@ public final class GameSimulation {
                     emitWorldSound(SoundEvent.Type.DOOR_OPEN, candidate.getX(), 0.5f, candidate.getZ(), 1f);
                 }
             }
-            showToast("LOCKDOWN OVERRIDDEN");
+            showToast(ToastId.LOCKDOWN_OVERRIDDEN);
             emitWorldSound(SoundEvent.Type.CONSOLE_ACTIVATE, console.getX(), SecurityConsole.HEIGHT * 0.8f,
                 console.getZ(), 1f);
             alertNoise(console.getX(), console.getZ(), NoiseEvent.CONSOLE_OVERRIDE);
@@ -1280,32 +1359,32 @@ public final class GameSimulation {
             case AMBER_KEY:
                 if (hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
                     if (door.open()) {
-                        showToast("AMBER BULKHEAD UNLOCKED");
+                        showToast(ToastId.AMBER_UNLOCKED);
                         emitWorldSound(SoundEvent.Type.DOOR_OPEN, door.getX(), 0.5f, door.getZ(), 1f);
                     }
                 } else {
-                    showToast("NEEDS AMBER KEYCARD");
+                    showToast(ToastId.NEEDS_AMBER);
                     emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 }
                 break;
             case CYAN_KEY:
                 if (hasKeycard(Pickup.Kind.CYAN_KEYCARD)) {
                     if (door.open()) {
-                        showToast("CYAN BULKHEAD UNLOCKED");
+                        showToast(ToastId.CYAN_UNLOCKED);
                         emitWorldSound(SoundEvent.Type.DOOR_OPEN, door.getX(), 0.5f, door.getZ(), 1f);
                     }
                 } else {
-                    showToast("NEEDS CYAN KEYCARD");
+                    showToast(ToastId.NEEDS_CYAN);
                     emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 }
                 break;
             case BOSS:
-                showToast("SEALED BY THE WARDEN");
+                showToast(ToastId.SEALED_BY_WARDEN);
                 emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 break;
             case LOCKDOWN:
             default:
-                showToast("SEALED BY SECURITY CONSOLE");
+                showToast(ToastId.SEALED_BY_CONSOLE);
                 emitWorldSound(SoundEvent.Type.DOOR_LOCKED, door.getX(), 0.5f, door.getZ(), 1f);
                 break;
         }
@@ -1680,7 +1759,7 @@ public final class GameSimulation {
                 emitWorldSound(SoundEvent.Type.DOOR_OPEN, candidate.getX(), 0.5f, candidate.getZ(), 1f);
             }
         }
-        showToast("WARDEN DESTROYED - EXTRACTION UNSEALED");
+        showToast(ToastId.WARDEN_DESTROYED);
     }
 
     private void snapshotDamageableHealth() {

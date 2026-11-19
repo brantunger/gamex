@@ -5,27 +5,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * User-configurable gameplay and display settings, clamped to safe ranges and persisted via {@link KeyValueStore}.
+ * The defaults, the ranges and the steps come from {@link SettingsDefaults}; the preference keys are the save format
+ * and stay here.
  */
 public final class GameSettings {
 
     private static final Logger log = LoggerFactory.getLogger(GameSettings.class);
 
     public static final String PREFERENCES_NAME = "io.github.brantunger.gamex.settings";
-
-    public static final float DEFAULT_SENSITIVITY = 0.12f;
-    public static final float MIN_SENSITIVITY = 0.03f;
-    public static final float MAX_SENSITIVITY = 0.40f;
-    public static final float SENSITIVITY_STEP = 0.01f;
-
-    public static final float DEFAULT_FOV = 70f;
-    public static final float MIN_FOV = 60f;
-    public static final float MAX_FOV = 110f;
-    public static final float FOV_STEP = 5f;
-
-    public static final float DEFAULT_MASTER_VOLUME = 0.80f;
-    public static final float MIN_MASTER_VOLUME = 0.0f;
-    public static final float MAX_MASTER_VOLUME = 1.0f;
-    public static final float MASTER_VOLUME_STEP = 0.10f;
 
     private static final String KEY_SENSITIVITY = "mouseSensitivity";
     private static final String KEY_INVERT_Y = "invertY";
@@ -34,27 +21,59 @@ public final class GameSettings {
     private static final String KEY_MASTER_VOLUME = "masterVolume";
     private static final String KEY_FULLSCREEN = "fullscreen";
 
-    private float mouseSensitivity = DEFAULT_SENSITIVITY;
+    private final SettingsDefaults defaults;
+    private float mouseSensitivity;
     private boolean invertY;
-    private float fov = DEFAULT_FOV;
-    private boolean viewBob = true;
-    private float masterVolume = DEFAULT_MASTER_VOLUME;
+    private float fov;
+    private boolean viewBob;
+    private float masterVolume;
     private boolean fullscreen;
 
     /**
-     * Loads settings from {@code store}, clamping any out-of-range values; a stored NaN or infinity becomes the
-     * default.
+     * Builds the default settings with the defaults file read here and now. This is for tests only: the game loads
+     * the defaults once at start-up and uses {@link #GameSettings(SettingsDefaults)} or
+     * {@link #load(KeyValueStore, SettingsDefaults)}.
      */
-    public static GameSettings load(KeyValueStore store) {
-        GameSettings settings = new GameSettings();
+    public GameSettings() {
+        this(SettingsDefaults.load());
+    }
+
+    /**
+     * @param defaults what each setting starts at, and its range and step, as loaded at start-up
+     */
+    public GameSettings(SettingsDefaults defaults) {
+        if (defaults == null) throw new IllegalArgumentException("Settings defaults must not be null");
+        this.defaults = defaults;
+        // Through the setters, as load() sets a stored value, so that both start a setting at the same number.
+        setMouseSensitivity(defaults.sensitivity.initial);
+        invertY = defaults.invertY;
+        setFov(defaults.fov.initial);
+        viewBob = defaults.viewBob;
+        setMasterVolume(defaults.volume.initial);
+        fullscreen = defaults.fullscreen;
+    }
+
+    /**
+     * Loads settings from {@code store}, clamping any out-of-range values; a setting the store does not hold, and a
+     * stored NaN or infinity, becomes the default.
+     * @param store the saved preferences, or null for the defaults alone
+     * @param defaults what each setting starts at, and its range and step, as loaded at start-up
+     */
+    public static GameSettings load(KeyValueStore store, SettingsDefaults defaults) {
+        GameSettings settings = new GameSettings(defaults);
         if (store == null) return settings;
-        settings.setMouseSensitivity(store.getFloat(KEY_SENSITIVITY, DEFAULT_SENSITIVITY));
-        settings.setInvertY(store.getBoolean(KEY_INVERT_Y, false));
-        settings.setFov(store.getFloat(KEY_FOV, DEFAULT_FOV));
-        settings.setViewBob(store.getBoolean(KEY_VIEW_BOB, true));
-        settings.setMasterVolume(store.getFloat(KEY_MASTER_VOLUME, DEFAULT_MASTER_VOLUME));
-        settings.setFullscreen(store.getBoolean(KEY_FULLSCREEN, false));
+        settings.setMouseSensitivity(store.getFloat(KEY_SENSITIVITY, settings.mouseSensitivity));
+        settings.setInvertY(store.getBoolean(KEY_INVERT_Y, settings.invertY));
+        settings.setFov(store.getFloat(KEY_FOV, settings.fov));
+        settings.setViewBob(store.getBoolean(KEY_VIEW_BOB, settings.viewBob));
+        settings.setMasterVolume(store.getFloat(KEY_MASTER_VOLUME, settings.masterVolume));
+        settings.setFullscreen(store.getBoolean(KEY_FULLSCREEN, settings.fullscreen));
         return settings;
+    }
+
+    /** @return what each setting starts at, and its range and step */
+    public SettingsDefaults defaults() {
+        return defaults;
     }
 
     /** Writes all settings into {@code store} and flushes. */
@@ -76,13 +95,11 @@ public final class GameSettings {
     }
 
     public void setMouseSensitivity(float value) {
-        float finite = Float.isFinite(value) ? value : DEFAULT_SENSITIVITY;
-        float clamped = Math.max(MIN_SENSITIVITY, Math.min(MAX_SENSITIVITY, finite));
-        mouseSensitivity = Math.round(clamped * 100f) / 100f;
+        mouseSensitivity = Math.round(defaults.sensitivity.clamp(value) * 100f) / 100f;
     }
 
     public void adjustSensitivity(int steps) {
-        setMouseSensitivity(mouseSensitivity + steps * SENSITIVITY_STEP);
+        setMouseSensitivity(mouseSensitivity + steps * defaults.sensitivity.step);
     }
 
     public boolean isInvertY() {
@@ -98,13 +115,11 @@ public final class GameSettings {
     }
 
     public void setFov(float value) {
-        float finite = Float.isFinite(value) ? value : DEFAULT_FOV;
-        float clamped = Math.max(MIN_FOV, Math.min(MAX_FOV, finite));
-        fov = Math.round(clamped);
+        fov = Math.round(defaults.fov.clamp(value));
     }
 
     public void adjustFov(int steps) {
-        setFov(fov + steps * FOV_STEP);
+        setFov(fov + steps * defaults.fov.step);
     }
 
     public boolean isViewBob() {
@@ -120,13 +135,11 @@ public final class GameSettings {
     }
 
     public void setMasterVolume(float value) {
-        float finite = Float.isFinite(value) ? value : DEFAULT_MASTER_VOLUME;
-        float clamped = Math.max(MIN_MASTER_VOLUME, Math.min(MAX_MASTER_VOLUME, finite));
-        masterVolume = Math.round(clamped * 100f) / 100f;
+        masterVolume = Math.round(defaults.volume.clamp(value) * 100f) / 100f;
     }
 
     public void adjustMasterVolume(int steps) {
-        setMasterVolume(masterVolume + steps * MASTER_VOLUME_STEP);
+        setMasterVolume(masterVolume + steps * defaults.volume.step);
     }
 
     public boolean isFullscreen() {
