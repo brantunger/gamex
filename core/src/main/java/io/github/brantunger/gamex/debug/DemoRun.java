@@ -60,30 +60,41 @@ public final class DemoRun {
     private final String path;
     private final int captureFrame;
     private final String script;
-    private final float[] orbit = parseOrbit(System.getenv("GAMEX_VIEWMODEL_ORBIT"));
+    private final float[] orbit;
     private int frame;
     private boolean captured;
 
     DemoRun(String path, int captureFrame, String script) {
-        this.path = path;
+        this(path, captureFrame, script, System.getenv("GAMEX_VIEWMODEL_ORBIT"));
+    }
+
+    DemoRun(String path, int captureFrame, String script, String orbitText) {
+        this.path = path == null ? "" : path.trim();
         this.captureFrame = Math.max(1, captureFrame);
-        this.script = script == null ? "" : script.toLowerCase(Locale.ROOT);
+        this.script = script == null ? "" : script.trim().toLowerCase(Locale.ROOT);
+        this.orbit = parseOrbit(orbitText);
     }
 
     /** @return the run described by the environment, or null when {@code GAMEX_SCREENSHOT} is not set. */
     public static DemoRun fromEnvironment() {
-        String path = System.getenv("GAMEX_SCREENSHOT");
-        if (path == null || path.isEmpty()) return null;
+        return fromEnvironment(
+            System.getenv("GAMEX_SCREENSHOT"),
+            System.getenv("GAMEX_SCREENSHOT_FRAME"),
+            System.getenv("GAMEX_DEMO"),
+            System.getenv("GAMEX_VIEWMODEL_ORBIT"));
+    }
+
+    static DemoRun fromEnvironment(String screenshotPath, String frameText, String script, String orbitText) {
+        if (screenshotPath == null || screenshotPath.trim().isEmpty()) return null;
         int captureFrame = DEFAULT_FRAME;
-        String frameText = System.getenv("GAMEX_SCREENSHOT_FRAME");
-        if (frameText != null && !frameText.isEmpty()) {
+        if (frameText != null && !frameText.trim().isEmpty()) {
             try {
                 captureFrame = Math.max(1, Integer.parseInt(frameText.trim()));
             } catch (NumberFormatException e) {
                 log.warn("GAMEX_SCREENSHOT_FRAME is not a whole number: '{}'; using {}", frameText, DEFAULT_FRAME);
             }
         }
-        return new DemoRun(path, captureFrame, System.getenv("GAMEX_DEMO"));
+        return new DemoRun(screenshotPath.trim(), captureFrame, script, orbitText);
     }
 
     /**
@@ -92,7 +103,15 @@ public final class DemoRun {
      * @return the run, which saves {@link #DEFAULT_FRAME} to no path
      */
     static DemoRun forScript(String script) {
-        return new DemoRun("", DEFAULT_FRAME, script);
+        return new DemoRun("", DEFAULT_FRAME, script, null);
+    }
+
+    String getPath() {
+        return path;
+    }
+
+    int getCaptureFrame() {
+        return captureFrame;
     }
 
     /**
@@ -109,13 +128,24 @@ public final class DemoRun {
      * @return the yaw and pitch in degrees, or null when the text is missing or malformed
      */
     static float[] parseOrbit(String text) {
-        if (text == null || text.isEmpty()) return null;
-        String[] parts = text.split(",");
+        if (text == null || text.trim().isEmpty()) return null;
+        String[] parts = text.trim().split(",", -1);
         try {
-            float yaw = Float.parseFloat(parts[0].trim());
-            float pitch = parts.length > 1 ? Float.parseFloat(parts[1].trim()) : 0f;
+            if (parts.length > 2) throw new NumberFormatException("too many components");
+            String yawText = parts[0].trim();
+            if (yawText.isEmpty()) throw new NumberFormatException("missing yaw");
+            float yaw = Float.parseFloat(yawText);
+            float pitch = 0f;
+            if (parts.length == 2) {
+                String pitchText = parts[1].trim();
+                if (pitchText.isEmpty()) throw new NumberFormatException("missing pitch");
+                pitch = Float.parseFloat(pitchText);
+            }
+            if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) {
+                throw new NumberFormatException("non-finite orbit angle");
+            }
             return new float[] {yaw, pitch};
-        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+        } catch (NumberFormatException e) {
             log.warn("GAMEX_VIEWMODEL_ORBIT is not 'yaw' or 'yaw,pitch' in degrees: '{}'", text);
             return null;
         }

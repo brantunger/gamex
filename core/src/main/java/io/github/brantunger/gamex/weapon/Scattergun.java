@@ -92,6 +92,7 @@ public final class Scattergun {
      * @return the shot fired during this step, or {@link Shot#NONE}
      */
     public Shot update(float dt, boolean primaryTrigger, boolean altTrigger, int availableShells) {
+        if (!Float.isFinite(dt) || dt < 0f) return Shot.NONE;
         boolean wasReady = cooldown <= 0f;
         cooldown -= dt;
         sinceShot += dt;
@@ -163,7 +164,8 @@ public final class Scattergun {
      */
     public static List<Vector3> pelletDirections(Vector3 forward, boolean doubleBlast) {
         Vector3 centre = new Vector3(forward);
-        if (centre.len2() < 1e-12f) centre.set(0f, 0f, -1f);
+        float len2 = centre.len2();
+        if (!Float.isFinite(len2) || len2 < 1e-12f) centre.set(0f, 0f, -1f);
         else centre.nor();
 
         Vector3 right = new Vector3(centre).crs(Vector3.Y);
@@ -199,7 +201,7 @@ public final class Scattergun {
      * @return pellet damage after range falloff
      */
     public static float damageAtDistance(float distance) {
-        if (distance <= FALLOFF_START) return PELLET_DAMAGE;
+        if (Float.isNaN(distance) || distance <= FALLOFF_START) return PELLET_DAMAGE;
         if (distance >= RANGE) return PELLET_DAMAGE * MIN_FALLOFF_SCALE;
         float t = (distance - FALLOFF_START) / (RANGE - FALLOFF_START);
         float scale = 1f - t * (1f - MIN_FALLOFF_SCALE);

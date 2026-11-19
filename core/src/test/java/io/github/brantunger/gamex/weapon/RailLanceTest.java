@@ -116,4 +116,51 @@ class RailLanceTest {
         rail.updateIdle(DT);
         assertTrue(rail.isReady());
     }
+
+    @Test
+    void nonFiniteAndNegativeDeltaTimesDoNotMutateCooldownBoltOrZoomWhileZeroDeltaFiresWhenReady() {
+        RailLance rail = new RailLance();
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.25f}) {
+            assertFalse(rail.update(badDt, true, true, 5));
+            rail.updateIdle(badDt);
+            rail.updateIdle(badDt, true);
+            assertTrue(rail.isReady());
+            assertFalse(rail.isFlashVisible());
+            assertEquals(0f, rail.getZoom(), 1e-6f);
+            assertFalse(rail.consumeZoomInTriggered());
+        }
+
+        assertTrue(rail.update(0f, true, false, 3));
+        assertFalse(rail.isReady());
+        assertTrue(rail.isFlashVisible());
+        assertFalse(rail.update(0f, true, false, 2));
+
+        // Zoom in partway while bolt is mid-cycle, then verify bad dt leaves cooldown, bolt, and zoom untouched.
+        assertFalse(rail.update(0.12f, false, true, 2));
+        assertTrue(rail.consumeZoomInTriggered());
+        float zoomBefore = rail.getZoom();
+        float boltBefore = rail.getBolt();
+        float chargeBefore = rail.getChargeProgress();
+        assertTrue(zoomBefore > 0.5f);
+        assertTrue(boltBefore > 0.4f);
+
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.5f}) {
+            assertFalse(rail.update(badDt, true, false, 5));
+            rail.updateIdle(badDt);
+            rail.updateIdle(badDt, false);
+            assertFalse(rail.isReady());
+            assertFalse(rail.isReadyAfter(badDt));
+            assertEquals(zoomBefore, rail.getZoom(), 1e-6f);
+            assertEquals(boltBefore, rail.getBolt(), 1e-6f);
+            assertEquals(chargeBefore, rail.getChargeProgress(), 1e-6f);
+            assertFalse(rail.consumeZoomOutTriggered());
+        }
+
+        // Cancelled zoom suppression must also remain latched across invalid updateIdle(badDt, false) calls.
+        rail.cancelZoom();
+        rail.updateIdle(Float.NaN, false);
+        rail.updateIdle(-0.1f, false);
+        rail.update(DT, false, true, 2);
+        assertEquals(0f, rail.getZoom(), 1e-6f, "invalid dt must not clear RMB zoom suppression");
+    }
 }

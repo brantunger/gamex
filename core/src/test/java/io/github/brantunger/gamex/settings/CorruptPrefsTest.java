@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
 import com.badlogic.gdx.Preferences;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.LogCapture;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Checks that damaged settings and save files fall back to defaults instead of breaking the game. */
@@ -238,5 +241,97 @@ class CorruptPrefsTest {
 
         assertTrue(summary.newBestTime, "a clear after a stored NaN text is a new best");
         assertEquals(40f, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 1e-4f);
+    }
+
+    @Test
+    void corruptAndBlankStoredRanksWarnOnceReadAsUnplayedAndHealOnNextClear() {
+        MapKeyValueStore store = new MapKeyValueStore();
+        store.putString("best.01_outer_breach.EASY.rank", "X");
+        store.putString("best.01_outer_breach.NORMAL.rank", "   ");
+        store.putString("best.01_outer_breach.HARD.rank", "SS");
+        store.putString("best.02_coolant_core.NORMAL.rank", "-");
+        SaveData save = new SaveData(store);
+
+        try (LogCapture capture = LogCapture.of(SaveData.class, Level.WARN)) {
+            assertEquals('-', save.getBestRank("01_outer_breach", Difficulty.EASY));
+            assertEquals('-', save.getBestRank("01_outer_breach", Difficulty.NORMAL));
+            assertEquals('-', save.getBestRank("01_outer_breach", Difficulty.HARD));
+            assertEquals('-', save.getBestOverallRank("01_outer_breach"));
+            assertEquals('-', save.getBestRank("02_coolant_core", Difficulty.NORMAL));
+            // Repeated frame-by-frame reads on Stage Select must not spam duplicate warnings.
+            MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.STAGE_SELECT);
+            assertTrue(menu.getOptions().get(0).endsWith("[READY]"), menu.getOptions().get(0));
+            menu.getOptions();
+
+            assertEquals(List.of(
+                "The stored rank of 'best.01_outer_breach.EASY.rank' is not S, A, B or C: 'X'; using -",
+                "The stored rank of 'best.01_outer_breach.NORMAL.rank' is not S, A, B or C: '   '; using -",
+                "The stored rank of 'best.01_outer_breach.HARD.rank' is not S, A, B or C: 'SS'; using -",
+                "The stored rank of 'best.02_coolant_core.NORMAL.rank' is not S, A, B or C: '-'; using -"),
+                capture.messages(Level.WARN));
+
+            SaveData.CompletionSummary healed = save.recordCompletion("01_outer_breach", Difficulty.EASY,
+                95f, 40f, 1, 8, 25f);
+            assertEquals('C', healed.rank);
+            assertEquals('C', healed.bestRank);
+            assertEquals('C', save.getBestRank("01_outer_breach", Difficulty.EASY));
+        }
+    }
+
+    @Test
+    void nullStringsFromCustomStoreFallBackCleanlyInSavedLoadoutAndBestRank() {
+        KeyValueStore nullStringStore = new KeyValueStore() {
+            @Override
+            public float getFloat(String key, float defaultValue) {
+                return defaultValue;
+            }
+
+            @Override
+            public int getInteger(String key, int defaultValue) {
+                return defaultValue;
+            }
+
+            @Override
+            public boolean getBoolean(String key, boolean defaultValue) {
+                return defaultValue;
+            }
+
+            @Override
+            public String getString(String key, String defaultValue) {
+                return null;
+            }
+
+            @Override
+            public void putFloat(String key, float value) {
+            }
+
+            @Override
+            public void putInteger(String key, int value) {
+            }
+
+            @Override
+            public void putBoolean(String key, boolean value) {
+            }
+
+            @Override
+            public void putString(String key, String value) {
+            }
+
+            @Override
+            public void flush() {
+            }
+        };
+
+        SaveData save = new SaveData(nullStringStore);
+        try (LogCapture capture = LogCapture.of(SaveData.class, Level.WARN)) {
+            assertEquals('-', save.getBestRank("01_outer_breach", Difficulty.NORMAL));
+            assertEquals(List.of(), capture.messages(Level.WARN), "null rank reads as unplayed silently");
+
+            PlayerLoadout loadout = save.getSavedLoadout();
+            assertEquals(Difficulty.NORMAL, loadout.difficulty);
+            assertEquals(WeaponSlot.PISTOL, loadout.activeWeapon);
+            assertEquals(List.of("The saved run has an unknown difficulty 'null'; using NORMAL"),
+                capture.messages(Level.WARN));
+        }
     }
 }

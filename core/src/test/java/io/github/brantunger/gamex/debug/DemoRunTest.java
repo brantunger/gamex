@@ -4,16 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.LogCapture;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
@@ -226,6 +229,68 @@ class DemoRunTest {
         assertEquals(2, captures.size());
         assertEquals(1, captures.get(1).disposeCount, "native Pixmap must be disposed if pixel handling throws");
         assertEquals(0, completed.get());
+    }
+
+    @Test
+    void fromEnvironmentTrimsPathsAndScriptsAndIgnoresBlankScreenshotOrFrameSilently() {
+        try (LogCapture capture = LogCapture.of(DemoRun.class, Level.WARN)) {
+            assertNull(DemoRun.fromEnvironment(null, null, null, null));
+            assertNull(DemoRun.fromEnvironment("", "10", "breach", "30"));
+            assertNull(DemoRun.fromEnvironment("   \t\n", "10", "breach", "30"));
+
+            DemoRun trimmed = DemoRun.fromEnvironment("  build/shot.png \n", "   ", "  Breach \t", "   ");
+            assertNotNull(trimmed);
+            assertEquals("build/shot.png", trimmed.getPath());
+            assertEquals(DemoRun.DEFAULT_FRAME, trimmed.getCaptureFrame());
+            assertEquals("breach", trimmed.getScript());
+            assertNull(trimmed.getViewmodelOrbit());
+
+            DemoRun configured = DemoRun.fromEnvironment("shot.png", " 24 ", "   ", " 45 , -15 ");
+            assertNotNull(configured);
+            assertEquals("shot.png", configured.getPath());
+            assertEquals(24, configured.getCaptureFrame());
+            assertEquals("", configured.getScript());
+            assertArrayEquals(new float[] {45f, -15f}, configured.getViewmodelOrbit(), 1e-6f);
+
+            DemoRun forTrimmedScript = DemoRun.forScript("  Jump \n");
+            assertEquals("jump", forTrimmedScript.getScript());
+            PlayerInput input = new PlayerInput();
+            forTrimmedScript.nextFrame(input);
+            assertEquals(1f, input.moveForward, 1e-6f);
+
+            assertEquals(List.of(), capture.messages(Level.WARN), "blank or padded valid env vars must not warn");
+
+            DemoRun badFrame = DemoRun.fromEnvironment("shot.png", "not-an-int", "action", null);
+            assertNotNull(badFrame);
+            assertEquals(DemoRun.DEFAULT_FRAME, badFrame.getCaptureFrame());
+            assertEquals(
+                List.of("GAMEX_SCREENSHOT_FRAME is not a whole number: 'not-an-int'; using " + DemoRun.DEFAULT_FRAME),
+                capture.messages(Level.WARN));
+        }
+    }
+
+    @Test
+    void parseOrbitRejectsTrailingCommasExtraComponentsAndNonFiniteAnglesWithWarning() {
+        try (LogCapture capture = LogCapture.of(DemoRun.class, Level.WARN)) {
+            for (String blank : new String[] {null, "", " ", "   \t\n"}) {
+                assertNull(DemoRun.parseOrbit(blank), "blank orbit '" + blank + "'");
+            }
+            assertEquals(List.of(), capture.messages(Level.WARN), "blank orbit must not log a warning");
+        }
+
+        String[] malformedOrNonFinite = {
+            "30,", "30, ", ",15", "30,15,0", "30,15,", ",", ",,",
+            "NaN", "90,NaN", "NaN,15", "Infinity", "-Infinity,15", "90,Infinity", "90,-Infinity", "1e39,0"
+        };
+        for (String bad : malformedOrNonFinite) {
+            try (LogCapture capture = LogCapture.of(DemoRun.class, Level.WARN)) {
+                assertNull(DemoRun.parseOrbit(bad), "expected null for '" + bad + "'");
+                assertEquals(
+                    List.of("GAMEX_VIEWMODEL_ORBIT is not 'yaw' or 'yaw,pitch' in degrees: '" + bad + "'"),
+                    capture.messages(Level.WARN),
+                    "warning for '" + bad + "'");
+            }
+        }
     }
 
     private static Graphics backBufferStub(int backBufferWidth, int backBufferHeight) {

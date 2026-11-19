@@ -63,7 +63,9 @@ public final class GameSimulation {
         }
 
         void update(float dt) {
-            age += dt;
+            if (Float.isFinite(dt) && dt > 0f) {
+                age += dt;
+            }
         }
 
         /** @return normalized decay progress from 0 (just fired) to 1 (finished). */
@@ -345,7 +347,7 @@ public final class GameSimulation {
      * @param input what the player asks for this frame
      */
     public void update(float frameTime, PlayerInput input) {
-        float dt = Math.max(0f, Math.min(MAX_DT, frameTime));
+        float dt = (!Float.isFinite(frameTime) || frameTime <= 0f) ? 0f : Math.min(MAX_DT, frameTime);
         player.updateTimers(dt);
         hitMarkerTimer = Math.max(0f, hitMarkerTimer - dt);
         toastTimer = Math.max(0f, toastTimer - dt);
@@ -576,6 +578,7 @@ public final class GameSimulation {
         emitNonLethalHitSounds();
 
         float vitalsLost = Math.max(0f, vitalsBefore - (player.getHealth() + player.getArmor()));
+        if (!Float.isFinite(vitalsLost)) vitalsLost = 0f;
         damageTaken += vitalsLost;
         if (vitalsLost > 0f) {
             if (player.isDead()) {

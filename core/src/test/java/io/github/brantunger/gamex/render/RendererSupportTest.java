@@ -1,24 +1,32 @@
 package io.github.brantunger.gamex.render;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.g3d.decals.Decal;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Quaternion;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.LogCapture;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.player.Difficulty;
@@ -35,12 +43,20 @@ import io.github.brantunger.gamex.world.WorldModels;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 class RendererSupportTest {
 
@@ -708,5 +724,647 @@ class RendererSupportTest {
         assertTrue(badDroneMat.getMessage().contains(WorldModels.DRONE_PATH), badDroneMat.getMessage());
         assertTrue(badDroneMat.getMessage().contains("drone"), badDroneMat.getMessage());
         assertTrue(badDroneMat.getMessage().contains("mystery_chrome"), badDroneMat.getMessage());
+    }
+
+    @Test
+    void proceduralTexturesUploadPixmapAlwaysDisposesPixmapAndRollsBackBatchOnPartialFailure() {
+        assertThrows(IllegalArgumentException.class,
+            () -> ProceduralTextures.uploadPixmap(null, new Array<>(), p -> new RecordedDisposable("tex"), null));
+
+        // 1) Successful upload disposes the temporary pixmap once and tracks the configured texture.
+        Array<RecordedDisposable> tracked = new Array<>();
+        RecordedDisposable okPixmap = new RecordedDisposable("okPixmap");
+        AtomicInteger configured = new AtomicInteger();
+        RecordedDisposable okTexture = ProceduralTextures.uploadPixmap(
+            okPixmap, tracked, p -> new RecordedDisposable("okTex"), t -> configured.incrementAndGet());
+        assertEquals(1, okPixmap.disposeCount, "pixmap must be disposed after upload");
+        assertEquals(0, okTexture.disposeCount, "uploaded texture stays live");
+        assertEquals(1, configured.get());
+        assertEquals(1, tracked.size);
+        assertSame(okTexture, tracked.get(0));
+
+        // 2) Texture allocation failure still disposes pixmap in finally and keeps tracked untouched.
+        RecordedDisposable failedAllocPixmap = new RecordedDisposable("failedAllocPixmap");
+        GdxRuntimeException allocError = new GdxRuntimeException("GL texture upload failed");
+        GdxRuntimeException thrownAlloc = assertThrows(GdxRuntimeException.class, () ->
+            ProceduralTextures.uploadPixmap(failedAllocPixmap, tracked, p -> {
+                throw allocError;
+            }, null));
+        assertSame(allocError, thrownAlloc);
+        assertEquals(1, failedAllocPixmap.disposeCount, "pixmap must be disposed even when Texture(pixmap) throws");
+        assertEquals(1, tracked.size, "failed upload must not add to tracked");
+
+        // 3) Post-creation filter configuration failure disposes BOTH the newly created texture and the pixmap.
+        RecordedDisposable filterFailPixmap = new RecordedDisposable("filterFailPixmap");
+        List<RecordedDisposable> orphanCheck = new ArrayList<>();
+        GdxRuntimeException filterError = new GdxRuntimeException("setFilter failed");
+        GdxRuntimeException thrownFilter = assertThrows(GdxRuntimeException.class, () ->
+            ProceduralTextures.uploadPixmap(filterFailPixmap, tracked, p -> {
+                RecordedDisposable created = new RecordedDisposable("createdBeforeFilterThrows");
+                orphanCheck.add(created);
+                return created;
+            }, t -> {
+                throw filterError;
+            }));
+        assertSame(filterError, thrownFilter);
+        assertEquals(1, filterFailPixmap.disposeCount);
+        assertEquals(1, orphanCheck.size());
+        assertEquals(1, orphanCheck.get(0).disposeCount, "partially configured texture must be disposed");
+        assertEquals(1, tracked.size);
+
+        // 4) Secondary pixmap.dispose() failure never masks the primary texture creation exception.
+        RecordedDisposable throwingPixmap = new RecordedDisposable("throwingPixmap");
+        throwingPixmap.throwOnDispose = true;
+        GdxRuntimeException primaryError = new GdxRuntimeException("primary GL error");
+        GdxRuntimeException preserved = assertThrows(GdxRuntimeException.class, () ->
+            ProceduralTextures.uploadPixmap(throwingPixmap, tracked, p -> {
+                throw primaryError;
+            }, null));
+        assertSame(primaryError, preserved);
+        assertEquals(1, throwingPixmap.disposeCount);
+        assertEquals(1, preserved.getSuppressed().length);
+
+        // 5) Multi-texture constructor batch rollback: failing partway through 12 textures disposes all earlier ones.
+        List<RecordedDisposable> batchPixmaps = new ArrayList<>();
+        List<RecordedDisposable> batchTextures = new ArrayList<>();
+        AtomicInteger paintedCount = new AtomicInteger();
+        List<Supplier<RecordedDisposable>> painters = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            final int idx = i;
+            painters.add(() -> {
+                paintedCount.incrementAndGet();
+                RecordedDisposable px = new RecordedDisposable("px-" + idx);
+                batchPixmaps.add(px);
+                return px;
+            });
+        }
+        GdxRuntimeException midBatchError = new GdxRuntimeException("GPU OOM on texture #5");
+        GdxRuntimeException batchThrown = assertThrows(GdxRuntimeException.class, () ->
+            ProceduralTextures.uploadAll(painters, px -> {
+                if (batchTextures.size() == 5) {
+                    throw midBatchError;
+                }
+                RecordedDisposable tex = new RecordedDisposable("tex-" + batchTextures.size());
+                if (tex.label.equals("tex-2")) {
+                    tex.throwOnDispose = true;
+                }
+                batchTextures.add(tex);
+                return tex;
+            }, null));
+        assertSame(midBatchError, batchThrown);
+        assertEquals(6, paintedCount.get(), "painters after failure index #5 must not run");
+        assertEquals(6, batchPixmaps.size());
+        for (RecordedDisposable px : batchPixmaps) {
+            assertEquals(1, px.disposeCount, px.label + " must be disposed");
+        }
+        assertEquals(5, batchTextures.size());
+        for (RecordedDisposable tex : batchTextures) {
+            assertEquals(1, tex.disposeCount, tex.label + " must be rolled back even when tex-2 throws on dispose");
+        }
+
+        // 6) Null-safe and exception-safe disposeAll.
+        assertDoesNotThrow(() -> ProceduralTextures.disposeAll(null));
+        Array<RecordedDisposable> mixed = new Array<>();
+        RecordedDisposable d0 = new RecordedDisposable("d0");
+        RecordedDisposable d1 = new RecordedDisposable("d1");
+        d1.throwOnDispose = true;
+        RecordedDisposable d2 = new RecordedDisposable("d2");
+        mixed.add(d0);
+        mixed.add(null);
+        mixed.add(d1);
+        mixed.add(d2);
+        assertDoesNotThrow(() -> ProceduralTextures.disposeAll(mixed));
+        assertEquals(0, mixed.size);
+        assertEquals(1, d0.disposeCount);
+        assertEquals(1, d1.disposeCount);
+        assertEquals(1, d2.disposeCount);
+    }
+
+    @Test
+    void viewmodelRendererRollsBackPartialConstructorResourcesAndDisposesNullAndExceptionSafely() {
+        Map<String, String> objCache = new HashMap<>();
+
+        // 1) Shader compile failure (!isCompiled()) disposes the uncompiled shader handle before rethrowing.
+        HeadlessViewmodelBackend badShaderBackend = new HeadlessViewmodelBackend(objCache);
+        badShaderBackend.shaderCompiled = false;
+        badShaderBackend.shaderLog = "syntax error at line 7";
+        GdxRuntimeException shaderError = assertThrows(GdxRuntimeException.class,
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, badShaderBackend));
+        assertTrue(shaderError.getMessage().contains("The viewmodel shader did not compile: syntax error at line 7"),
+            shaderError.getMessage());
+        assertEquals(1, badShaderBackend.createdShaders.size());
+        assertEquals(1, badShaderBackend.createdShaders.get(0).disposeCount, "uncompiled shader must be disposed");
+        assertTrue(badShaderBackend.createdMeshes.isEmpty());
+
+        // 2) Mid-way OBJ asset load failure (rail lance) disposes shader + pistol + scattergun meshes.
+        HeadlessViewmodelBackend failRailLoad = new HeadlessViewmodelBackend(objCache);
+        failRailLoad.failModelAsset = RailLanceModel.ASSET_PATH;
+        assertThrows(GdxRuntimeException.class,
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failRailLoad));
+        assertEquals(1, failRailLoad.createdShaders.get(0).disposeCount);
+        assertEquals(4, failRailLoad.createdMeshes.size(), "pistol(2) + scattergun(2) built before rail lance load");
+        for (RecordedDisposable mesh : failRailLoad.createdMeshes) {
+            assertEquals(1, mesh.disposeCount, mesh.label + " must be disposed on constructor rollback");
+        }
+
+        // 3) Mid-way mesh build failure (6th mesh: rail lance bolt) disposes shader + all 5 preceding weapon meshes.
+        HeadlessViewmodelBackend failBoltBuild = new HeadlessViewmodelBackend(objCache);
+        failBoltBuild.failOnMeshBuild = 6;
+        assertThrows(GdxRuntimeException.class,
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failBoltBuild));
+        assertEquals(1, failBoltBuild.createdShaders.get(0).disposeCount);
+        assertEquals(5, failBoltBuild.createdMeshes.size());
+        for (RecordedDisposable mesh : failBoltBuild.createdMeshes) {
+            assertEquals(1, mesh.disposeCount, mesh.label + " must be disposed");
+        }
+
+        // 4) Late DecalBatch / decal-init failures dispose shader, all 7 weapon/hand meshes, and groupStrategy.
+        HeadlessViewmodelBackend failBatch = new HeadlessViewmodelBackend(objCache);
+        failBatch.failDecalBatch = true;
+        assertThrows(GdxRuntimeException.class,
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failBatch));
+        assertEquals(1, failBatch.createdShaders.get(0).disposeCount);
+        assertEquals(7, failBatch.createdMeshes.size());
+        for (RecordedDisposable mesh : failBatch.createdMeshes) assertEquals(1, mesh.disposeCount);
+        assertEquals(1, failBatch.createdStrategies.get(0).disposeCount);
+
+        HeadlessViewmodelBackend failDecals = new HeadlessViewmodelBackend(objCache);
+        failDecals.failInitDecals = true;
+        assertThrows(IllegalArgumentException.class,
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failDecals));
+        assertEquals(1, failDecals.createdShaders.get(0).disposeCount);
+        for (RecordedDisposable mesh : failDecals.createdMeshes) assertEquals(1, mesh.disposeCount);
+        assertEquals(1, failDecals.createdStrategies.get(0).disposeCount);
+        assertEquals(1, failDecals.createdBatches.get(0).disposeCount);
+
+        // 5) Full construction preserves SLF4J "Loaded 4 viewmodel models" log, and dispose() isolates exceptions.
+        HeadlessViewmodelBackend okBackend = new HeadlessViewmodelBackend(objCache);
+        ViewmodelRenderer renderer;
+        try (LogCapture capture = LogCapture.of(ViewmodelRenderer.class, Level.INFO)) {
+            renderer = new ViewmodelRenderer(graphicsStub(1280, 720), null, okBackend);
+            assertEquals(List.of("Loaded 4 viewmodel models"), capture.messages(Level.INFO));
+        }
+        assertEquals(7, okBackend.createdMeshes.size());
+        okBackend.createdMeshes.get(2).throwOnDispose = true;
+        okBackend.createdShaders.get(0).throwOnDispose = true;
+        assertDoesNotThrow(renderer::dispose);
+        assertEquals(1, okBackend.createdShaders.get(0).disposeCount);
+        for (RecordedDisposable mesh : okBackend.createdMeshes) {
+            assertEquals(1, mesh.disposeCount, mesh.label + " disposed despite throwing peer");
+        }
+        assertEquals(1, okBackend.createdBatches.get(0).disposeCount);
+        assertEquals(1, okBackend.createdStrategies.get(0).disposeCount);
+
+        // Second dispose() call is an idempotent no-op.
+        assertDoesNotThrow(renderer::dispose);
+        assertEquals(1, okBackend.createdShaders.get(0).disposeCount);
+        for (RecordedDisposable mesh : okBackend.createdMeshes) assertEquals(1, mesh.disposeCount);
+        assertNull(ViewmodelRenderer.disposeQuietly(null));
+    }
+
+    @Test
+    void worldRendererRollsBackPartialConstructorResourcesAndDisposesNullAndExceptionSafely() {
+        Map<String, String> objCache = new HashMap<>();
+        GameMap room = GameMap.parse(
+            "#####",
+            "#>..#",
+            "#####");
+
+        // 0) Startup Warden GLB check failure disposes cleanly when all GL fields are still null.
+        HeadlessWorldBackend failWardenCheck = new HeadlessWorldBackend(objCache);
+        failWardenCheck.failWardenCheck = true;
+        assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failWardenCheck));
+        assertTrue(failWardenCheck.worldShaders.isEmpty());
+
+        // 1) World shader compile failure disposes world shader handle before rethrowing.
+        HeadlessWorldBackend failWorldShader = new HeadlessWorldBackend(objCache);
+        failWorldShader.worldShaderCompiled = false;
+        GdxRuntimeException worldShaderErr = assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failWorldShader));
+        assertTrue(worldShaderErr.getMessage().contains("The world shader did not compile: world shader error"),
+            worldShaderErr.getMessage());
+        assertEquals(1, failWorldShader.worldShaders.get(0).disposeCount);
+        assertTrue(failWorldShader.modelShaders.isEmpty());
+
+        // 2) Model shader compile failure disposes BOTH worldShader and modelShader handles.
+        HeadlessWorldBackend failModelShader = new HeadlessWorldBackend(objCache);
+        failModelShader.modelShaderCompiled = false;
+        GdxRuntimeException modelShaderErr = assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failModelShader));
+        assertTrue(modelShaderErr.getMessage().contains("The world model shader did not compile: model shader error"),
+            modelShaderErr.getMessage());
+        assertEquals(1, failModelShader.worldShaders.get(0).disposeCount);
+        assertEquals(1, failModelShader.modelShaders.get(0).disposeCount);
+        assertTrue(failModelShader.surfaceHandles.isEmpty());
+
+        // 3) Null map or setMap failure in constructor disposes both shaders and any partial map surfaces.
+        HeadlessWorldBackend failNullMap = new HeadlessWorldBackend(objCache);
+        assertThrows(IllegalArgumentException.class,
+            () -> new WorldRenderer(null, graphicsStub(1280, 720), null, failNullMap));
+        assertEquals(1, failNullMap.worldShaders.get(0).disposeCount);
+        assertEquals(1, failNullMap.modelShaders.get(0).disposeCount);
+
+        HeadlessWorldBackend failInitialMapSurface = new HeadlessWorldBackend(objCache);
+        failInitialMapSurface.failOnSurfaceBuild = 2;
+        assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failInitialMapSurface));
+        assertEquals(1, failInitialMapSurface.worldShaders.get(0).disposeCount);
+        assertEquals(1, failInitialMapSurface.modelShaders.get(0).disposeCount);
+        assertEquals(1, failInitialMapSurface.surfaceHandles.size());
+        assertEquals(1, failInitialMapSurface.surfaceHandles.get(0).disposeCount);
+
+        // 4) Mid-way model failure (20th world mesh, inside articulated guard parts) rolls back shaders, map
+        // surfaces, and all 19 previously built model meshes.
+        HeadlessWorldBackend failGuardPart = new HeadlessWorldBackend(objCache);
+        failGuardPart.failOnModelMeshBuild = 20;
+        assertThrows(GdxRuntimeException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failGuardPart));
+        assertEquals(1, failGuardPart.worldShaders.get(0).disposeCount);
+        assertEquals(1, failGuardPart.modelShaders.get(0).disposeCount);
+        assertEquals(3, failGuardPart.surfaceHandles.size());
+        for (RecordedDisposable s : failGuardPart.surfaceHandles) assertEquals(1, s.disposeCount);
+        assertEquals(19, failGuardPart.modelMeshes.size());
+        for (RecordedDisposable m : failGuardPart.modelMeshes) {
+            assertEquals(1, m.disposeCount, m.label + " must be rolled back");
+        }
+
+        // 5) Late DecalBatch / TextureRegion failures roll back shaders, map surfaces, all 26 model meshes, and
+        // groupStrategy / decalBatch.
+        HeadlessWorldBackend failRegions = new HeadlessWorldBackend(objCache);
+        failRegions.failInitRegions = true;
+        assertThrows(IllegalArgumentException.class,
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failRegions));
+        assertEquals(1, failRegions.worldShaders.get(0).disposeCount);
+        assertEquals(1, failRegions.modelShaders.get(0).disposeCount);
+        for (RecordedDisposable s : failRegions.surfaceHandles) assertEquals(1, s.disposeCount);
+        assertEquals(26, failRegions.modelMeshes.size());
+        for (RecordedDisposable m : failRegions.modelMeshes) assertEquals(1, m.disposeCount);
+        assertEquals(1, failRegions.strategies.get(0).disposeCount);
+        assertEquals(1, failRegions.batches.get(0).disposeCount);
+
+        // 6) Full construction preserves SLF4J debug/info logs, and dispose() isolates exceptions across all resources.
+        HeadlessWorldBackend okBackend = new HeadlessWorldBackend(objCache);
+        WorldRenderer renderer;
+        try (LogCapture capture = LogCapture.of(WorldRenderer.class, Level.DEBUG)) {
+            renderer = new WorldRenderer(room, graphicsStub(1280, 720), null, okBackend);
+            assertEquals(List.of("Built the geometry of a 5x3 map: 1 wall textures"), capture.messages(Level.DEBUG));
+            assertEquals(List.of("Loaded 19 world models"), capture.messages(Level.INFO));
+        }
+        assertSame(room, renderer.getCurrentMap());
+        assertEquals(3, renderer.getSurfaceCount());
+        assertEquals(26, okBackend.modelMeshes.size());
+
+        okBackend.surfaceHandles.get(0).throwOnDispose = true;
+        okBackend.modelMeshes.get(10).throwOnDispose = true;
+        okBackend.modelShaders.get(0).throwOnDispose = true;
+        assertDoesNotThrow(renderer::dispose);
+        assertNull(renderer.getCurrentMap());
+        assertEquals(0, renderer.getSurfaceCount());
+        assertEquals(1, okBackend.worldShaders.get(0).disposeCount);
+        assertEquals(1, okBackend.modelShaders.get(0).disposeCount);
+        for (RecordedDisposable s : okBackend.surfaceHandles) assertEquals(1, s.disposeCount);
+        for (RecordedDisposable m : okBackend.modelMeshes) assertEquals(1, m.disposeCount);
+        assertEquals(1, okBackend.batches.get(0).disposeCount);
+        assertEquals(1, okBackend.strategies.get(0).disposeCount);
+
+        // Second dispose() is an idempotent no-op.
+        assertDoesNotThrow(renderer::dispose);
+        for (RecordedDisposable m : okBackend.modelMeshes) assertEquals(1, m.disposeCount);
+        assertNull(WorldRenderer.disposeQuietly(null));
+    }
+
+    @Test
+    void worldRendererSetMapBuildsAtomicallyPreservesCurrentMapOnFailureAndSwapsCleanlyOnSuccess() {
+        Map<String, String> objCache = new HashMap<>();
+        GameMap stage1 = GameMap.parse(
+            "#####",
+            "#>..#",
+            "#####");
+        GameMap multiWallStage = GameMap.parse(
+            "##%%&&",
+            "#>...&",
+            "##%%&&");
+
+        HeadlessWorldBackend backend = new HeadlessWorldBackend(objCache);
+        WorldRenderer renderer = new WorldRenderer(stage1, graphicsStub(1280, 720), null, backend);
+        assertSame(stage1, renderer.getCurrentMap());
+        assertEquals(3, renderer.getSurfaceCount());
+        List<RecordedDisposable> stage1Surfaces = new ArrayList<>(backend.surfaceHandles);
+        assertEquals(3, stage1Surfaces.size());
+        for (RecordedDisposable s : stage1Surfaces) assertEquals(0, s.disposeCount);
+
+        // 1) Re-setting the identical map instance is a no-op.
+        backend.clearSurfaceBatch();
+        renderer.setMap(stage1);
+        assertTrue(backend.surfaceHandles.isEmpty());
+        for (RecordedDisposable s : stage1Surfaces) assertEquals(0, s.disposeCount);
+
+        // 2) setMap(null) throws without disposing existing surfaces or overwriting currentMap.
+        assertThrows(IllegalArgumentException.class, () -> renderer.setMap(null));
+        assertSame(stage1, renderer.getCurrentMap());
+        assertEquals(3, renderer.getSurfaceCount());
+        for (RecordedDisposable s : stage1Surfaces) assertEquals(0, s.disposeCount);
+
+        // 3) Simulated VBO allocation failure on surface #4 of 5 (3 walls built, floor fails):
+        //    rolls back the 3 newly created wall surfaces while keeping stage1 surfaces and currentMap intact.
+        backend.clearSurfaceBatch();
+        backend.failOnSurfaceBuild = 4;
+        assertThrows(GdxRuntimeException.class, () -> renderer.setMap(multiWallStage));
+        assertSame(stage1, renderer.getCurrentMap());
+        assertEquals(3, renderer.getSurfaceCount());
+        for (RecordedDisposable s : stage1Surfaces) {
+            assertEquals(0, s.disposeCount, "active stage1 surface must stay alive on failed setMap");
+        }
+        assertEquals(3, backend.surfaceHandles.size(), "3 wall surfaces built before floor failed");
+        for (RecordedDisposable rolledBack : backend.surfaceHandles) {
+            assertEquals(1, rolledBack.disposeCount, "temporary new surface must be disposed on setMap rollback");
+        }
+
+        // 4) Real >65,535-vertex overflow ("Too many quads for one mesh") on a 130x130 map (128x128 = 16,384 floor
+        //    quads = 65,536 vertices, after perimeter '#' wall of 512 quads already succeeded):
+        //    disposes the perimeter wall surface and leaves stage1 intact!
+        String[] hugeRows = new String[130];
+        char[] border = new char[130];
+        Arrays.fill(border, '#');
+        String borderRow = new String(border);
+        char[] interior = new char[130];
+        Arrays.fill(interior, '.');
+        interior[0] = '#';
+        interior[129] = '#';
+        String interiorRow = new String(interior);
+        interior[1] = '>';
+        String spawnRow = new String(interior);
+        hugeRows[0] = borderRow;
+        hugeRows[1] = spawnRow;
+        for (int r = 2; r < 129; r++) {
+            hugeRows[r] = interiorRow;
+        }
+        hugeRows[129] = borderRow;
+        GameMap oversizedMap = GameMap.parse(hugeRows);
+
+        backend.clearSurfaceBatch();
+        backend.failOnSurfaceBuild = -1;
+        GdxRuntimeException overflow = assertThrows(GdxRuntimeException.class, () -> renderer.setMap(oversizedMap));
+        assertEquals("Too many quads for one mesh: 16384", overflow.getMessage());
+        assertSame(stage1, renderer.getCurrentMap());
+        assertEquals(3, renderer.getSurfaceCount());
+        assertEquals(1, backend.surfaceHandles.size(), "perimeter '#' wall surface built before floor overflowed");
+        assertEquals(1, backend.surfaceHandles.get(0).disposeCount, "perimeter '#' wall surface must be rolled back");
+        for (RecordedDisposable s : stage1Surfaces) {
+            assertEquals(0, s.disposeCount, "stage1 surface must remain untouched after overflow");
+        }
+
+        // 5) Subsequent valid setMap(multiWallStage) disposes stage1 surfaces once and activates all 5 new surfaces.
+        backend.clearSurfaceBatch();
+        renderer.setMap(multiWallStage);
+        assertSame(multiWallStage, renderer.getCurrentMap());
+        assertEquals(5, renderer.getSurfaceCount());
+        for (RecordedDisposable s : stage1Surfaces) {
+            assertEquals(1, s.disposeCount, "old stage1 surface disposed after new map succeeded");
+        }
+        assertEquals(5, backend.surfaceHandles.size());
+        for (RecordedDisposable s : backend.surfaceHandles) {
+            assertEquals(0, s.disposeCount, "active multiWallStage surface must stay live");
+        }
+
+        renderer.dispose();
+        for (RecordedDisposable s : backend.surfaceHandles) {
+            assertEquals(1, s.disposeCount, "active multiWallStage surface disposed on renderer teardown");
+        }
+    }
+
+    private static final class RecordedDisposable implements Disposable {
+        final String label;
+        int disposeCount;
+        boolean throwOnDispose;
+
+        RecordedDisposable(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public void dispose() {
+            disposeCount++;
+            if (throwOnDispose) {
+                throw new GdxRuntimeException("simulated dispose failure on " + label);
+            }
+        }
+    }
+
+    private static String cachedAssetObj(Map<String, String> cache, String assetPath) {
+        return cache.computeIfAbsent(assetPath, path -> {
+            try {
+                return readAssetObj(path);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
+    private static final class HeadlessViewmodelBackend implements ViewmodelRenderer.ResourceBackend {
+        private final Map<String, String> objCache;
+        final List<RecordedDisposable> createdShaders = new ArrayList<>();
+        final List<RecordedDisposable> createdMeshes = new ArrayList<>();
+        final List<RecordedDisposable> createdStrategies = new ArrayList<>();
+        final List<RecordedDisposable> createdBatches = new ArrayList<>();
+        boolean shaderCompiled = true;
+        String shaderLog = "";
+        String failModelAsset;
+        int failOnMeshBuild = -1;
+        boolean failDecalBatch;
+        boolean failInitDecals;
+        private int meshBuildCalls;
+
+        HeadlessViewmodelBackend(Map<String, String> objCache) {
+            this.objCache = objCache;
+        }
+
+        @Override
+        public Disposable createShader(String vertexShader, String fragmentShader) {
+            RecordedDisposable d = new RecordedDisposable("viewmodelShader");
+            createdShaders.add(d);
+            return d;
+        }
+
+        @Override
+        public boolean isShaderCompiled(Disposable shaderHandle) {
+            return shaderCompiled;
+        }
+
+        @Override
+        public String getShaderLog(Disposable shaderHandle) {
+            return shaderLog;
+        }
+
+        @Override
+        public ObjModel loadModel(String assetPath, String label) {
+            if (assetPath.equals(failModelAsset)) {
+                throw new GdxRuntimeException("simulated OBJ load failure for " + assetPath);
+            }
+            return ModelMesh.parseModel(assetPath, label, cachedAssetObj(objCache, assetPath));
+        }
+
+        @Override
+        public Disposable buildMesh(ModelVertices.IndexedMesh data, String assetPath, String label) {
+            ModelMesh.requireMesh(data, assetPath, label);
+            meshBuildCalls++;
+            if (meshBuildCalls == failOnMeshBuild) {
+                throw new GdxRuntimeException("simulated VBO failure on " + label);
+            }
+            RecordedDisposable d = new RecordedDisposable(label);
+            createdMeshes.add(d);
+            return d;
+        }
+
+        @Override
+        public Disposable createGroupStrategy(PerspectiveCamera camera) {
+            RecordedDisposable d = new RecordedDisposable("viewmodelGroupStrategy");
+            createdStrategies.add(d);
+            return d;
+        }
+
+        @Override
+        public Disposable createDecalBatch(Disposable groupStrategyHandle) {
+            if (failDecalBatch) {
+                throw new GdxRuntimeException("simulated DecalBatch allocation failure");
+            }
+            RecordedDisposable d = new RecordedDisposable("viewmodelDecalBatch");
+            createdBatches.add(d);
+            return d;
+        }
+
+        @Override
+        public void initDecals(ProceduralTextures textures) {
+            if (failInitDecals) {
+                throw new IllegalArgumentException("simulated null ProceduralTextures");
+            }
+        }
+    }
+
+    private static final class HeadlessWorldBackend implements WorldRenderer.ResourceBackend {
+        private final Map<String, String> objCache;
+        final List<RecordedDisposable> worldShaders = new ArrayList<>();
+        final List<RecordedDisposable> modelShaders = new ArrayList<>();
+        final List<RecordedDisposable> surfaceHandles = new ArrayList<>();
+        final List<RecordedDisposable> modelMeshes = new ArrayList<>();
+        final List<RecordedDisposable> strategies = new ArrayList<>();
+        final List<RecordedDisposable> batches = new ArrayList<>();
+        boolean failWardenCheck;
+        boolean worldShaderCompiled = true;
+        boolean modelShaderCompiled = true;
+        int failOnSurfaceBuild = -1;
+        int failOnModelMeshBuild = -1;
+        boolean failInitRegions;
+        private int surfaceBuildCalls;
+        private int modelMeshBuildCalls;
+
+        HeadlessWorldBackend(Map<String, String> objCache) {
+            this.objCache = objCache;
+        }
+
+        void clearSurfaceBatch() {
+            surfaceHandles.clear();
+            surfaceBuildCalls = 0;
+        }
+
+        @Override
+        public void checkWardenModel() {
+            if (failWardenCheck) {
+                throw new GdxRuntimeException("The warden model " + WorldModels.WARDEN_PATH + " is missing");
+            }
+        }
+
+        @Override
+        public Disposable createWorldShader(String vertexShader, String fragmentShader) {
+            RecordedDisposable d = new RecordedDisposable("worldShader");
+            worldShaders.add(d);
+            return d;
+        }
+
+        @Override
+        public boolean isWorldShaderCompiled(Disposable shaderHandle) {
+            return worldShaderCompiled;
+        }
+
+        @Override
+        public String getWorldShaderLog(Disposable shaderHandle) {
+            return "world shader error";
+        }
+
+        @Override
+        public Disposable createModelShader(String vertexShader, String fragmentShader) {
+            RecordedDisposable d = new RecordedDisposable("modelShader");
+            modelShaders.add(d);
+            return d;
+        }
+
+        @Override
+        public boolean isModelShaderCompiled(Disposable shaderHandle) {
+            return modelShaderCompiled;
+        }
+
+        @Override
+        public String getModelShaderLog(Disposable shaderHandle) {
+            return "model shader error";
+        }
+
+        @Override
+        public WorldRenderer.Surface buildSurface(float[] quads, Texture texture) {
+            WorldRenderer.buildQuadIndices(quads);
+            surfaceBuildCalls++;
+            if (surfaceBuildCalls == failOnSurfaceBuild) {
+                throw new GdxRuntimeException("simulated surface VBO failure #" + surfaceBuildCalls);
+            }
+            RecordedDisposable handle = new RecordedDisposable("surface-" + surfaceBuildCalls);
+            surfaceHandles.add(handle);
+            return new WorldRenderer.Surface(handle, texture);
+        }
+
+        @Override
+        public ObjModel loadModel(String assetPath, String label) {
+            return ModelMesh.parseModel(assetPath, label, cachedAssetObj(objCache, assetPath));
+        }
+
+        @Override
+        public Disposable loadIndexedMesh(String assetPath, String label,
+                                          Function<ObjModel, ModelVertices.IndexedMesh> converter) {
+            ObjModel model = loadModel(assetPath, label);
+            ModelVertices.IndexedMesh data = ModelMesh.convertMesh(model, assetPath, label, converter);
+            return buildIndexedMesh(data, assetPath, label);
+        }
+
+        @Override
+        public Disposable buildIndexedMesh(ModelVertices.IndexedMesh data, String assetPath, String label) {
+            ModelMesh.requireMesh(data, assetPath, label);
+            modelMeshBuildCalls++;
+            if (modelMeshBuildCalls == failOnModelMeshBuild) {
+                throw new GdxRuntimeException("simulated model VBO failure on " + label);
+            }
+            RecordedDisposable handle = new RecordedDisposable(label);
+            modelMeshes.add(handle);
+            return handle;
+        }
+
+        @Override
+        public Disposable createGroupStrategy(PerspectiveCamera camera) {
+            RecordedDisposable d = new RecordedDisposable("worldGroupStrategy");
+            strategies.add(d);
+            return d;
+        }
+
+        @Override
+        public Disposable createDecalBatch(Disposable groupStrategyHandle) {
+            RecordedDisposable d = new RecordedDisposable("worldDecalBatch");
+            batches.add(d);
+            return d;
+        }
+
+        @Override
+        public void initTextureRegions(ProceduralTextures textures) {
+            if (failInitRegions) {
+                throw new IllegalArgumentException("simulated null ProceduralTextures");
+            }
+        }
     }
 }

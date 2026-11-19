@@ -165,14 +165,23 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     }
 
     ModelPreviewApp(String requestedModel, String screenshotPath, Path explicitModelsDir, MeshFactory meshFactory) {
-        this.requestedModel = requestedModel != null && !requestedModel.isEmpty()
-            ? requestedModel
-            : (explicitModelsDir != null ? null : System.getenv("GAMEX_PREVIEW_MODEL"));
-        this.screenshotPath = screenshotPath != null && !screenshotPath.isEmpty()
-            ? screenshotPath
-            : (explicitModelsDir != null ? null : System.getenv("GAMEX_PREVIEW_SCREENSHOT"));
+        this.requestedModel = normalizeOptionalArg(
+            requestedModel, explicitModelsDir != null ? null : System.getenv("GAMEX_PREVIEW_MODEL"));
+        this.screenshotPath = normalizeOptionalArg(
+            screenshotPath, explicitModelsDir != null ? null : System.getenv("GAMEX_PREVIEW_SCREENSHOT"));
         this.explicitModelsDir = explicitModelsDir;
         this.meshFactory = meshFactory != null ? meshFactory : GPU_MESH_FACTORY;
+    }
+
+    static String normalizeOptionalArg(String primary, String envFallback) {
+        String normalizedPrimary = normalizeOptionalValue(primary);
+        return normalizedPrimary != null ? normalizedPrimary : normalizeOptionalValue(envFallback);
+    }
+
+    static String normalizeOptionalValue(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public static void main(String[] args) {
@@ -210,93 +219,92 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
     @Override
     public void create() {
-        camera = createPreviewCamera(Gdx.graphics);
-        applyBackBufferViewport();
-
-        shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
-        if (!shader.isCompiled()) {
-            throw new GdxRuntimeException("Preview shader failed: " + shader.getLog());
-        }
-        shapes = new ShapeRenderer();
-        batch = new SpriteBatch();
-        if (Gdx.graphics.getWidth() <= 0 || Gdx.graphics.getHeight() <= 0) {
-            batch.getProjectionMatrix().setToOrtho2D(0f, 0f, 1280f, 800f);
-        }
-        Pixmap px = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         try {
-            px.setColor(Color.WHITE);
-            px.fill();
-            white = new Texture(px);
-        } finally {
-            px.dispose();
-        }
+            camera = createPreviewCamera(Gdx.graphics);
+            applyBackBufferViewport();
 
-        loadAllEntries();
+            shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
+            if (!shader.isCompiled()) {
+                throw new GdxRuntimeException("Preview shader failed: " + shader.getLog());
+            }
+            shapes = new ShapeRenderer();
+            batch = new SpriteBatch();
+            if (Gdx.graphics == null || Gdx.graphics.getWidth() <= 0 || Gdx.graphics.getHeight() <= 0) {
+                batch.getProjectionMatrix().setToOrtho2D(0f, 0f, 1280f, 800f);
+            }
+            Pixmap px = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+            try {
+                px.setColor(Color.WHITE);
+                px.fill();
+                white = new Texture(px);
+            } finally {
+                px.dispose();
+            }
 
-        if (requestedModel != null && !requestedModel.isEmpty()) {
-            for (int i = 0; i < entries.size(); i++) {
-                if (entries.get(i).label.equalsIgnoreCase(requestedModel)
-                    || entries.get(i).label.contains(requestedModel.toLowerCase(Locale.ROOT))) {
-                    currentIndex = i;
-                    break;
+            loadAllEntries();
+            resetCameraForEntry();
+
+            Gdx.input.setInputProcessor(new InputAdapter() {
+                @Override
+                public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                    lastX = screenX;
+                    lastY = screenY;
+                    dragging = true;
+                    return true;
                 }
-            }
-        }
-        resetCameraForEntry();
 
-        Gdx.input.setInputProcessor(new InputAdapter() {
-            @Override
-            public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                lastX = screenX;
-                lastY = screenY;
-                dragging = true;
-                return true;
-            }
-
-            @Override
-            public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-                dragging = false;
-                return true;
-            }
-
-            @Override
-            public boolean touchDragged(int screenX, int screenY, int pointer) {
-                if (!dragging) return false;
-                orbitYaw = (orbitYaw + (screenX - lastX) * 0.65f) % 360f;
-                orbitPitch = MathUtils.clamp(orbitPitch + (screenY - lastY) * 0.55f, -85f, 85f);
-                lastX = screenX;
-                lastY = screenY;
-                return true;
-            }
-
-            @Override
-            public boolean scrolled(float amountX, float amountY) {
-                orbitDist = MathUtils.clamp(orbitDist * (1f + amountY * 0.12f), 0.18f, 6.0f);
-                return true;
-            }
-
-            @Override
-            public boolean keyDown(int keycode) {
-                if (keycode == Input.Keys.RIGHT || keycode == Input.Keys.RIGHT_BRACKET) {
-                    stepEntry(1);
-                } else if (keycode == Input.Keys.LEFT || keycode == Input.Keys.LEFT_BRACKET) {
-                    stepEntry(-1);
-                } else if (keycode == Input.Keys.SPACE) {
-                    animate = !animate;
-                } else if (keycode == Input.Keys.G) {
-                    showGizmos = !showGizmos;
-                } else if (keycode == Input.Keys.W) {
-                    wireframe = !wireframe;
-                } else if (keycode == Input.Keys.C) {
-                    accentIndex++;
-                } else if (keycode == Input.Keys.R) {
-                    regenerateAndReload();
-                } else if (keycode == Input.Keys.ESCAPE) {
-                    Gdx.app.exit();
+                @Override
+                public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                    dragging = false;
+                    return true;
                 }
-                return true;
+
+                @Override
+                public boolean touchDragged(int screenX, int screenY, int pointer) {
+                    if (!dragging) return false;
+                    orbitYaw = (orbitYaw + (screenX - lastX) * 0.65f) % 360f;
+                    orbitPitch = MathUtils.clamp(orbitPitch + (screenY - lastY) * 0.55f, -85f, 85f);
+                    lastX = screenX;
+                    lastY = screenY;
+                    return true;
+                }
+
+                @Override
+                public boolean scrolled(float amountX, float amountY) {
+                    orbitDist = MathUtils.clamp(orbitDist * (1f + amountY * 0.12f), 0.18f, 6.0f);
+                    return true;
+                }
+
+                @Override
+                public boolean keyDown(int keycode) {
+                    if (keycode == Input.Keys.RIGHT || keycode == Input.Keys.RIGHT_BRACKET) {
+                        stepEntry(1);
+                    } else if (keycode == Input.Keys.LEFT || keycode == Input.Keys.LEFT_BRACKET) {
+                        stepEntry(-1);
+                    } else if (keycode == Input.Keys.SPACE) {
+                        animate = !animate;
+                    } else if (keycode == Input.Keys.G) {
+                        showGizmos = !showGizmos;
+                    } else if (keycode == Input.Keys.W) {
+                        wireframe = !wireframe;
+                    } else if (keycode == Input.Keys.C) {
+                        accentIndex++;
+                    } else if (keycode == Input.Keys.R) {
+                        regenerateAndReload();
+                    } else if (keycode == Input.Keys.ESCAPE) {
+                        Gdx.app.exit();
+                    }
+                    return true;
+                }
+            });
+        } catch (Throwable t) {
+            try {
+                dispose();
+            } catch (Throwable suppressed) {
+                t.addSuppressed(suppressed);
             }
-        });
+            throw t;
+        }
     }
 
     void stepEntry(int delta) {
@@ -449,10 +457,22 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         if (entries.isEmpty()) {
             currentIndex = 0;
         } else if (!hadEntries) {
+            selectRequestedEntry();
             currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
         } else if (currentIndex < 0 || currentIndex >= entries.size()) {
             currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
             resetCameraForEntry();
+        }
+    }
+
+    private void selectRequestedEntry() {
+        if (requestedModel == null || requestedModel.isEmpty()) return;
+        for (int i = 0; i < entries.size(); i++) {
+            if (entries.get(i).label.equalsIgnoreCase(requestedModel)
+                || entries.get(i).label.contains(requestedModel.toLowerCase(Locale.ROOT))) {
+                currentIndex = i;
+                break;
+            }
         }
     }
 
@@ -793,14 +813,16 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     }
 
     static boolean saveScreenshot(String path) {
-        if (Gdx.graphics == null) return false;
+        String normalizedPath = normalizeOptionalValue(path);
+        if (normalizedPath == null || Gdx.graphics == null) return false;
         int w = Gdx.graphics.getBackBufferWidth();
         int h = Gdx.graphics.getBackBufferHeight();
         return saveScreenshot(
             w, h,
             (width, height) -> Pixmap.createFromFrameBuffer(0, 0, width, height),
             Pixmap::getPixels,
-            pixmap -> PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, Deflater.DEFAULT_COMPRESSION, true));
+            pixmap -> PixmapIO.writePNG(
+                Gdx.files.absolute(normalizedPath), pixmap, Deflater.DEFAULT_COMPRESSION, true));
     }
 
     static <P extends Disposable> boolean saveScreenshot(int w, int h,
@@ -847,11 +869,61 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
     @Override
     public void dispose() {
-        disposeEntries();
-        if (shader != null) shader.dispose();
-        if (shapes != null) shapes.dispose();
-        if (batch != null) batch.dispose();
-        if (white != null) white.dispose();
+        disposeEntriesQuietly();
+        ShaderProgram currentShader = shader;
+        ShapeRenderer currentShapes = shapes;
+        SpriteBatch currentBatch = batch;
+        Texture currentWhite = white;
+        shader = null;
+        shapes = null;
+        batch = null;
+        white = null;
+        disposeAllQuietly(currentShader, currentShapes, currentBatch, currentWhite);
+    }
+
+    private void disposeEntriesQuietly() {
+        for (Entry e : entries) {
+            if (e == null) continue;
+            for (PreviewMesh m : e.partMeshes.values()) {
+                disposeQuietly(m);
+            }
+            e.partMeshes.clear();
+            for (PreviewMesh m : e.partWireMeshes.values()) {
+                disposeQuietly(m);
+            }
+            e.partWireMeshes.clear();
+        }
+        entries.clear();
+    }
+
+    static void disposeAllQuietly(Disposable... resources) {
+        if (resources == null) return;
+        for (Disposable resource : resources) {
+            disposeQuietly(resource);
+        }
+    }
+
+    static <D extends Disposable> D disposeQuietly(D resource) {
+        if (resource != null) {
+            try {
+                resource.dispose();
+            } catch (RuntimeException ignored) {
+                // Isolate cleanup so a throwing disposable never skips remaining resources.
+            }
+        }
+        return null;
+    }
+
+    String getRequestedModel() {
+        return requestedModel;
+    }
+
+    String getScreenshotPath() {
+        return screenshotPath;
+    }
+
+    float getTime() {
+        return time;
     }
 
     int getEntryCount() {

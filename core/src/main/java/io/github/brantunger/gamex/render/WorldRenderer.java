@@ -47,6 +47,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Draws the 3D view: the map as a few static meshes, one per texture, the targets, pickups and blast projectiles as
@@ -157,63 +158,114 @@ public final class WorldRenderer implements Disposable {
             + "}\n";
 
     /** A static mesh and the texture it is drawn with. */
-    private static final class Surface {
+    static final class Surface implements Disposable {
         final Mesh mesh;
+        private Disposable handle;
         final Texture texture;
 
         Surface(Mesh mesh, Texture texture) {
             this.mesh = mesh;
+            this.handle = mesh;
             this.texture = texture;
+        }
+
+        Surface(Disposable handle, Texture texture) {
+            this.mesh = null;
+            this.handle = handle;
+            this.texture = texture;
+        }
+
+        @Override
+        public void dispose() {
+            handle = disposeQuietly(handle);
         }
     }
 
-    private final PerspectiveCamera camera;
+    @FunctionalInterface
+    interface SurfaceMeshBuilder {
+        Surface buildSurface(float[] quads, Texture texture);
+    }
+
+    interface ResourceBackend {
+        void checkWardenModel();
+
+        Disposable createWorldShader(String vertexShader, String fragmentShader);
+
+        boolean isWorldShaderCompiled(Disposable shaderHandle);
+
+        String getWorldShaderLog(Disposable shaderHandle);
+
+        Disposable createModelShader(String vertexShader, String fragmentShader);
+
+        boolean isModelShaderCompiled(Disposable shaderHandle);
+
+        String getModelShaderLog(Disposable shaderHandle);
+
+        Surface buildSurface(float[] quads, Texture texture);
+
+        ObjModel loadModel(String assetPath, String label);
+
+        Disposable loadIndexedMesh(String assetPath, String label,
+                                   Function<ObjModel, ModelVertices.IndexedMesh> converter);
+
+        Disposable buildIndexedMesh(ModelVertices.IndexedMesh data, String assetPath, String label);
+
+        Disposable createGroupStrategy(PerspectiveCamera camera);
+
+        Disposable createDecalBatch(Disposable groupStrategyHandle);
+
+        void initTextureRegions(ProceduralTextures textures);
+    }
+
+    private PerspectiveCamera camera;
     private final ProceduralTextures textures;
-    private final ShaderProgram shader;
-    private final ShaderProgram modelShader;
+    private final SurfaceMeshBuilder surfaceMeshBuilder;
+    private ShaderProgram shader;
+    private ShaderProgram modelShader;
     private final Array<Surface> surfaces = new Array<>();
+    private final Array<Disposable> resourceHandles = new Array<>(36);
     private GameMap currentMap;
-    private final Mesh canisterMesh;
-    private final Mesh ringBoardMesh;
-    private final Mesh blastOrbMesh;
-    private final Mesh medkitMesh;
-    private final Mesh armorMesh;
-    private final Mesh energyCellMesh;
-    private final Mesh scattergunPickupMesh;
-    private final Mesh shellsPickupMesh;
-    private final Mesh railLancePickupMesh;
-    private final Mesh railSlugsPickupMesh;
-    private final Mesh railBeamMesh;
-    private final Mesh turretBaseMesh;
-    private final Mesh turretHeadMesh;
-    private final Mesh turretBarrelsMesh;
-    private final Mesh droneMesh;
-    private final Mesh guardPelvisMesh;
-    private final Mesh guardLegLeftMesh;
-    private final Mesh guardLegRightMesh;
-    private final Mesh guardTorsoMesh;
-    private final Mesh guardArmLeftMesh;
-    private final Mesh guardArmRightMesh;
-    private final Mesh enemyBoltMesh;
-    private final Mesh doorMesh;
-    private final Mesh hazardGrateMesh;
-    private final Mesh keycardMesh;
-    private final Mesh consoleMesh;
-    private final ModelRig turretRig;
-    private final ModelRig droneRig;
-    private final ModelRig guardRig;
+    private Mesh canisterMesh;
+    private Mesh ringBoardMesh;
+    private Mesh blastOrbMesh;
+    private Mesh medkitMesh;
+    private Mesh armorMesh;
+    private Mesh energyCellMesh;
+    private Mesh scattergunPickupMesh;
+    private Mesh shellsPickupMesh;
+    private Mesh railLancePickupMesh;
+    private Mesh railSlugsPickupMesh;
+    private Mesh railBeamMesh;
+    private Mesh turretBaseMesh;
+    private Mesh turretHeadMesh;
+    private Mesh turretBarrelsMesh;
+    private Mesh droneMesh;
+    private Mesh guardPelvisMesh;
+    private Mesh guardLegLeftMesh;
+    private Mesh guardLegRightMesh;
+    private Mesh guardTorsoMesh;
+    private Mesh guardArmLeftMesh;
+    private Mesh guardArmRightMesh;
+    private Mesh enemyBoltMesh;
+    private Mesh doorMesh;
+    private Mesh hazardGrateMesh;
+    private Mesh keycardMesh;
+    private Mesh consoleMesh;
+    private ModelRig turretRig;
+    private ModelRig droneRig;
+    private ModelRig guardRig;
     /** The Warden's model, loaded the first time a stage with a live Warden is drawn and kept from then on. */
     private WardenModel wardenModel;
-    private final CameraGroupStrategy groupStrategy;
-    private final DecalBatch decalBatch;
+    private CameraGroupStrategy groupStrategy;
+    private DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
     private int decalsUsed;
 
-    private final TextureRegion scorch;
-    private final TextureRegion spark;
-    private final TextureRegion orb;
-    private final TextureRegion explosion;
-    private final TextureRegion exitPad;
+    private TextureRegion scorch;
+    private TextureRegion spark;
+    private TextureRegion orb;
+    private TextureRegion explosion;
+    private TextureRegion exitPad;
 
     private final Matrix4 modelTransform = new Matrix4();
     private final Matrix4 rootTransform = new Matrix4();
@@ -237,100 +289,243 @@ public final class WorldRenderer implements Disposable {
      * @param textures the textures to draw with; the caller keeps ownership of them
      */
     public WorldRenderer(GameMap map, ProceduralTextures textures) {
+        this(map, Gdx.graphics, textures, null);
+    }
+
+    WorldRenderer(GameMap map, Graphics graphics, ProceduralTextures textures, ResourceBackend backend) {
         this.textures = textures;
-        // The Warden's model is loaded later; whether it is there to load is found out now.
-        WardenModel.checkFile();
-        int modelsBefore = ModelMesh.getLoadedCount();
-        camera = createWorldCamera(Gdx.graphics);
+        ResourceBackend active = backend != null ? backend : createGlBackend();
+        this.surfaceMeshBuilder = active::buildSurface;
+        try {
+            // The Warden's model is loaded later; whether it is there to load is found out now.
+            active.checkWardenModel();
+            int modelsBefore = ModelMesh.getLoadedCount();
+            camera = createWorldCamera(graphics);
 
-        shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
-        if (!shader.isCompiled()) {
-            throw new GdxRuntimeException("The world shader did not compile: " + shader.getLog());
+            Disposable worldShaderHandle = active.createWorldShader(VERTEX_SHADER, FRAGMENT_SHADER);
+            shader = trackResource(worldShaderHandle, ShaderProgram.class);
+            if (!active.isWorldShaderCompiled(worldShaderHandle)) {
+                throw new GdxRuntimeException(
+                    "The world shader did not compile: " + active.getWorldShaderLog(worldShaderHandle));
+            }
+            Disposable modelShaderHandle = active.createModelShader(MODEL_VERTEX_SHADER, MODEL_FRAGMENT_SHADER);
+            modelShader = trackResource(modelShaderHandle, ShaderProgram.class);
+            if (!active.isModelShaderCompiled(modelShaderHandle)) {
+                throw new GdxRuntimeException(
+                    "The world model shader did not compile: " + active.getModelShaderLog(modelShaderHandle));
+            }
+
+            if (backend == null && textures == null) {
+                throw new IllegalArgumentException("textures must not be null");
+            }
+            setMap(map);
+
+            canisterMesh = loadSingleWorldMesh(active, WorldModels.CANISTER_PATH, "canister");
+            ringBoardMesh = loadSingleWorldMesh(active, WorldModels.RING_BOARD_PATH, "ring board");
+            blastOrbMesh = loadSingleWorldMesh(active, WorldModels.BLAST_ORB_PATH, "blast orb");
+            medkitMesh = loadSingleWorldMesh(active, WorldModels.MEDKIT_PATH, "medkit");
+            armorMesh = loadSingleWorldMesh(active, WorldModels.ARMOR_PATH, "armor");
+            energyCellMesh = loadSingleWorldMesh(active, WorldModels.ENERGY_CELL_PATH, "energy cell");
+            scattergunPickupMesh = loadSingleWorldMesh(
+                active, WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup");
+            shellsPickupMesh = loadSingleWorldMesh(active, WorldModels.SHELLS_PICKUP_PATH, "shells pickup");
+            railLancePickupMesh = loadSingleWorldMesh(
+                active, WorldModels.RAIL_LANCE_PICKUP_PATH, "rail lance pickup");
+            railSlugsPickupMesh = loadSingleWorldMesh(
+                active, WorldModels.RAIL_SLUGS_PICKUP_PATH, "rail slugs pickup");
+            railBeamMesh = loadSingleWorldMesh(active, WorldModels.RAIL_BEAM_PATH, "rail beam");
+
+            ObjModel turretObj = active.loadModel(WorldModels.TURRET_PATH, "turret");
+            turretRig = new ModelRig(turretObj);
+            turretBaseMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "base");
+            turretHeadMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "head");
+            turretBarrelsMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "barrels");
+
+            ObjModel droneObj = active.loadModel(WorldModels.DRONE_PATH, "drone");
+            droneRig = new ModelRig(droneObj);
+            droneMesh = trackResource(active.buildIndexedMesh(
+                unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone"), WorldModels.DRONE_PATH, "drone"),
+                Mesh.class);
+
+            ObjModel guardObj = active.loadModel(WorldModels.GUARD_PATH, "guard");
+            guardRig = new ModelRig(guardObj);
+            guardPelvisMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "pelvis");
+            guardLegLeftMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "leg_l");
+            guardLegRightMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "leg_r");
+            guardTorsoMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "torso");
+            guardArmLeftMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "arm_l");
+            guardArmRightMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "arm_r");
+
+            enemyBoltMesh = loadSingleWorldMesh(active, WorldModels.ENEMY_BOLT_PATH, "enemy bolt");
+            doorMesh = loadSingleWorldMesh(active, WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead");
+            hazardGrateMesh = loadSingleWorldMesh(active, WorldModels.HAZARD_GRATE_PATH, "hazard grate");
+            keycardMesh = loadSingleWorldMesh(active, WorldModels.KEYCARD_PATH, "keycard");
+            consoleMesh = loadSingleWorldMesh(active, WorldModels.SECURITY_CONSOLE_PATH, "security console");
+
+            turretRotations.put("head", rotYaw);
+            turretRotations.put("barrels", rotPitch);
+            guardRotations.put("leg_l", rotLegL);
+            guardRotations.put("leg_r", rotLegR);
+            guardRotations.put("arm_l", rotArmL);
+            guardRotations.put("arm_r", rotArmR);
+
+            Disposable strategyHandle = active.createGroupStrategy(camera);
+            trackResource(strategyHandle, CameraGroupStrategy.class);
+            decalBatch = trackResource(active.createDecalBatch(strategyHandle), DecalBatch.class);
+            active.initTextureRegions(textures);
+            log.info("Loaded {} world models", ModelMesh.getLoadedCount() - modelsBefore);
+        } catch (Throwable t) {
+            try {
+                dispose();
+            } catch (Throwable suppressed) {
+                t.addSuppressed(suppressed);
+            }
+            throw t;
         }
-        modelShader = new ShaderProgram(MODEL_VERTEX_SHADER, MODEL_FRAGMENT_SHADER);
-        if (!modelShader.isCompiled()) {
-            throw new GdxRuntimeException("The world model shader did not compile: " + modelShader.getLog());
+    }
+
+    private ResourceBackend createGlBackend() {
+        return new ResourceBackend() {
+            @Override
+            public void checkWardenModel() {
+                WardenModel.checkFile();
+            }
+
+            @Override
+            public Disposable createWorldShader(String vertexShader, String fragmentShader) {
+                ShaderProgram compiled = new ShaderProgram(vertexShader, fragmentShader);
+                shader = compiled;
+                return compiled;
+            }
+
+            @Override
+            public boolean isWorldShaderCompiled(Disposable shaderHandle) {
+                return shader != null && shader.isCompiled();
+            }
+
+            @Override
+            public String getWorldShaderLog(Disposable shaderHandle) {
+                return shader != null ? shader.getLog() : "";
+            }
+
+            @Override
+            public Disposable createModelShader(String vertexShader, String fragmentShader) {
+                ShaderProgram compiled = new ShaderProgram(vertexShader, fragmentShader);
+                modelShader = compiled;
+                return compiled;
+            }
+
+            @Override
+            public boolean isModelShaderCompiled(Disposable shaderHandle) {
+                return modelShader != null && modelShader.isCompiled();
+            }
+
+            @Override
+            public String getModelShaderLog(Disposable shaderHandle) {
+                return modelShader != null ? modelShader.getLog() : "";
+            }
+
+            @Override
+            public Surface buildSurface(float[] quads, Texture texture) {
+                return new Surface(buildMesh(quads), texture);
+            }
+
+            @Override
+            public ObjModel loadModel(String assetPath, String label) {
+                return ModelMesh.loadModel(assetPath, label);
+            }
+
+            @Override
+            public Disposable loadIndexedMesh(String assetPath, String label,
+                                              Function<ObjModel, ModelVertices.IndexedMesh> converter) {
+                return ModelMesh.loadIndexedMesh(assetPath, label, converter);
+            }
+
+            @Override
+            public Disposable buildIndexedMesh(ModelVertices.IndexedMesh data, String assetPath, String label) {
+                return ModelMesh.buildIndexed(data, assetPath, label);
+            }
+
+            @Override
+            public Disposable createGroupStrategy(PerspectiveCamera cam) {
+                groupStrategy = new CameraGroupStrategy(cam);
+                return null;
+            }
+
+            @Override
+            public Disposable createDecalBatch(Disposable groupStrategyHandle) {
+                DecalBatch batch = new DecalBatch(groupStrategy);
+                decalBatch = batch;
+                return batch;
+            }
+
+            @Override
+            public void initTextureRegions(ProceduralTextures tex) {
+                scorch = new TextureRegion(tex.scorch);
+                spark = new TextureRegion(tex.spark);
+                orb = new TextureRegion(tex.orb);
+                explosion = new TextureRegion(tex.explosion);
+                exitPad = new TextureRegion(tex.exitPad);
+            }
+        };
+    }
+
+    private <T> T trackResource(Disposable handle, Class<T> type) {
+        if (type.isInstance(handle)) {
+            return type.cast(handle);
         }
+        if (handle != null) {
+            resourceHandles.add(handle);
+        }
+        return null;
+    }
 
-        setMap(map);
+    private Mesh loadSingleWorldMesh(ResourceBackend active, String assetPath, String label) {
+        return trackResource(active.loadIndexedMesh(assetPath, label, WorldModels::packIndexed), Mesh.class);
+    }
 
-        canisterMesh = ModelMesh.loadIndexedMesh(WorldModels.CANISTER_PATH, "canister", WorldModels::packIndexed);
-        ringBoardMesh = ModelMesh.loadIndexedMesh(WorldModels.RING_BOARD_PATH, "ring board", WorldModels::packIndexed);
-        blastOrbMesh = ModelMesh.loadIndexedMesh(WorldModels.BLAST_ORB_PATH, "blast orb", WorldModels::packIndexed);
-        medkitMesh = ModelMesh.loadIndexedMesh(WorldModels.MEDKIT_PATH, "medkit", WorldModels::packIndexed);
-        armorMesh = ModelMesh.loadIndexedMesh(WorldModels.ARMOR_PATH, "armor", WorldModels::packIndexed);
-        energyCellMesh = ModelMesh.loadIndexedMesh(WorldModels.ENERGY_CELL_PATH, "energy cell",
-            WorldModels::packIndexed);
-        scattergunPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup",
-            WorldModels::packIndexed);
-        shellsPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.SHELLS_PICKUP_PATH, "shells pickup",
-            WorldModels::packIndexed);
-        railLancePickupMesh = ModelMesh.loadIndexedMesh(WorldModels.RAIL_LANCE_PICKUP_PATH, "rail lance pickup",
-            WorldModels::packIndexed);
-        railSlugsPickupMesh = ModelMesh.loadIndexedMesh(WorldModels.RAIL_SLUGS_PICKUP_PATH, "rail slugs pickup",
-            WorldModels::packIndexed);
-        railBeamMesh = ModelMesh.loadIndexedMesh(WorldModels.RAIL_BEAM_PATH, "rail beam",
-            WorldModels::packIndexed);
-
-        ObjModel turretObj = ModelMesh.loadModel(WorldModels.TURRET_PATH, "turret");
-        turretRig = new ModelRig(turretObj);
-        turretBaseMesh = buildWorldPartMesh(turretObj, WorldModels.TURRET_PATH, "turret", "base");
-        turretHeadMesh = buildWorldPartMesh(turretObj, WorldModels.TURRET_PATH, "turret", "head");
-        turretBarrelsMesh = buildWorldPartMesh(turretObj, WorldModels.TURRET_PATH, "turret", "barrels");
-
-        ObjModel droneObj = ModelMesh.loadModel(WorldModels.DRONE_PATH, "drone");
-        droneRig = new ModelRig(droneObj);
-        droneMesh = ModelMesh.buildIndexed(
-            unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone"), WorldModels.DRONE_PATH, "drone");
-
-        ObjModel guardObj = ModelMesh.loadModel(WorldModels.GUARD_PATH, "guard");
-        guardRig = new ModelRig(guardObj);
-        guardPelvisMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "pelvis");
-        guardLegLeftMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "leg_l");
-        guardLegRightMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "leg_r");
-        guardTorsoMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "torso");
-        guardArmLeftMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "arm_l");
-        guardArmRightMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "arm_r");
-
-        enemyBoltMesh = ModelMesh.loadIndexedMesh(WorldModels.ENEMY_BOLT_PATH, "enemy bolt", WorldModels::packIndexed);
-        doorMesh = ModelMesh.loadIndexedMesh(WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead", WorldModels::packIndexed);
-        hazardGrateMesh = ModelMesh.loadIndexedMesh(WorldModels.HAZARD_GRATE_PATH, "hazard grate",
-            WorldModels::packIndexed);
-        keycardMesh = ModelMesh.loadIndexedMesh(WorldModels.KEYCARD_PATH, "keycard", WorldModels::packIndexed);
-        consoleMesh = ModelMesh.loadIndexedMesh(WorldModels.SECURITY_CONSOLE_PATH, "security console",
-            WorldModels::packIndexed);
-
-        turretRotations.put("head", rotYaw);
-        turretRotations.put("barrels", rotPitch);
-        guardRotations.put("leg_l", rotLegL);
-        guardRotations.put("leg_r", rotLegR);
-        guardRotations.put("arm_l", rotArmL);
-        guardRotations.put("arm_r", rotArmR);
-
-        groupStrategy = new CameraGroupStrategy(camera);
-        decalBatch = new DecalBatch(groupStrategy);
-        scorch = new TextureRegion(textures.scorch);
-        spark = new TextureRegion(textures.spark);
-        orb = new TextureRegion(textures.orb);
-        explosion = new TextureRegion(textures.explosion);
-        exitPad = new TextureRegion(textures.exitPad);
-        log.info("Loaded {} world models", ModelMesh.getLoadedCount() - modelsBefore);
+    private Mesh buildWorldPartMesh(ResourceBackend active, ObjModel model, String assetPath, String modelLabel,
+                                    String partName) {
+        String label = modelLabel + " " + partName;
+        return trackResource(
+            active.buildIndexedMesh(unpackWorldPart(model, assetPath, modelLabel, partName), assetPath, label),
+            Mesh.class);
     }
 
     /** Rebuilds the static map geometry when loading a different stage. */
     public void setMap(GameMap map) {
+        if (map == null) {
+            throw new IllegalArgumentException("map must not be null");
+        }
         if (map == currentMap) return;
-        for (Surface surface : surfaces) surface.mesh.dispose();
-        surfaces.clear();
-        currentMap = map;
         MapGeometry geometry = MapGeometry.build(map);
         log.debug("Built the geometry of a {}x{} map: {} wall textures", map.getWidth(), map.getHeight(),
             geometry.walls.size());
-        for (Map.Entry<Character, float[]> entry : geometry.walls.entrySet()) {
-            surfaces.add(new Surface(buildMesh(entry.getValue()), textures.wall(entry.getKey())));
+        Array<Surface> nextSurfaces = new Array<>(geometry.walls.size() + 2);
+        try {
+            for (Map.Entry<Character, float[]> entry : geometry.walls.entrySet()) {
+                Texture wallTexture = textures != null ? textures.wall(entry.getKey()) : null;
+                nextSurfaces.add(surfaceMeshBuilder.buildSurface(entry.getValue(), wallTexture));
+            }
+            nextSurfaces.add(surfaceMeshBuilder.buildSurface(
+                geometry.floor, textures != null ? textures.floor : null));
+            nextSurfaces.add(surfaceMeshBuilder.buildSurface(
+                geometry.ceiling, textures != null ? textures.ceiling : null));
+        } catch (Throwable t) {
+            disposeSurfaces(nextSurfaces);
+            throw t;
         }
-        surfaces.add(new Surface(buildMesh(geometry.floor), textures.floor));
-        surfaces.add(new Surface(buildMesh(geometry.ceiling), textures.ceiling));
+        disposeSurfaces(surfaces);
+        surfaces.addAll(nextSurfaces);
+        currentMap = map;
+    }
+
+    GameMap getCurrentMap() {
+        return currentMap;
+    }
+
+    int getSurfaceCount() {
+        return surfaces.size;
     }
 
     static ModelVertices.IndexedMesh unpackWorldPart(ObjModel model, String assetPath, String modelLabel,
@@ -343,13 +538,11 @@ public final class WorldRenderer implements Disposable {
         return ModelMesh.convertMesh(model, assetPath, modelLabel, WorldModels::packIndexed);
     }
 
-    private static Mesh buildWorldPartMesh(ObjModel model, String assetPath, String modelLabel, String partName) {
-        String label = modelLabel + " " + partName;
-        return ModelMesh.buildIndexed(unpackWorldPart(model, assetPath, modelLabel, partName), assetPath, label);
-    }
-
-    /** Turns quads from {@link MapGeometry} into an indexed mesh of two triangles per quad. */
-    private static Mesh buildMesh(float[] quads) {
+    static short[] buildQuadIndices(float[] quads) {
+        if (quads == null || quads.length % MapGeometry.QUAD_SIZE != 0) {
+            throw new GdxRuntimeException("Invalid map quad buffer length: "
+                + (quads == null ? "null" : quads.length));
+        }
         int quadCount = quads.length / MapGeometry.QUAD_SIZE;
         if (quadCount * 4 > 65535) {
             throw new GdxRuntimeException("Too many quads for one mesh: " + quadCount);
@@ -365,13 +558,25 @@ public final class WorldRenderer implements Disposable {
             indices[at + 4] = (short) (first + 2);
             indices[at + 5] = (short) (first + 3);
         }
+        return indices;
+    }
+
+    /** Turns quads from {@link MapGeometry} into an indexed mesh of two triangles per quad. */
+    private static Mesh buildMesh(float[] quads) {
+        short[] indices = buildQuadIndices(quads);
+        int quadCount = quads.length / MapGeometry.QUAD_SIZE;
         Mesh mesh = new Mesh(true, quadCount * 4, indices.length,
             new VertexAttribute(VertexAttributes.Usage.Position, 3, ShaderProgram.POSITION_ATTRIBUTE),
             new VertexAttribute(VertexAttributes.Usage.TextureCoordinates, 2, ShaderProgram.TEXCOORD_ATTRIBUTE + "0"),
             new VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_shade"));
-        mesh.setVertices(quads);
-        mesh.setIndices(indices);
-        return mesh;
+        try {
+            mesh.setVertices(quads);
+            mesh.setIndices(indices);
+            return mesh;
+        } catch (Throwable t) {
+            disposeQuietly(mesh);
+            throw t;
+        }
     }
 
     static int initialViewportWidth(Graphics graphics) {
@@ -411,7 +616,7 @@ public final class WorldRenderer implements Disposable {
      * @param height the new height in pixels
      */
     public void resize(int width, int height) {
-        if (width <= 0 || height <= 0) return;
+        if (width <= 0 || height <= 0 || camera == null) return;
         applyViewportResize(camera, width, height);
     }
 
@@ -1145,38 +1350,77 @@ public final class WorldRenderer implements Disposable {
 
     @Override
     public void dispose() {
-        for (Surface surface : surfaces) surface.mesh.dispose();
-        surfaces.clear();
-        canisterMesh.dispose();
-        ringBoardMesh.dispose();
-        blastOrbMesh.dispose();
-        medkitMesh.dispose();
-        armorMesh.dispose();
-        energyCellMesh.dispose();
-        scattergunPickupMesh.dispose();
-        shellsPickupMesh.dispose();
-        railLancePickupMesh.dispose();
-        railSlugsPickupMesh.dispose();
-        railBeamMesh.dispose();
-        turretBaseMesh.dispose();
-        turretHeadMesh.dispose();
-        turretBarrelsMesh.dispose();
-        droneMesh.dispose();
-        guardPelvisMesh.dispose();
-        guardLegLeftMesh.dispose();
-        guardLegRightMesh.dispose();
-        guardTorsoMesh.dispose();
-        guardArmLeftMesh.dispose();
-        guardArmRightMesh.dispose();
-        if (wardenModel != null) wardenModel.dispose();
-        enemyBoltMesh.dispose();
-        doorMesh.dispose();
-        hazardGrateMesh.dispose();
-        keycardMesh.dispose();
-        consoleMesh.dispose();
-        shader.dispose();
-        modelShader.dispose();
-        decalBatch.dispose();
-        groupStrategy.dispose();
+        disposeSurfaces(surfaces);
+        currentMap = null;
+        decals.clear();
+        decalsUsed = 0;
+        canisterMesh = disposeQuietly(canisterMesh);
+        ringBoardMesh = disposeQuietly(ringBoardMesh);
+        blastOrbMesh = disposeQuietly(blastOrbMesh);
+        medkitMesh = disposeQuietly(medkitMesh);
+        armorMesh = disposeQuietly(armorMesh);
+        energyCellMesh = disposeQuietly(energyCellMesh);
+        scattergunPickupMesh = disposeQuietly(scattergunPickupMesh);
+        shellsPickupMesh = disposeQuietly(shellsPickupMesh);
+        railLancePickupMesh = disposeQuietly(railLancePickupMesh);
+        railSlugsPickupMesh = disposeQuietly(railSlugsPickupMesh);
+        railBeamMesh = disposeQuietly(railBeamMesh);
+        turretBaseMesh = disposeQuietly(turretBaseMesh);
+        turretHeadMesh = disposeQuietly(turretHeadMesh);
+        turretBarrelsMesh = disposeQuietly(turretBarrelsMesh);
+        droneMesh = disposeQuietly(droneMesh);
+        guardPelvisMesh = disposeQuietly(guardPelvisMesh);
+        guardLegLeftMesh = disposeQuietly(guardLegLeftMesh);
+        guardLegRightMesh = disposeQuietly(guardLegRightMesh);
+        guardTorsoMesh = disposeQuietly(guardTorsoMesh);
+        guardArmLeftMesh = disposeQuietly(guardArmLeftMesh);
+        guardArmRightMesh = disposeQuietly(guardArmRightMesh);
+        wardenModel = disposeQuietly(wardenModel);
+        enemyBoltMesh = disposeQuietly(enemyBoltMesh);
+        doorMesh = disposeQuietly(doorMesh);
+        hazardGrateMesh = disposeQuietly(hazardGrateMesh);
+        keycardMesh = disposeQuietly(keycardMesh);
+        consoleMesh = disposeQuietly(consoleMesh);
+        shader = disposeQuietly(shader);
+        modelShader = disposeQuietly(modelShader);
+        decalBatch = disposeQuietly(decalBatch);
+        groupStrategy = disposeGroupStrategy(groupStrategy);
+        for (int i = resourceHandles.size - 1; i >= 0; i--) {
+            disposeQuietly(resourceHandles.get(i));
+        }
+        resourceHandles.clear();
+    }
+
+    private static void disposeSurfaces(Array<Surface> list) {
+        if (list == null) return;
+        for (int i = 0; i < list.size; i++) {
+            Surface surface = list.get(i);
+            if (surface != null) {
+                surface.dispose();
+            }
+        }
+        list.clear();
+    }
+
+    static <D extends Disposable> D disposeQuietly(D resource) {
+        if (resource != null) {
+            try {
+                resource.dispose();
+            } catch (RuntimeException ignored) {
+                // Isolate cleanup so one failing resource never skips disposing the rest.
+            }
+        }
+        return null;
+    }
+
+    private static CameraGroupStrategy disposeGroupStrategy(CameraGroupStrategy strategy) {
+        if (strategy != null) {
+            try {
+                strategy.dispose();
+            } catch (RuntimeException ignored) {
+                // Isolate cleanup so one failing resource never skips disposing the rest.
+            }
+        }
+        return null;
     }
 }

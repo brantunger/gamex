@@ -4,10 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
+import io.github.brantunger.gamex.LogCapture;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 class GameSettingsAndSaveTest {
 
@@ -158,5 +162,81 @@ class GameSettingsAndSaveTest {
         assertEquals(4, save.getUnlockedStageIndex(), "saving a run on a higher stage unlocks it");
         save.clearSavedRun();
         assertEquals(4, save.getUnlockedStageIndex(), "clearing the run keeps progress");
+    }
+
+    @Test
+    void recordCompletionRejectsNonPositiveAndNonFiniteClearTimesWithoutOverwritingBestTime() {
+        MapKeyValueStore store = new MapKeyValueStore();
+        SaveData save = new SaveData(store);
+
+        SaveData.CompletionSummary valid = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
+            42f, 50f, 8, 8, 0f);
+        assertTrue(valid.newBestTime);
+        assertEquals(42f, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 1e-4f);
+
+        float[] invalidClearTimes = {
+            0f, -0f, -5f, Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY
+        };
+        for (float badTime : invalidClearTimes) {
+            SaveData.CompletionSummary summary = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
+                badTime, 50f, 8, 8, 10f);
+            assertFalse(summary.newBestTime, "clearTime " + badTime + " must not register as a new best");
+            assertEquals(42f, summary.bestTime, 1e-4f, "bestTime must stay 42f after " + badTime);
+            assertEquals(42f, save.getBestTime("01_outer_breach", Difficulty.NORMAL), 1e-4f,
+                "stored best time must remain intact after " + badTime);
+        }
+
+        // On an unplayed stage, invalid clear times leave bestTime at +Infinity so the first real clear wins.
+        for (float badTime : invalidClearTimes) {
+            SaveData.CompletionSummary unplayed = save.recordCompletion("02_coolant_core", Difficulty.HARD,
+                badTime, 50f, 8, 8, 10f);
+            assertFalse(unplayed.newBestTime, "unplayed clearTime " + badTime);
+            assertEquals(Float.POSITIVE_INFINITY, unplayed.bestTime, 0f);
+            assertEquals(Float.POSITIVE_INFINITY, save.getBestTime("02_coolant_core", Difficulty.HARD), 0f);
+        }
+        SaveData.CompletionSummary firstValid = save.recordCompletion("02_coolant_core", Difficulty.HARD,
+            37.5f, 50f, 8, 8, 0f);
+        assertTrue(firstValid.newBestTime);
+        assertEquals(37.5f, save.getBestTime("02_coolant_core", Difficulty.HARD), 1e-4f);
+    }
+
+    @Test
+    void bestRankAndSavedLoadoutNormalizeWhitespaceAndCaseWithoutWarnings() {
+        MapKeyValueStore store = new MapKeyValueStore();
+        SaveData save = new SaveData(store);
+        store.putString("best.01_outer_breach.EASY.rank", " s ");
+        store.putString("best.01_outer_breach.NORMAL.rank", "\ta\n");
+        store.putString("best.01_outer_breach.HARD.rank", "b");
+        store.putString("best.02_coolant_core.NORMAL.rank", " C ");
+
+        save.saveCampaignRun(2, new PlayerLoadout(90f, 25f, Difficulty.HARD, true, 10, true, 6, WeaponSlot.RAIL_LANCE));
+        store.putString("run.difficulty", "  hard \n");
+        store.putString("run.activeWeapon", " \trail_lance ");
+
+        try (LogCapture capture = LogCapture.of(SaveData.class, Level.WARN)) {
+            assertEquals('S', save.getBestRank("01_outer_breach", Difficulty.EASY));
+            assertEquals('A', save.getBestRank("01_outer_breach", Difficulty.NORMAL));
+            assertEquals('B', save.getBestRank("01_outer_breach", Difficulty.HARD));
+            assertEquals('S', save.getBestOverallRank("01_outer_breach"));
+            assertEquals('C', save.getBestRank("02_coolant_core", Difficulty.NORMAL));
+
+            // A slower 'C' completion must not overwrite a stored " s " or "\ta\n" rank.
+            SaveData.CompletionSummary slowerEasy = save.recordCompletion("01_outer_breach", Difficulty.EASY,
+                95f, 40f, 2, 10, 30f);
+            assertEquals('C', slowerEasy.rank);
+            assertEquals('S', slowerEasy.bestRank);
+            assertEquals('S', save.getBestRank("01_outer_breach", Difficulty.EASY));
+
+            SaveData.CompletionSummary slowerNormal = save.recordCompletion("01_outer_breach", Difficulty.NORMAL,
+                95f, 40f, 2, 10, 30f);
+            assertEquals('C', slowerNormal.rank);
+            assertEquals('A', slowerNormal.bestRank);
+            assertEquals('A', save.getBestRank("01_outer_breach", Difficulty.NORMAL));
+
+            PlayerLoadout loadout = save.getSavedLoadout();
+            assertEquals(Difficulty.HARD, loadout.difficulty);
+            assertEquals(WeaponSlot.RAIL_LANCE, loadout.activeWeapon);
+            assertEquals(List.of(), capture.messages(Level.WARN));
+        }
     }
 }

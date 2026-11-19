@@ -82,7 +82,7 @@ public final class Target implements Damageable {
 
     @Override
     public void damage(float amount) {
-        if (amount <= 0f || isDestroyed()) return;
+        if (!(amount > 0f) || Float.isNaN(amount) || isDestroyed()) return;
         health = Math.max(0f, health - amount);
         hitFlash = HIT_FLASH_TIME;
     }
@@ -97,6 +97,7 @@ public final class Target implements Damageable {
      * @param dt the time step in seconds
      */
     public void update(float dt) {
+        if (!Float.isFinite(dt) || dt <= 0f) return;
         hitFlash = Math.max(0f, hitFlash - dt);
     }
 }

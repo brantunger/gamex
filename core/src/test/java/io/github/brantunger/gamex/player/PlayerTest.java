@@ -374,4 +374,143 @@ class PlayerTest {
         assertFalse(player.tryDash(1f, 0f, energy), "cannot dash with 15 energy during post-dash cooldown");
         assertTrue(player.isDashRefused(), "low-energy HUD warning must trigger even while dashCooldown > 0");
     }
+
+    @Test
+    void constructorSanitizesNonFiniteYawHealthAndArmorMatchingLoadout() {
+        for (float bad : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            Player player = new Player(3.5f, 3.5f, bad, bad, bad);
+            assertEquals(0f, player.getYaw(), EPSILON);
+            assertDirection(0f, 0f, -1f, player);
+            assertEquals(Player.MAX_HEALTH, player.getHealth(), EPSILON);
+            assertEquals(0f, player.getArmor(), EPSILON);
+            assertFalse(player.isDead());
+
+            Player threeArg = new Player(3.5f, 3.5f, bad);
+            assertEquals(0f, threeArg.getYaw(), EPSILON);
+            assertDirection(0f, 0f, -1f, threeArg);
+        }
+
+        Player clampedLow = new Player(3.5f, 3.5f, -90f, -20f, -10f);
+        assertEquals(270f, clampedLow.getYaw(), EPSILON);
+        assertEquals(1f, clampedLow.getHealth(), EPSILON);
+        assertEquals(0f, clampedLow.getArmor(), EPSILON);
+
+        Player clampedHigh = new Player(3.5f, 3.5f, 450f, 250f, 250f);
+        assertEquals(90f, clampedHigh.getYaw(), EPSILON);
+        assertEquals(Player.MAX_HEALTH, clampedHigh.getHealth(), EPSILON);
+        assertEquals(Player.MAX_ARMOR, clampedHigh.getArmor(), EPSILON);
+    }
+
+    @Test
+    void damageHealAndAddArmorGuardNonFiniteAndHandleInfiniteLethalDamageCleanly() {
+        Player player = new Player(3.5f, 3.5f, 0f, 80f, 50f);
+
+        for (float ignoredDamage : new float[] {Float.NaN, 0f, -15f, Float.NEGATIVE_INFINITY}) {
+            assertEquals(0f, player.damage(ignoredDamage, 5.5f, 3.5f), EPSILON);
+            assertEquals(80f, player.getHealth(), EPSILON);
+            assertEquals(50f, player.getArmor(), EPSILON);
+            assertEquals(0f, player.getHurtFlash(), EPSILON);
+        }
+
+        for (float ignoredRestore : new float[] {
+            Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, 0f, -10f
+        }) {
+            assertEquals(0f, player.heal(ignoredRestore), EPSILON);
+            assertEquals(0f, player.addArmor(ignoredRestore), EPSILON);
+            assertEquals(80f, player.getHealth(), EPSILON);
+            assertEquals(50f, player.getArmor(), EPSILON);
+        }
+
+        assertEquals(15f, player.heal(15f), EPSILON);
+        assertEquals(95f, player.getHealth(), EPSILON);
+        assertEquals(20f, player.addArmor(20f), EPSILON);
+        assertEquals(70f, player.getArmor(), EPSILON);
+
+        // Non-finite source coordinates still deal valid damage without corrupting directional hurt yaw.
+        assertEquals(10f, player.damage(10f, Float.NaN, Float.POSITIVE_INFINITY), EPSILON);
+        assertEquals(90f, player.getHealth(), EPSILON);
+        assertEquals(65f, player.getArmor(), EPSILON);
+        assertFalse(player.hasDirectionalHurt());
+        assertEquals(0f, player.getHurtRelativeYaw(), EPSILON);
+
+        // +Infinity deals lethal damage cleanly without Infinity - Infinity = NaN in armor absorption.
+        float lost = player.damage(Float.POSITIVE_INFINITY, 5.5f, 3.5f);
+        assertEquals(155f, lost, EPSILON);
+        assertTrue(Float.isFinite(player.getHealth()));
+        assertTrue(Float.isFinite(player.getArmor()));
+        assertEquals(0f, player.getHealth(), EPSILON);
+        assertEquals(0f, player.getArmor(), EPSILON);
+        assertTrue(player.isDead());
+        assertEquals(1f, player.getHurtFlash(), EPSILON);
+        assertTrue(player.hasDirectionalHurt());
+        assertEquals(90f, player.getHurtRelativeYaw(), 1e-3f);
+    }
+
+    @Test
+    void lookMoveDashAndTimersIgnoreNonFiniteInputsWithoutCorruptingState() {
+        Player player = new Player(3.5f, 3.5f, 30f);
+        player.look(0f, 15f);
+
+        // Non-finite delta on one axis leaves that axis unchanged while applying a finite delta on the other.
+        player.look(Float.NaN, 10f);
+        assertEquals(30f, player.getYaw(), EPSILON);
+        assertEquals(25f, player.getPitch(), EPSILON);
+
+        player.look(15f, Float.NaN);
+        assertEquals(45f, player.getYaw(), EPSILON);
+        assertEquals(25f, player.getPitch(), EPSILON);
+
+        player.look(Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY);
+        assertEquals(45f, player.getYaw(), EPSILON);
+        assertEquals(25f, player.getPitch(), EPSILON);
+        assertEquals(1f, player.direction(new Vector3()).len(), EPSILON);
+
+        player.damage(10f);
+        float flashBefore = player.getHurtFlash();
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.5f, 0f}) {
+            player.updateTimers(badDt);
+            player.move(ROOM, 1f, 0f, badDt);
+        }
+        assertEquals(flashBefore, player.getHurtFlash(), EPSILON);
+        assertEquals(3.5f, player.position.x, EPSILON);
+        assertEquals(3.5f, player.position.y, EPSILON);
+        assertEquals(0f, player.getBobPhase(), EPSILON);
+
+        player.move(ROOM, Float.NaN, Float.POSITIVE_INFINITY, 0.1f);
+        assertEquals(3.5f, player.position.x, EPSILON);
+        assertEquals(3.5f, player.position.y, EPSILON);
+
+        EnergyMeter energy = new EnergyMeter(100f, 0f);
+        assertTrue(player.tryDash(Float.NaN, Float.POSITIVE_INFINITY, energy));
+        player.move(ROOM, 0f, 0f, Player.DASH_DURATION);
+        assertTrue(Float.isFinite(player.position.x) && Float.isFinite(player.position.y));
+        assertTrue(player.position.dst(3.5f, 3.5f) > 0.5f);
+    }
+
+    @Test
+    void walkBobPhaseWrapsModuloTwoPiAndKeepsCameraSinusoidContinuous() {
+        Player player = new Player(3.5f, 3.5f, 0f);
+        double twoPi = Math.PI * 2.0;
+        double totalRadians = 0.0;
+        float forward = 1f;
+
+        for (int i = 0; i < 2000; i++) {
+            if (player.position.y < 2.0f) forward = -1f;
+            else if (player.position.y > 5.0f) forward = 1f;
+
+            float prevPhase = player.getBobPhase();
+            float beforeX = player.position.x;
+            float beforeZ = player.position.y;
+            player.move(ROOM, forward, 0f, 1f / 30f);
+            double stepRad = (double) player.position.dst(beforeX, beforeZ) * 5.5;
+            totalRadians += stepRad;
+
+            float phase = player.getBobPhase();
+            assertTrue(Float.isFinite(phase) && phase >= 0f && phase < twoPi,
+                "bobPhase out of [0, 2pi): " + phase);
+            assertEquals(Math.sin(prevPhase + stepRad), Math.sin(phase), 1e-5,
+                "wrapped bobPhase preserves continuous camera bob wave at step " + i);
+        }
+        assertTrue(totalRadians > twoPi * 50.0, "covered many 2pi cycles: " + totalRadians);
+    }
 }

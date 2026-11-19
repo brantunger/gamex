@@ -2053,4 +2053,96 @@ class GameSimulationTest {
         assertTrue(sim.projectiles.isEmpty());
         assertEquals(0, countSound(sim.drainSoundEvents(), SoundEvent.Type.BLAST_RELEASE));
     }
+
+    @Test
+    void nonFiniteAndNegativeFrameTimesClampToZeroWithoutPoisoningSimulationState() {
+        GameSimulation sim = new GameSimulation(
+            GameMap.parse(
+                "#############",
+                "#>+.O.=...D.#",
+                "#############"),
+            new PlayerLoadout(70f, 20f, Difficulty.NORMAL, true, 8, true, 4, WeaponSlot.RAIL_LANCE),
+            false);
+        Door door = sim.doors.get(0);
+        PlayerInput idle = new PlayerInput();
+
+        // Collect the medkit (+) and decay the toast into its fade-out window so toastAlpha sits strictly in (0, 1).
+        sim.player.position.set(2.4f, 1.5f);
+        sim.update(0.05f, idle);
+        assertNotNull(sim.getToastMessage());
+        for (int i = 0; i < 34; i++) {
+            sim.update(0.05f, idle);
+        }
+
+        // Open the door, fire a Rail Lance beam into the Ring Board (O), and advance partway into a weapon swap.
+        door.open();
+        PlayerInput stepInput = new PlayerInput();
+        stepInput.fire = true;
+        sim.update(FRAME, stepInput);
+        stepInput.fire = false;
+        stepInput.weaponSlot = 1;
+        sim.update(FRAME, stepInput);
+        stepInput.weaponSlot = 0;
+        sim.update(FRAME * 0.5f, stepInput);
+
+        float timeBefore = sim.getTime();
+        float hitMarkerBefore = sim.getHitMarker();
+        float toastAlphaBefore = sim.getToastAlpha();
+        float swapProgressBefore = sim.getSwapProgress();
+        float beamProgressBefore = sim.railBeams.get(0).getProgress();
+        float doorProgressBefore = door.getOpenProgress();
+        float playerXBefore = sim.player.position.x;
+        float playerZBefore = sim.player.position.y;
+        assertTrue(timeBefore > 0f);
+        assertTrue(hitMarkerBefore > 0f && hitMarkerBefore < 1f);
+        assertTrue(toastAlphaBefore > 0f && toastAlphaBefore < 1f);
+        assertTrue(swapProgressBefore > 0f && swapProgressBefore < 1f);
+        assertTrue(beamProgressBefore > 0f && beamProgressBefore < 1f);
+        assertTrue(doorProgressBefore > 0f && doorProgressBefore < 1f);
+
+        float[] badDeltas = {Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, -0.25f};
+        for (float badDt : badDeltas) {
+            sim.update(badDt, idle);
+            assertEquals(timeBefore, sim.getTime(), 1e-6f, "time after " + badDt);
+            assertEquals(hitMarkerBefore, sim.getHitMarker(), 1e-6f, "hitMarker after " + badDt);
+            assertEquals(toastAlphaBefore, sim.getToastAlpha(), 1e-6f, "toastAlpha after " + badDt);
+            assertNotNull(sim.getToastMessage());
+            assertEquals(swapProgressBefore, sim.getSwapProgress(), 1e-6f, "swapProgress after " + badDt);
+            assertEquals(beamProgressBefore, sim.railBeams.get(0).getProgress(), 1e-6f, "railBeam after " + badDt);
+            assertEquals(doorProgressBefore, door.getOpenProgress(), 1e-6f, "door after " + badDt);
+            assertEquals(playerXBefore, sim.player.position.x, 1e-6f);
+            assertEquals(playerZBefore, sim.player.position.y, 1e-6f);
+            assertTrue(Float.isFinite(sim.getDamageTaken()));
+            assertTrue(Float.isFinite(sim.energy.getEnergy()));
+            assertTrue(Float.isFinite(sim.player.getYaw()));
+            assertTrue(Float.isFinite(sim.player.getPitch()));
+            assertTrue(Float.isFinite(sim.viewmodel.getBobX()));
+            assertTrue(Float.isFinite(sim.viewmodel.getBobY()));
+            assertTrue(Float.isFinite(sim.enemies.get(0).getX()));
+            assertTrue(Float.isFinite(sim.enemies.get(0).getZ()));
+        }
+
+        // Direct RailBeam.update also ignores non-finite and negative deltas.
+        sim.railBeams.get(0).update(Float.NaN);
+        sim.railBeams.get(0).update(Float.NEGATIVE_INFINITY);
+        sim.railBeams.get(0).update(-0.1f);
+        assertEquals(beamProgressBefore, sim.railBeams.get(0).getProgress(), 1e-6f);
+
+        // Normal frames immediately resume advancing time and decaying timers.
+        sim.update(FRAME, idle);
+        assertEquals(timeBefore + FRAME, sim.getTime(), 1e-5f);
+        assertTrue(sim.getHitMarker() < hitMarkerBefore);
+        assertTrue(sim.getToastAlpha() < toastAlphaBefore);
+
+        // Inactive branch (dead player) also stays finite across non-finite/negative deltas.
+        sim.player.damage(500f);
+        assertTrue(sim.player.isDead());
+        for (float badDt : badDeltas) {
+            sim.update(badDt, idle);
+            assertTrue(Float.isFinite(sim.getTime()));
+            assertTrue(Float.isFinite(sim.getHitMarker()));
+            assertTrue(Float.isFinite(sim.getToastAlpha()));
+            assertTrue(Float.isFinite(sim.enemies.get(0).getX()));
+        }
+    }
 }

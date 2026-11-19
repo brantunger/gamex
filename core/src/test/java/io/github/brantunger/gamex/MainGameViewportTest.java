@@ -487,4 +487,47 @@ class MainGameViewportTest {
             assertEquals(List.of("soundManager"), demoDisposed);
         }
     }
+
+    @Test
+    void frameDeltaHelpersSanitizeNonFiniteAndNegativeDeltasAcrossSmoothingBackdropAndDeathTimer() {
+        float[] invalidDeltas = {Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, -0.5f, 0f, -0f};
+        for (float badDt : invalidDeltas) {
+            assertEquals(0f, MainGame.clampDelta(badDt, GameSimulation.MAX_DT), 0f, "clampDelta for " + badDt);
+        }
+        assertEquals(1f / 60f, MainGame.clampDelta(1f / 60f, GameSimulation.MAX_DT), 1e-6f);
+        assertEquals(GameSimulation.MAX_DT, MainGame.clampDelta(0.25f, GameSimulation.MAX_DT), 1e-6f);
+
+        MainGame game = new MainGame();
+        for (float badDt : invalidDeltas) {
+            assertEquals(0f, game.smoothStepDt(badDt), 0f, "smoothStepDt for " + badDt);
+        }
+        float resumed = game.smoothStepDt(1f / 60f);
+        assertTrue(Float.isFinite(resumed) && resumed > 0f, "valid frame after NaN resumes positive step");
+        assertEquals(1f / 60f, resumed, 1e-6f);
+        assertEquals(GameSimulation.MAX_DT, game.smoothStepDt(0.25f), 1e-6f);
+
+        assertEquals(0f, game.getBackdropTime(), 0f);
+        assertEquals(0.04f, game.advanceBackdropTime(0.04f), 1e-6f);
+        for (float badDt : invalidDeltas) {
+            assertEquals(0.04f, game.advanceBackdropTime(badDt), 1e-6f, "backdropTime after " + badDt);
+        }
+        assertEquals(0.04f + MainGame.MAX_BACKDROP_DT, game.advanceBackdropTime(0.5f), 1e-6f);
+        assertTrue(Float.isFinite(game.getBackdropTime()));
+
+        // Death countdown survives NaN/infinite/negative glitches mid-delay and still opens the Death menu.
+        for (int i = 0; i < 4; i++) {
+            assertFalse(game.advanceDeathTimer(0.05f));
+        }
+        assertEquals(0.20f, game.getDeathTimer(), 1e-5f);
+        for (float badDt : invalidDeltas) {
+            assertFalse(game.advanceDeathTimer(badDt), "deathTimer must not trigger on " + badDt);
+            assertEquals(0.20f, game.getDeathTimer(), 1e-5f, "deathTimer must stay finite after " + badDt);
+        }
+        for (int i = 0; i < 4; i++) {
+            assertFalse(game.advanceDeathTimer(0.05f));
+        }
+        assertTrue(game.advanceDeathTimer(0.10f), "clamped 0.05s step reaches 0.45s death delay");
+        assertTrue(Float.isFinite(game.getDeathTimer()));
+        assertTrue(game.getDeathTimer() >= MainGame.DEATH_MENU_DELAY);
+    }
 }

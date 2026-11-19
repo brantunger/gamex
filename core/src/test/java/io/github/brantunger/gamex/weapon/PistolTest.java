@@ -81,4 +81,30 @@ class PistolTest {
         pistol.update(Pistol.FLASH_TIME + 0.01f, false);
         assertFalse(pistol.isFlashVisible());
     }
+
+    @Test
+    void nonFiniteAndNegativeDeltaTimesAreNoOpsWhileZeroDeltaAllowsReadyShot() {
+        Pistol pistol = new Pistol();
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.25f}) {
+            assertFalse(pistol.update(badDt, true), "bad dt must not fire: " + badDt);
+            assertFalse(pistol.isFlashVisible());
+        }
+
+        // dt == 0f still allows an instant shot when already off cooldown.
+        assertTrue(pistol.update(0f, true));
+        assertTrue(pistol.isFlashVisible());
+        assertFalse(pistol.update(0f, true), "immediately on cooldown after firing");
+
+        // Advance slightly into flash window, then verify bad dt leaves flash and cooldown untouched.
+        assertFalse(pistol.update(0.02f, false));
+        assertTrue(pistol.isFlashVisible());
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -1f}) {
+            assertFalse(pistol.update(badDt, true));
+            assertFalse(pistol.update(badDt, false));
+            assertTrue(pistol.isFlashVisible(), "bad dt must not clear muzzle flash: " + badDt);
+        }
+
+        assertFalse(pistol.update(Pistol.FIRE_INTERVAL - 0.03f, true), "cooldown still remaining");
+        assertTrue(pistol.update(0.02f, true), "fires once remaining cooldown elapses");
+    }
 }
