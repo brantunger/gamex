@@ -101,6 +101,8 @@ final class WardenModel implements Disposable {
     private final Color fogColour;
     private final float fogStart;
     private final float fogEnd;
+    private final float[] phase1Accent;
+    private final float[] overdriveAccent;
     private final Map<Enemy, Puppet> puppets = new IdentityHashMap<>();
     private final Color glow = new Color();
 
@@ -140,6 +142,7 @@ final class WardenModel implements Disposable {
     /**
      * Writes the glow of a Warden: its accent colour, pulsing in overdrive and brightening as a punch is about to
      * land, plus the red flash of a hit.
+     * @param accent the red, green and blue of the accent of the Warden's phase, from the world palette
      * @param overdrive whether the Warden is in its second phase
      * @param windup how close the Warden's next punch is to landing, from 0 to 1
      * @param hitFlash how fresh the last hit is, from 0 to 1
@@ -147,15 +150,12 @@ final class WardenModel implements Disposable {
      * @param out receives the colour, in linear light
      * @return {@code out}
      */
-    static Color glow(boolean overdrive, float windup, float hitFlash, float time, Color out) {
-        float[] accent;
+    static Color glow(float[] accent, boolean overdrive, float windup, float hitFlash, float time, Color out) {
         float strength;
         if (overdrive) {
-            accent = WorldModels.ACCENT_WARDEN_OVERDRIVE;
             float pulse = 0.5f + 0.5f * MathUtils.sin(time * 9f);
             strength = ACCENT_GLOW * (1f + 1.5f * pulse + windup);
         } else {
-            accent = WorldModels.ACCENT_WARDEN_PHASE1;
             strength = ACCENT_GLOW * (1f + 2f * windup);
         }
         float hit = HIT_GLOW * hitFlash;
@@ -180,11 +180,15 @@ final class WardenModel implements Disposable {
      * @param fogColour the colour distant things fade to
      * @param fogStart the distance at which the fog starts
      * @param fogEnd the distance at which the fog hides everything
+     * @param phase1Accent the accent a Warden glows with in its first phase
+     * @param overdriveAccent the accent a Warden glows with in overdrive
      */
-    WardenModel(Color fogColour, float fogStart, float fogEnd) {
+    WardenModel(Color fogColour, float fogStart, float fogEnd, float[] phase1Accent, float[] overdriveAccent) {
         this.fogColour = fogColour;
         this.fogStart = fogStart;
         this.fogEnd = fogEnd;
+        this.phase1Accent = phase1Accent;
+        this.overdriveAccent = overdriveAccent;
         long started = TimeUtils.millis();
         try {
             asset = new GLBLoader().load(Gdx.files.internal(WorldModels.WARDEN_PATH));
@@ -349,7 +353,8 @@ final class WardenModel implements Disposable {
         puppet.keyLight.intensity = KEY_LIGHT * light;
         puppet.keyLight.updateColor();
         puppet.ambient.color.set(AMBIENT_LIGHT * light, AMBIENT_LIGHT * light, AMBIENT_LIGHT * light, 1f);
-        glow(enemy.isOverdrive(), windup, enemy.getHitFlash(), time, glow);
+        glow(enemy.isOverdrive() ? overdriveAccent : phase1Accent, enemy.isOverdrive(), windup,
+            enemy.getHitFlash(), time, glow);
         for (ColorAttribute emissive : puppet.emissives) emissive.color.set(glow);
     }
 

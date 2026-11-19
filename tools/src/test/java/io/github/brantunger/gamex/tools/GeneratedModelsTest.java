@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.tools;
 
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
+import io.github.brantunger.gamex.render.Palettes;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
 import io.github.brantunger.gamex.weapon.RailLanceModel;
@@ -26,6 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeneratedModelsTest {
 
+    /** The palettes the game ships with, from {@code assets/data/}. */
+    private static final Palettes PALETTES = Palettes.load();
+
     @Test
     void generatedModelsMatchShippedAssetsAndCompressCleanly(@TempDir Path generatedDir) throws IOException {
         Path modelsDir = resolveModelsDir();
@@ -49,7 +53,7 @@ class GeneratedModelsTest {
             assertEquals(0, indexed.indexCount() % 3, name + " indices must form whole triangles");
 
             if ("viewmodel-hand.obj".equals(name)) {
-                int unindexedCorners = HandModel.vertices(model).length / ModelVertices.VERTEX_SIZE;
+                int unindexedCorners = HandModel.vertices(model, PALETTES.hand).length / ModelVertices.VERTEX_SIZE;
                 assertTrue(indexed.vertexCount() * 2 < unindexedCorners,
                     "Expected >50% vertex deduplication on viewmodel-hand.obj, got "
                         + indexed.vertexCount() + " unique vs " + unindexedCorners + " corners");
@@ -59,27 +63,27 @@ class GeneratedModelsTest {
 
     private static ModelVertices.IndexedMesh packRealModel(String name, ObjModel model) {
         if ("viewmodel-hand.obj".equals(name)) {
-            return HandModel.packIndexed(model);
+            return HandModel.packIndexed(model, PALETTES.hand);
         }
         if ("viewmodel-pistol.obj".equals(name)) {
-            PistolModel pistol = PistolModel.from(model);
+            PistolModel pistol = PistolModel.from(model, PALETTES.pistol);
             assertTrue(pistol.bodyMesh.vertexCount() > 0 && pistol.slideMesh.vertexCount() > 0);
             float[] fallbackColour = {0.5f, 0.5f, 0.5f, 0.5f};
             return ModelVertices.packIndexed(model, mat -> fallbackColour);
         }
         if ("viewmodel-scattergun.obj".equals(name)) {
-            ScattergunModel scatter = ScattergunModel.from(model);
+            ScattergunModel scatter = ScattergunModel.from(model, PALETTES.scattergun);
             assertTrue(scatter.bodyMesh.vertexCount() > 0 && scatter.pumpMesh.vertexCount() > 0);
             float[] fallbackColour = {0.5f, 0.5f, 0.5f, 0.5f};
             return ModelVertices.packIndexed(model, mat -> fallbackColour);
         }
         if ("viewmodel-raillance.obj".equals(name)) {
-            RailLanceModel rail = RailLanceModel.from(model);
+            RailLanceModel rail = RailLanceModel.from(model, PALETTES.railLance);
             assertTrue(rail.bodyMesh.vertexCount() > 0 && rail.boltMesh.vertexCount() > 0);
             float[] fallbackColour = {0.5f, 0.5f, 0.5f, 0.5f};
             return ModelVertices.packIndexed(model, mat -> fallbackColour);
         }
-        return WorldModels.packIndexed(model);
+        return WorldModels.packIndexed(model, PALETTES.world);
     }
 
     private static Set<String> listObjNames(Path dir) throws IOException {

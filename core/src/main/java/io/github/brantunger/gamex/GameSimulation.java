@@ -16,6 +16,7 @@ import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.ViewmodelAnimation;
+import io.github.brantunger.gamex.weapon.WeaponTuning;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Collision;
 import io.github.brantunger.gamex.world.Damageable;
@@ -30,6 +31,8 @@ import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.RayHit;
 import io.github.brantunger.gamex.world.SecurityConsole;
 import io.github.brantunger.gamex.world.Target;
+import io.github.brantunger.gamex.world.WorldTuning;
+import io.github.brantunger.gamex.world.WorldTuning.NoiseEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,23 +89,6 @@ public final class GameSimulation {
     /** Total duration of a weapon switch dip-and-raise transition, in seconds. */
     public static final float SWAP_DURATION = ViewmodelAnimation.SWAP_TIME;
     private static final float SWAP_MIDPOINT = SWAP_DURATION * 0.5f;
-    /** Blast radius of a detonating coolant canister, in world units. */
-    public static final float CANISTER_BLAST_RADIUS = 2.2f;
-    /** Centre blast damage of a detonating coolant canister. */
-    public static final float CANISTER_BLAST_DAMAGE = 80f;
-    /** Share of canister blast damage applied to the player before difficulty scaling. */
-    public static final float CANISTER_SELF_DAMAGE_SCALE = 0.5f;
-    /** How long crosshair hit-markers remain visible, in seconds. */
-    public static final float HIT_MARKER_TIME = 0.16f;
-    /** How long a pickup toast message remains visible, in seconds. */
-    public static final float TOAST_TIME = 2.0f;
-    /** Base interval between consecutive shock grate damage ticks while standing on {@code ~}, in seconds. */
-    public static final float HAZARD_INTERVAL = 0.35f;
-    /** Base damage dealt per shock grate tick while grounded and not dashing. */
-    public static final float HAZARD_DAMAGE = 8f;
-    /** Minimum feet height above the floor that clears live {@code ~} shock grates while jumping. */
-    public static final float HAZARD_CLEARANCE_HEIGHT = 0.06f;
-
     /** How far a mark sits off the surface it lies on, so it does not fight with the surface for depth. */
     private static final float MARK_OFFSET = 0.012f;
     /** World-space muzzle launch offset from eye so the blast starts in view and past the near clip plane. */
@@ -147,15 +133,15 @@ public final class GameSimulation {
     /** Every security console pedestal in the level. */
     public final List<SecurityConsole> consoles = new ArrayList<>();
     /** The pistol. */
-    public final Pistol pistol = new Pistol();
+    public final Pistol pistol;
     /** The combat scattergun. */
-    public final Scattergun scattergun = new Scattergun();
+    public final Scattergun scattergun;
     /** The Slot 3 Rail Lance. */
-    public final RailLance railLance = new RailLance();
+    public final RailLance railLance;
     /** The energy that pays for blasts and dashes. */
-    public final EnergyMeter energy = new EnergyMeter();
+    public final EnergyMeter energy;
     /** The blast's charge state. */
-    public final BlastCharger charger = new BlastCharger(energy);
+    public final BlastCharger charger;
     /** The motion of the first-person weapon viewmodel: recoil, bob and sway. */
     public final ViewmodelAnimation viewmodel = new ViewmodelAnimation();
     /** The blasts in flight. */
@@ -172,6 +158,8 @@ public final class GameSimulation {
     /** The routes of the kinds that keep off shock grates. */
     private final Pathfinder hazardPathfinder = new Pathfinder();
     private final EnemyTuning enemyTuning;
+    private final WeaponTuning weaponTuning;
+    private final WorldTuning worldTuning;
     /** The multipliers of the difficulty this level is played on. */
     private final DifficultyTuning.Scales difficultyScales;
     private final Vector3 eye = new Vector3();
@@ -241,7 +229,7 @@ public final class GameSimulation {
         public void grantScattergun(int addedShells) {
             boolean firstUnlock = !hasScattergun;
             hasScattergun = true;
-            shells = Math.min(Scattergun.MAX_SHELLS, shells + Math.max(0, addedShells));
+            shells = Math.min(weaponTuning.scattergunMaxShells, shells + Math.max(0, addedShells));
             if (firstUnlock) {
                 requestWeaponSwitch(WeaponSlot.SCATTERGUN, false);
             }
@@ -249,7 +237,7 @@ public final class GameSimulation {
 
         @Override
         public void addShells(int addedShells) {
-            shells = Math.min(Scattergun.MAX_SHELLS, shells + Math.max(0, addedShells));
+            shells = Math.min(weaponTuning.scattergunMaxShells, shells + Math.max(0, addedShells));
         }
 
         @Override
@@ -266,7 +254,7 @@ public final class GameSimulation {
         public void grantRailLance(int addedSlugs) {
             boolean firstUnlock = !hasRailLance;
             hasRailLance = true;
-            slugs = Math.min(RailLance.MAX_SLUGS, slugs + Math.max(0, addedSlugs));
+            slugs = Math.min(weaponTuning.railMaxSlugs, slugs + Math.max(0, addedSlugs));
             if (firstUnlock) {
                 requestWeaponSwitch(WeaponSlot.RAIL_LANCE, false);
             }
@@ -274,14 +262,15 @@ public final class GameSimulation {
 
         @Override
         public void addSlugs(int addedSlugs) {
-            slugs = Math.min(RailLance.MAX_SLUGS, slugs + Math.max(0, addedSlugs));
+            slugs = Math.min(weaponTuning.railMaxSlugs, slugs + Math.max(0, addedSlugs));
         }
     };
 
     /**
      * Builds a level on Normal difficulty with the tuning files read here and now. This is for tests only:
      * the game loads its tuning once at start-up and uses
-     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning)}.
+     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning, WeaponTuning,
+     * WorldTuning)}.
      * @param map the level to play on Normal difficulty
      */
     public GameSimulation(GameMap map) {
@@ -291,7 +280,8 @@ public final class GameSimulation {
     /**
      * Builds a level with the tuning files read here and now. This is for tests only: the game loads its
      * tuning once at start-up and uses
-     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning)}.
+     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning, WeaponTuning,
+     * WorldTuning)}.
      * @param map the level to play
      * @param entryLoadout starting player health, armor and difficulty snapshot
      * @param completeOnAllTargets whether clearing all targets ends the level
@@ -301,26 +291,58 @@ public final class GameSimulation {
     }
 
     /**
+     * Builds a level with the weapon and world tuning files read here and now. This is for tests only: the
+     * game loads its tuning once at start-up and uses
+     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning, WeaponTuning,
+     * WorldTuning)}.
      * @param map the level to play
      * @param entryLoadout starting player health, armor and difficulty snapshot
      * @param completeOnAllTargets whether clearing all targets ends the level
-     * @param enemyTuning the enemy balance, as loaded at start-up
-     * @param difficultyTuning what each difficulty multiplies, as loaded at start-up
+     * @param enemyTuning the enemy balance
+     * @param difficultyTuning what each difficulty multiplies
      */
     public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets,
                           EnemyTuning enemyTuning, DifficultyTuning difficultyTuning) {
+        this(map, entryLoadout, completeOnAllTargets, enemyTuning, difficultyTuning, WeaponTuning.load(),
+            WorldTuning.load());
+    }
+
+    /**
+     * @param map the level to play
+     * @param entryLoadout starting player health, armor and difficulty snapshot; its shells and slugs are capped at
+     *     the most the player carries
+     * @param completeOnAllTargets whether clearing all targets ends the level
+     * @param enemyTuning the enemy balance, as loaded at start-up
+     * @param difficultyTuning what each difficulty multiplies, as loaded at start-up
+     * @param weaponTuning the weapon balance, as loaded at start-up
+     * @param worldTuning the balance of pickups, canisters, shock grates and noise, as loaded at start-up
+     */
+    public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets,
+                          EnemyTuning enemyTuning, DifficultyTuning difficultyTuning, WeaponTuning weaponTuning,
+                          WorldTuning worldTuning) {
         if (enemyTuning == null || difficultyTuning == null) {
             throw new IllegalArgumentException("The simulation needs its enemy and difficulty tuning");
         }
+        if (weaponTuning == null || worldTuning == null) {
+            throw new IllegalArgumentException("The simulation needs its weapon and world tuning");
+        }
         this.map = map;
         this.enemyTuning = enemyTuning;
+        this.weaponTuning = weaponTuning;
+        this.worldTuning = worldTuning;
+        this.pistol = new Pistol(weaponTuning);
+        this.scattergun = new Scattergun(weaponTuning);
+        this.railLance = new RailLance(weaponTuning);
+        this.energy = new EnergyMeter(weaponTuning);
+        this.charger = new BlastCharger(energy, weaponTuning);
         this.entryLoadout = entryLoadout == null ? PlayerLoadout.fresh() : entryLoadout;
         this.difficultyScales = difficultyTuning.of(this.entryLoadout.difficulty);
         this.completeOnAllTargets = completeOnAllTargets;
         this.hasScattergun = this.entryLoadout.hasScattergun;
-        this.shells = this.entryLoadout.shells;
+        // The loadout does not know the caps: a damaged save may hold more than the player carries.
+        this.shells = Math.min(weaponTuning.scattergunMaxShells, this.entryLoadout.shells);
         this.hasRailLance = this.entryLoadout.hasRailLance;
-        this.slugs = this.entryLoadout.slugs;
+        this.slugs = Math.min(weaponTuning.railMaxSlugs, this.entryLoadout.slugs);
         this.activeWeapon = this.entryLoadout.activeWeapon;
         this.pendingWeapon = this.activeWeapon;
         this.previousWeapon = initialPreviousWeapon(this.activeWeapon, this.hasScattergun, this.shells,
@@ -338,7 +360,7 @@ public final class GameSimulation {
             allDamageables.add(enemy);
         }
         for (GameMap.PickupSpawn spawn : map.getPickupSpawns()) {
-            pickups.add(new Pickup(spawn.kind, spawn.x, spawn.z));
+            pickups.add(new Pickup(spawn.kind, spawn.x, spawn.z, worldTuning, weaponTuning));
         }
         for (GameMap.DoorSpawn spawn : map.getDoorSpawns()) {
             doors.add(new Door(spawn.lockKind, spawn.orientation, spawn.col, spawn.row));
@@ -465,7 +487,7 @@ public final class GameSimulation {
             boolean fired = pistol.update(dt, input.fire);
             if (fired) {
                 firePistol();
-                kickScale = 1f;
+                kickScale = weaponTuning.pistolRecoilKick;
             }
             // The charger refills the meter itself, except while a charge is building.
             firedCharge = charger.update(dt, !player.isDashing() && input.charge);
@@ -474,7 +496,7 @@ public final class GameSimulation {
                 emitPlayerSound(SoundEvent.Type.LOW_ENERGY, 1f);
             }
             prevChargeRefused = refusedNow;
-            if (firedCharge > 0f) kickScale = 1f;
+            if (firedCharge > 0f) kickScale = weaponTuning.blastRecoilKick;
         } else if (activeWeapon == WeaponSlot.SCATTERGUN) {
             pistol.update(dt, false);
             railLance.updateIdle(dt, input.charge);
@@ -494,7 +516,8 @@ public final class GameSimulation {
                 Scattergun.Shot shot = scattergun.update(dt, wantPrimary, wantAlt, shells);
                 if (shot != Scattergun.Shot.NONE) {
                     fireScattergun(shot);
-                    kickScale = shot == Scattergun.Shot.DOUBLE_BLAST ? 2.4f : 1.6f;
+                    kickScale = shot == Scattergun.Shot.DOUBLE_BLAST ? weaponTuning.scattergunAltRecoilKick
+                        : weaponTuning.scattergunPrimaryRecoilKick;
                 }
             }
         } else {
@@ -518,7 +541,7 @@ public final class GameSimulation {
                 }
                 if (firedRail) {
                     fireRailLance();
-                    kickScale = 2.6f;
+                    kickScale = weaponTuning.railRecoilKick;
                 }
             }
         }
@@ -537,11 +560,11 @@ public final class GameSimulation {
             float healthBefore = totalDamageableHealth();
             if (!projectile.update(dt, map, allDamageables, doors, player, selfScale)) continue;
             projectiles.remove(i);
-            float radius = BlastProjectile.blastRadius(projectile.getCharge());
+            float radius = weaponTuning.blastRadius(projectile.getCharge());
             effects.add(new Effect(Effect.Type.EXPLOSION, projectile.position, Vector3.Y, radius));
             emitWorldSound(SoundEvent.Type.EXPLOSION, projectile.position.x, projectile.position.y,
                 projectile.position.z, 0.75f + 0.35f * projectile.getCharge());
-            alertNoise(projectile.position.x, projectile.position.z, 11.0f, 5.5f);
+            alertNoise(projectile.position.x, projectile.position.z, NoiseEvent.BLAST_DETONATION);
             if (totalDamageableHealth() < healthBefore) {
                 // The blast was counted as a shot on release; whether it hit is only known here.
                 shotsHit++;
@@ -661,7 +684,7 @@ public final class GameSimulation {
 
     /** @return hit-marker alpha from 0 (hidden) to 1 (just hit). */
     public float getHitMarker() {
-        return hitMarkerTimer / HIT_MARKER_TIME;
+        return hitMarkerTimer / worldTuning.hitMarkerTime;
     }
 
     /** @return whether the active hit-marker represents a target destruction. */
@@ -713,6 +736,11 @@ public final class GameSimulation {
         return shells;
     }
 
+    /** @return the most shells the shell pool holds. */
+    public int getMaxShells() {
+        return weaponTuning.scattergunMaxShells;
+    }
+
     /** @return whether the player has unlocked the Slot 3 Rail Lance. */
     public boolean hasRailLance() {
         return hasRailLance;
@@ -721,6 +749,16 @@ public final class GameSimulation {
     /** @return slugs remaining in the finite Rail Lance slug pool. */
     public int getSlugs() {
         return slugs;
+    }
+
+    /** @return the most slugs the slug pool holds. */
+    public int getMaxSlugs() {
+        return weaponTuning.railMaxSlugs;
+    }
+
+    /** @return the magnification of the Rail Lance's optic at a {@link #getZoom()} of 1. */
+    public float getZoomFactor() {
+        return weaponTuning.railZoomFactor;
     }
 
     /** @return normalized Rail Lance tactical optic zoom in [0, 1] while active and not swapping. */
@@ -1199,7 +1237,7 @@ public final class GameSimulation {
 
     private void showToast(String message) {
         toastMessage = message;
-        toastTimer = TOAST_TIME;
+        toastTimer = worldTuning.toastTime;
     }
 
     private Object findInteractTarget() {
@@ -1228,7 +1266,7 @@ public final class GameSimulation {
             showToast("LOCKDOWN OVERRIDDEN");
             emitWorldSound(SoundEvent.Type.CONSOLE_ACTIVATE, console.getX(), SecurityConsole.HEIGHT * 0.8f,
                 console.getZ(), 1f);
-            alertNoise(console.getX(), console.getZ(), 12.0f, 7.0f);
+            alertNoise(console.getX(), console.getZ(), NoiseEvent.CONSOLE_OVERRIDE);
             return;
         }
         if (!(target instanceof Door)) return;
@@ -1402,11 +1440,11 @@ public final class GameSimulation {
     }
 
     private void spawnBlast(float charge) {
-        RayHit aim = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
+        RayHit aim = Hitscan.cast(map, allDamageables, doors, eye, direction, weaponTuning.pistolRange);
         if (aim.isHit()) {
             aimPoint.set(aim.point);
         } else {
-            aimPoint.set(eye).mulAdd(direction, Pistol.RANGE);
+            aimPoint.set(eye).mulAdd(direction, weaponTuning.pistolRange);
         }
 
         computeMuzzleOrigin(aim.isHit() ? aim.distance : Float.POSITIVE_INFINITY, 1f,
@@ -1415,7 +1453,7 @@ public final class GameSimulation {
         blastDir.set(aimPoint).sub(blastOrigin);
         if (blastDir.len2() < 1e-6f) blastDir.set(direction);
         else blastDir.nor();
-        projectiles.add(new BlastProjectile(blastOrigin, blastDir, charge));
+        projectiles.add(new BlastProjectile(blastOrigin, blastDir, charge, weaponTuning));
         shotsFired++;
         emitPlayerSound(SoundEvent.Type.BLAST_RELEASE, 0.7f + 0.3f * charge);
     }
@@ -1423,15 +1461,15 @@ public final class GameSimulation {
     private void firePistol() {
         shotsFired++;
         emitPlayerSound(SoundEvent.Type.PISTOL_SHOT, 1f);
-        alertNoise(player.position.x, player.position.y, 9.0f, 4.5f);
-        RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, direction, Pistol.RANGE);
+        alertNoise(player.position.x, player.position.y, NoiseEvent.PISTOL_SHOT);
+        RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, direction, weaponTuning.pistolRange);
         if (!hit.isHit()) return;
         hit.point.mulAdd(hit.normal, MARK_OFFSET);
         if (applyNonDamageableImpact(hit, true, true)) return;
-        hit.target.damage(Pistol.DAMAGE);
+        hit.target.damage(weaponTuning.pistolDamage);
         shotsHit++;
         if (hit.target instanceof Enemy) {
-            alertNoise(hit.target.getX(), hit.target.getZ(), 5.0f, 3.0f);
+            alertNoise(hit.target.getX(), hit.target.getZ(), NoiseEvent.PISTOL_HIT);
         }
         effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
         triggerHitMarker(hit.target.isDestroyed());
@@ -1441,22 +1479,22 @@ public final class GameSimulation {
         shotsFired++;
         slugs = Math.max(0, slugs - 1);
         emitPlayerSound(SoundEvent.Type.RAIL_FIRE, 1f);
-        alertNoise(player.position.x, player.position.y, 15.0f, 7.5f);
+        alertNoise(player.position.x, player.position.y, NoiseEvent.RAIL_SHOT);
 
         Hitscan.PiercingResult result = Hitscan.castPiercing(map, allDamageables, doors, eye, direction,
-            RailLance.RANGE);
+            weaponTuning.railRange);
         boolean anyHit = false;
         boolean anyKilled = false;
         for (int i = 0; i < result.targetHits.size(); i++) {
             RayHit hit = result.targetHits.get(i);
             float dmg = hit.target instanceof Enemy
-                ? RailLance.DAMAGE * ((Enemy) hit.target).getStats().railDamageScale
-                : RailLance.DAMAGE;
+                ? weaponTuning.railDamage * ((Enemy) hit.target).getStats().railDamageScale
+                : weaponTuning.railDamage;
             hit.target.damage(dmg);
             anyHit = true;
             if (hit.target.isDestroyed()) anyKilled = true;
             if (hit.target instanceof Enemy) {
-                alertNoise(hit.target.getX(), hit.target.getZ(), 7.0f, 4.0f);
+                alertNoise(hit.target.getX(), hit.target.getZ(), NoiseEvent.RAIL_HIT);
             }
             Vector3 sparkPos = new Vector3(hit.point).mulAdd(hit.normal, MARK_OFFSET);
             effects.add(new Effect(Effect.Type.SPARK, sparkPos, hit.normal, 0.24f));
@@ -1481,15 +1519,17 @@ public final class GameSimulation {
         shotsFired++;
         shells = Math.max(0, shells - shot.shellsSpent);
         emitPlayerSound(doubleBlast ? SoundEvent.Type.SCATTERGUN_ALT_FIRE : SoundEvent.Type.SCATTERGUN_FIRE, 1f);
-        alertNoise(player.position.x, player.position.y, doubleBlast ? 13.0f : 11.0f, doubleBlast ? 6.5f : 5.5f);
+        alertNoise(player.position.x, player.position.y,
+            doubleBlast ? NoiseEvent.SCATTERGUN_DOUBLE_SHOT : NoiseEvent.SCATTERGUN_SHOT);
 
-        List<Vector3> rays = Scattergun.pelletDirections(direction, doubleBlast);
+        List<Vector3> rays = scattergun.pelletDirections(direction, doubleBlast);
         boolean anyHit = false;
         boolean anyKilled = false;
         boolean wallSoundPlayed = false;
         int wallEffects = 0;
         for (int i = 0; i < rays.size(); i++) {
-            RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, rays.get(i), Scattergun.RANGE);
+            RayHit hit = Hitscan.cast(map, allDamageables, doors, eye, rays.get(i),
+                weaponTuning.scattergunRange);
             if (!hit.isHit()) continue;
             hit.point.mulAdd(hit.normal, MARK_OFFSET);
             boolean nonDamageable = hit.kind != RayHit.Kind.TARGET || hit.target instanceof SecurityConsole;
@@ -1501,11 +1541,11 @@ public final class GameSimulation {
                 wallSoundPlayed = true;
                 continue;
             }
-            hit.target.damage(Scattergun.damageAtDistance(hit.distance));
+            hit.target.damage(scattergun.damageAtDistance(hit.distance));
             anyHit = true;
             if (hit.target.isDestroyed()) anyKilled = true;
             if (hit.target instanceof Enemy) {
-                alertNoise(hit.target.getX(), hit.target.getZ(), 5.0f, 3.0f);
+                alertNoise(hit.target.getX(), hit.target.getZ(), NoiseEvent.SCATTERGUN_HIT);
             }
             effects.add(new Effect(Effect.Type.SPARK, hit.point, hit.normal, 0.2f));
         }
@@ -1531,7 +1571,7 @@ public final class GameSimulation {
     }
 
     private void resolveDestroyedObjects(boolean allowPlayerHitMarker) {
-        float canisterPlayerScale = CANISTER_SELF_DAMAGE_SCALE * difficultyScales.damageTakenScale;
+        float canisterPlayerScale = worldTuning.canisterSelfDamageScale * difficultyScales.damageTakenScale;
         boolean progressed = true;
         while (progressed) {
             progressed = false;
@@ -1547,11 +1587,13 @@ public final class GameSimulation {
                     getTargetsRemaining());
                 if (target.getKind() == Target.Kind.CANISTER) {
                     Vector3 centre = new Vector3(target.getX(), target.getHeight() * 0.5f, target.getZ());
-                    effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, CANISTER_BLAST_RADIUS));
+                    effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y,
+                        worldTuning.canisterBlastRadius));
                     Explosion.apply(map, doors, target.getX(), target.getHeight() * 0.5f, target.getZ(),
-                        CANISTER_BLAST_RADIUS, CANISTER_BLAST_DAMAGE, allDamageables, player, canisterPlayerScale);
+                        worldTuning.canisterBlastRadius, worldTuning.canisterBlastDamage, allDamageables, player,
+                        canisterPlayerScale);
                     emitWorldSound(SoundEvent.Type.EXPLOSION, centre.x, centre.y, centre.z, 1.0f);
-                    alertNoise(target.getX(), target.getZ(), 11.0f, 5.5f);
+                    alertNoise(target.getX(), target.getZ(), NoiseEvent.CANISTER_EXPLOSION);
                 } else {
                     addBreakEffect(target);
                     emitWorldSound(SoundEvent.Type.TARGET_DESTROYED, target.getX(), target.getHeight() * 0.5f,
@@ -1589,12 +1631,12 @@ public final class GameSimulation {
 
     private void updateHazards(float dt) {
         playerHazardTimer = Math.max(0f, playerHazardTimer - dt);
-        if (!player.isDead() && !player.isDashing() && player.getJumpHeight() <= HAZARD_CLEARANCE_HEIGHT
+        if (!player.isDead() && !player.isDashing() && player.getJumpHeight() <= worldTuning.grateClearanceHeight
             && map.isHazardAt(player.position.x, player.position.y) && playerHazardTimer <= 0f) {
             float hx = (float) Math.floor(player.position.x) + 0.5f;
             float hz = (float) Math.floor(player.position.y) + 0.5f;
-            player.damage(HAZARD_DAMAGE * difficultyScales.damageTakenScale, hx, hz);
-            playerHazardTimer = HAZARD_INTERVAL;
+            player.damage(worldTuning.grateDamage * difficultyScales.damageTakenScale, hx, hz);
+            playerHazardTimer = worldTuning.grateInterval;
             emitPlayerSound(SoundEvent.Type.HAZARD_ZAP, 0.9f);
             effects.add(new Effect(Effect.Type.IMPACT,
                 new Vector3(player.position.x, 0.06f, player.position.y), Vector3.Y, 0.24f));
@@ -1606,8 +1648,8 @@ public final class GameSimulation {
             if (enemy.isDestroyed() || !enemy.getStats().hazardDamage) continue;
             enemyHazardTimers[i] = Math.max(0f, enemyHazardTimers[i] - dt);
             if (map.isHazardAt(enemy.getX(), enemy.getZ()) && enemyHazardTimers[i] <= 0f) {
-                enemy.damage(HAZARD_DAMAGE);
-                enemyHazardTimers[i] = HAZARD_INTERVAL;
+                enemy.damage(worldTuning.grateDamage);
+                enemyHazardTimers[i] = worldTuning.grateInterval;
                 emitWorldSound(SoundEvent.Type.HAZARD_ZAP, enemy.getX(), 0.14f, enemy.getZ(), 0.75f);
                 effects.add(new Effect(Effect.Type.IMPACT,
                     new Vector3(enemy.getX(), 0.05f, enemy.getZ()), Vector3.Y, 0.20f));
@@ -1680,6 +1722,12 @@ public final class GameSimulation {
         }
     }
 
+    /** Wakes the enemies that hear a noise of the player's making at ({@code x}, {@code z}). */
+    private void alertNoise(float x, float z, NoiseEvent event) {
+        WorldTuning.Noise noise = worldTuning.noise(event);
+        alertNoise(x, z, noise.losRange, noise.muffledRange);
+    }
+
     private void alertNoise(float x, float z, float losRange, float muffledRange) {
         float losRange2 = losRange * losRange;
         float muffledRange2 = muffledRange * muffledRange;
@@ -1708,7 +1756,7 @@ public final class GameSimulation {
         } else {
             hitMarkerKill = hitMarkerKill || kill;
         }
-        hitMarkerTimer = HIT_MARKER_TIME;
+        hitMarkerTimer = worldTuning.hitMarkerTime;
     }
 
     private float totalDamageableHealth() {

@@ -67,6 +67,45 @@ class MenuStateFlowTest {
         assertLoadout(loadout, save.getSavedLoadout(), message);
     }
 
+    private static MenuState playingStage(MapKeyValueStore store, int stageIndex, Difficulty difficulty) {
+        new SaveData(store).unlockStage(stageIndex);
+        MenuState menu = titleMenu(store);
+        choose(menu, "SELECT STAGE");
+        menu.setSelectedIndex(stageIndex);
+        menu.confirm();
+        choose(menu, difficulty.label);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
+        return menu;
+    }
+
+    @Test
+    void clearingAStageWithNoCarryOverSavesTheNextStageWithItsOwnLoadout() {
+        MapKeyValueStore store = new MapKeyValueStore();
+        MenuState menu = playingStage(store, 2, Difficulty.HARD);
+        assertEquals("03_security_hub", menu.getActiveStage().id);
+
+        menu.onStageCleared((PlayerLoadout) null, 50f, 8, 8, 0f);
+
+        PlayerLoadout next = PlayerLoadout.forStage(Levels.stage("04_lockdown_wing"), Difficulty.HARD,
+            TestTuning.DIFFICULTY, TestTuning.WEAPONS);
+        assertTrue(next.hasRailLance, "Stage 04 lists the Rail Lance, which Stage 03 does not");
+        assertSavedRun(store, 3, next, "after clearing Stage 03 with no carry-over");
+        assertLoadout(next, menu.getActiveLoadout(), "the loadout for NEXT STAGE");
+    }
+
+    @Test
+    void clearingTheLastStageWithNoCarryOverClearsTheSavedRun() {
+        MapKeyValueStore store = new MapKeyValueStore();
+        int last = Levels.campaign().size() - 1;
+        MenuState menu = playingStage(store, last, Difficulty.NORMAL);
+        assertTrue(new SaveData(store).hasSavedRun(), "DEPLOY saved the run");
+
+        menu.onStageCleared((PlayerLoadout) null, 50f, 8, 8, 0f);
+
+        assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
+        assertFalse(new SaveData(store).hasSavedRun(), "no stage follows the last, so no run is saved");
+    }
+
     // ---- Saved-run table ----
 
     @Test
@@ -124,7 +163,9 @@ class MenuStateFlowTest {
         choose(menu, "EASY");
         assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "DEPLOY"));
 
-        assertSavedRun(store, 1, PlayerLoadout.forStage(1, Difficulty.EASY, TestTuning.DIFFICULTY), "after DEPLOY");
+        assertSavedRun(store, 1,
+            PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.EASY, TestTuning.DIFFICULTY,
+                TestTuning.WEAPONS), "after DEPLOY");
         assertEquals(OLD_RUN_STAGE, new SaveData(store).getUnlockedStageIndex(),
             "deploying a lower stage does not lower progress");
     }
@@ -226,7 +267,9 @@ class MenuStateFlowTest {
         assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "PLAY AGAIN"));
 
         assertEquals("02_coolant_core", menu.getActiveStage().id);
-        assertLoadout(PlayerLoadout.forStage(1, Difficulty.HARD, TestTuning.DIFFICULTY), menu.getActiveLoadout(),
+        assertLoadout(PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.HARD,
+                TestTuning.DIFFICULTY, TestTuning.WEAPONS),
+            menu.getActiveLoadout(),
             "the replay");
         assertSavedRun(store, 2, carry, "PLAY AGAIN leaves the saved run at the next stage");
     }
@@ -655,7 +698,9 @@ class MenuStateFlowTest {
         assertEquals(outerBreachId, menu.getActiveStage().id);
         assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
         assertEquals("03_security_hub", menu.getActiveStage().id);
-        assertLoadout(PlayerLoadout.forStage(2, Difficulty.NORMAL, TestTuning.DIFFICULTY), menu.getActiveLoadout(),
+        assertLoadout(PlayerLoadout.forStage(Levels.stage("03_security_hub"), Difficulty.NORMAL,
+                TestTuning.DIFFICULTY, TestTuning.WEAPONS),
+            menu.getActiveLoadout(),
             "CONTINUE resumes deployed Stage 03");
         menu.escape();
         choose(menu, "RETURN TO TITLE");

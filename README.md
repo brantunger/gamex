@@ -94,6 +94,10 @@ the same way, from any unlocked one:
   difficulty the fastest clear was made on: `[BEST: S] 1:42 (HARD)`.
 - Under the list, the highlighted stage shows how many medals it has on each difficulty, once it has any:
   `MEDALS: EASY 2/4  NORMAL 4/4  HARD 0/4`.
+- A stage started from this list is entered with full health, no armor and the weapons its own file lists in its
+  `loadout` header, not the weapons its place in the campaign would suggest: the pistol alone on Outer Breach, the
+  scattergun too from Coolant Core on, and the rail lance as well from Lockdown Wing on. Each weapon but the pistol
+  comes with the ammunition of one of its weapon pickups on the chosen difficulty.
 
 **The saved run.** `CONTINUE CAMPAIGN` resumes the one saved campaign run. It starts the saved stage straight away,
 without the briefing.
@@ -173,7 +177,7 @@ points constant across difficulties.
 **Pistol, Combat Scattergun & Rail Lance.** All three weapons share the lower-right 3D viewmodel pass and gloved hand so walls never clip them. Switch at any time with `1`, `2`, `3`, `Q` (quick-swap last weapon) or the mouse wheel (cycle owned weapons). A swap takes `0.18s`, and no weapon fires until it ends. Asking for a third weapon during a swap starts the swap again; asking for the weapon you are leaving reverses it from where it has got to.
 
 - **Pistol (`1`)**: Instant hitscan (`20` damage, `0.3s` interval, up to `60` world units away, infinite ammo). Right mouse button charges the violet **Energy Blast** orb.
-- **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach**, **06: Warden Core**, and the **Training Range** (and equipped directly when deploying to Stages `02`–`06` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Caddy (`+6`) pickups scaled by difficulty:
+- **Combat Scattergun (`2`)**: Unlocked in **01: Outer Breach**, **06: Warden Core**, and the **Training Range** (and equipped directly when deploying to Stages `02`–`06` from Select Stage). Draws from a carried `24`-shell pool fed by Scattergun (`+8`) and Shell Box (`+6`) pickups scaled by difficulty:
   - **Primary fire (LMB, `1` shell)**: `8` deterministic pellets across a `4.2°` half-angle cone (`12` base damage each out to `7u`, falling in a straight line to `35%` at the `26u` max range, `0.75s` pump cycle).
   - **Double-Blast alt-fire (RMB, `2` shells)**: `16` deterministic pellets: one in the centre, an inner ring of `5` at `3.4°` and an outer ring of `10` at `6.8°` (`1.15s` pump recovery; fires a `1`-shell blast if only `1` shell remains).
   - Pulling the trigger at `0` shells emits a dry-fire click and smart-swaps automatically: to your previous weapon if it is loaded, otherwise to a loaded Rail Lance, otherwise to the Pistol.
@@ -364,27 +368,31 @@ The `tools` programs print their own output and show only the warnings and error
     a window.
   - `audio`: headless sound-event cues (`SoundEvent`) and internal `.wav` asset loading with 3D distance/pan OpenAL
     playback (`SoundManager`), at the volume `assets/data/sound-volumes.txt` gives each cue (`SoundVolumes`).
-  - `world`: the level grid (`GameMap`), `.map` and `campaign.txt` level/stage asset loading (`Levels`), collision with walls, targets and enemies,
+  - `world`: the level grid (`GameMap`), `.map` and `campaign.txt` level/stage asset loading (`Levels`, which also finds a campaign stage by its id with `Levels.stage(id)`), collision with walls, targets and enemies,
     hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
-    (`Pickup`), world object models (`WorldModels`), effects, and the enemy and Warden values read from
-    `assets/data/enemies.txt` and `assets/data/warden.txt` (`EnemyTuning`, `WardenTuning`).
+    (`Pickup`), world object models (`WorldModels`), effects, the enemy and Warden values read from
+    `assets/data/enemies.txt` and `assets/data/warden.txt` (`EnemyTuning`, `WardenTuning`), and the pickup, canister,
+    shock grate, feedback-time and noise values read from `assets/data/world.txt` (`WorldTuning`).
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
     the difficulty levels (`Difficulty`), their multipliers read from `assets/data/difficulty.txt`
-    (`DifficultyTuning`) and the health and armor a stage is entered with (`PlayerLoadout`).
+    (`DifficultyTuning`) and the health, armor, weapons and ammunition a stage is entered with (`PlayerLoadout`, whose `forStage` gives
+    a stage the weapons of its `loadout` header).
   - `weapon`: the pistol, the combat scattergun (`Scattergun`), the rail lance (`RailLance`), weapon slot switching (`WeaponSlot`), the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
-    `EnemyProjectile`), explosion damage, the pistol, scattergun & rail lance 3D models (`PistolModel`, `ScattergunModel`, `RailLanceModel`), the colours for the
-    hand's mesh (`HandModel`) and the numbers that animate them.
+    `EnemyProjectile`), explosion damage, the pistol, scattergun & rail lance 3D models (`PistolModel`, `ScattergunModel`, `RailLanceModel`), the packing of the
+    hand's mesh (`HandModel`), the numbers that animate them, and the weapon values read from
+    `assets/data/weapons.txt` (`WeaponTuning`). Each model takes its colours from its palette file in `assets/data/`.
   - `data`: the shared loader for text files under `assets/`: where a file is looked for, with or without libGDX
     (`AssetText`), and the `key: value` format with its typed getters and errors (`TuningFile`). See
     [Tuning files](#tuning-files).
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
-    a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
-    indexed deduplication). None use graphics types.
-  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), the reading of the shader files in `assets/shaders/` (`Shaders`), and the textures read from `assets/textures/` (`ProceduralTextures`, with the wall types' textures named by `assets/data/walls.txt` through `WallTextures`).
+    a headless forward-kinematics rig evaluator (`ModelRig`), vertex packing (`ModelVertices`, including 16-bit
+    indexed deduplication), and the material and accent colours of a model read from a palette file
+    (`ModelPalette`). None use graphics types.
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), the reading of the shader files in `assets/shaders/` (`Shaders`), the textures read from `assets/textures/` (`ProceduralTextures`, with the wall types' textures named by `assets/data/walls.txt` through `WallTextures`), the five palettes of the world models, the weapons and the hand loaded together (`Palettes`), and the clip range, fog, halos and per-kind accents read from `assets/data/render.txt` (`RenderSettings`).
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
-    or input types), the built-in pixel font and the check that text read from a file can be drawn with it
-    (`GlyphCheck`).
+    or input types), the pixel font, whose glyphs are loaded from `assets/data/pixel-font.txt` (`PixelFont`), and
+    the check that text read from a file can be drawn with it (`GlyphCheck`).
   - `settings`: the player's settings (`GameSettings`), the saved campaign run and best records (`SaveData`), the
     medals (`Medal`), what a finished run hands to the results screen (`RunStats`), and the key-value store they are
     kept in: libGDX preferences in the game, a map in tests and debug runs.
@@ -399,8 +407,18 @@ The `tools` programs print their own output and show only the warnings and error
   (`ModelPreviewApp`).
 - `assets`: the files the game loads, at start-up except where noted:
   - `levels/*.map`, `levels/campaign.txt`: plain-text map layouts, stage metadata/briefings, and ordered campaign manifest.
+    A campaign stage file may hold an optional `loadout:` header listing the weapons a player deployed straight to
+    the stage starts with (`pistol`, `scattergun`, `raillance`, in lower case, separated by commas; an unknown name
+    or one listed twice stops the load). A stage without the header starts with the pistol alone, and the pistol is
+    carried whether it is listed or not. Each other listed weapon comes with the ammunition of one of its weapon
+    pickups, scaled by the difficulty's pickup scale. The scattergun is in hand if listed, otherwise the rail lance,
+    otherwise the pistol. From the menu, the Training Range is entered with the pistol alone, and its file may
+    not carry the header.
   - `data/*.txt`: `key: value` tuning files (see [Tuning files](#tuning-files)): `enemies.txt`, `warden.txt`,
-    `difficulty.txt`, `sound-volumes.txt` and `walls.txt`.
+    `difficulty.txt`, `sound-volumes.txt`, `walls.txt`, `weapons.txt`, `world.txt`, `render.txt`,
+    `palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt` and
+    `palette-hand.txt`; and `pixel-font.txt`, the glyphs of the HUD font, drawn as blocks of `#` and `.` rather
+    than written as `key: value` lines.
   - `shaders/*.glsl`: the vertex and fragment shaders of the map (`world`), the world models (`model`) and the
     first-person weapon and hand (`viewmodel`).
   - `textures/*.png`: the wall, floor, ceiling and effect textures, generated by `./gradlew tools:generateTextures`.
@@ -428,9 +446,26 @@ in the format the stage headers in `assets/levels/*.map` already use. The loader
 - `difficulty.txt`: what Easy, Normal and Hard multiply.
 - `sound-volumes.txt`: the playback volume of each sound cue.
 - `walls.txt`: the `.png` texture of each wall type.
+- `weapons.txt`: the pistol, the scattergun and its pellet rings, the Rail Lance, the charged blast, the energy
+  meter, the recoil kicks, and the ammunition pickups and caps. Its `rail.zoom_factor` is restated in words in the
+  briefing of `assets/levels/03-security-hub.map` ("1.8X ZOOM OPTIC"), so change the two together.
+- `world.txt`: what the health, armor and energy pickups give, the canister's explosion, the shock grates, how
+  long the hit marker and a pickup toast show, and the table of how far each noise is heard.
+- `palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt` and
+  `palette-hand.txt`: the colours of the world models, of each weapon and of the hand, one `material.<name>` line
+  for each material and one `accent.<name>` line for each accent colour, as `red, green, blue, gloss` from 0 to 1.
+  The material names are the ones the model files use in their `usemtl` lines.
+- `render.txt`: the camera's clip range, the fog, the halos under pickups and security consoles, and which accent
+  of `palette-world.txt` each kind of pickup and each kind of door lock is drawn with.
 
-The shaders in `assets/shaders/` and the textures in `assets/textures/` (generated by
-`./gradlew tools:generateTextures`) are not `key: value` files; the game finds them as
+A recolour therefore takes an edited palette file and `./gradlew run`, or `./gradlew tools:preview`, where `R` reads
+the palette files and the font file again (see [tools/README.md](tools/README.md)).
+
+`pixel-font.txt`, also in `assets/data/`, is not a `key: value` file: it holds the HUD font, one block per
+character of a `glyph <character>` line and five rows of three cells, `#` for a lit pixel and `.` for an empty
+one. `PixelFont` reads it and stops the game on a broken block, naming the file, the line and the glyph. The
+shaders in `assets/shaders/` and the textures in `assets/textures/` (generated by
+`./gradlew tools:generateTextures`) are not `key: value` files either; the game finds all of them as
 [Which copy of a file is read](#which-copy-of-a-file-is-read) says. The sample below shows the format; no
 `pistol.txt` ships.
 
@@ -461,9 +496,14 @@ after a value, and `//` there is part of the value. A byte order mark and Window
   shipped with are pinned by tests that prove the move out of the code changed nothing, so `./gradlew build` fails
   on a changed value until its pin is changed with it. The pins are chiefly in `EnemyTuningTest` (`enemies.txt`,
   `warden.txt`), `DifficultyTuningTest` (`difficulty.txt`), `SoundVolumesTest` (`sound-volumes.txt`),
-  `WallTexturesTest` (`walls.txt`), `PIXELS_PAINTED_IN_CODE` in `GeneratedTexturesTest` (the textures), and
+  `WallTexturesTest` (`walls.txt`), `WeaponTuningTest` (`weapons.txt`), `WorldTuningTest` (`world.txt`),
+  `PalettesTest` (the palette files and `render.txt`), `shippedGlyphsAreTheBitStringsTheFontHeldInCode` in
+  `PixelFontTest` (`pixel-font.txt`), `StageLoadoutTest`, `StageLoadoutFileTest` and
+  `shippedStagesListTheirStartingWeaponsInALoadoutHeader` in `LevelsTest` (the `loadout` headers, and with them the
+  order of `campaign.txt`), `PIXELS_PAINTED_IN_CODE` in `GeneratedTexturesTest` (the textures), and
   `ShaderFilesTest` and `RendererSupportTest` (the text of the shaders). Other tests hold shipped values too:
-  `EnemyTest` expects the Warden's 900 health, for one, and a `walls.txt` that stops using a generated texture
+  `EnemyTest` expects the Warden's 900 health, `TunedWeaponSimulationTest` the shipped recoil kicks and `PistolTest`
+  the shots the shipped fire interval gives, for three, and a `walls.txt` that stops using a generated texture
   fails `theGameLoadsExactlyTheGeneratedTextures` in `GeneratedTexturesTest`. These pins are temporary and are to
   be replaced; the aim is that committing a tuned value takes the data file alone.
 - **A packaged jar** holds a copy of `assets/` and reads that copy. A loose file at the same relative path under the
@@ -504,15 +544,15 @@ always reach the code as an immutable tuning object that is passed in:
    tuning). For the sample above:
 
    ```java
-   public static PistolTuning load() {
+   public static PistolTuning load(PixelFont font) {
        TuningFile file = TuningFile.load("data/pistol.txt",
            List.of("pistol.fire_interval", "pistol.pellets", "pistol.auto", "pistol.name", "pistol.falloff"),
            List.of("hint"));
        float fireInterval = file.getFloat("pistol.fire_interval");
        if (fireInterval <= 0f) throw file.invalid("pistol.fire_interval", "must be positive");
        return new PistolTuning(fireInterval, file.getInt("pistol.pellets"), file.getBoolean("pistol.auto"),
-           file.getDisplayString("pistol.name"), file.getFloats("pistol.falloff", 3),
-           file.getDisplayStrings("hint"));
+           file.getDisplayString("pistol.name", font), file.getFloats("pistol.falloff", 3),
+           file.getDisplayStrings("hint", font));
    }
    ```
 
@@ -522,7 +562,9 @@ always reach the code as an immutable tuning object that is passed in:
    - **Reading values.** `getFloat`, `getInt`, `getBoolean` and `getString` read one value. `getFloats(key)` and
      `getInts(key)` read a comma-separated list, and `getFloats(key, count)` and `getInts(key, count)` one of
      exactly that length. `getStrings` reads every line of any declared key, so it is the getter for a repeated
-     one. `getDisplayString` and `getDisplayStrings` also check that the pixel font can draw every character.
+     one. `getDisplayString(key, font)` and `getDisplayStrings(key, font)` also check that the loaded
+     `PixelFont` they are given can draw every character, so a `load()` that reads display text takes the font,
+     as the one above does.
    - **Lines of a repeated key.** `entries(key)` gives each line with its key, raw value and line number, and
      `getFloat`, `getInt`, `getFloats` and `getInts` also take such a line, so a row like `ring: 7, 0.12, 0` is
      read as strictly as a single value. `entry(key)` gives the one line of a single-valued key.
@@ -534,7 +576,8 @@ always reach the code as an immutable tuning object that is passed in:
 3. In the game, load it once at start-up, in `MainGame.create()` or later and never from a static initialiser,
    and pass the object to the classes that use it, through a constructor or a `GameSimulation` field. Tests build
    their own values and read no file: with the public constructor (`DifficultyTuning`, `SoundVolumes`,
-   `WallTextures`), or with `parse(label, text)` where the constructor is private (`EnemyTuning`, `WardenTuning`).
+   `WallTextures`, `ModelPalette`), or with `parse(label, text)` where the constructor is private
+   (`EnemyTuning`, `WardenTuning`, `WeaponTuning`, `WorldTuning`, `RenderSettings`, `PixelFont`).
    Tests that want the shipped values take them from `TestTuning`, which loads the shipped files in static fields;
    that is fine in test code. To test the rules of a `load()` without a file, have it hand text to
    `TuningFile.parseText(path, text, ...)`, which takes the same key declarations.
@@ -550,8 +593,8 @@ be added to `TestLocations` in `core/build.gradle` and to `ToolsAssetsLocation` 
 ```
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
-graphics context; the few that touch libGDX's `Gdx` globals put stubs there (`InputControllerTest`,
-`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `SoundVolumesTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`, `ShadersTest`, `WallTexturesTest`, `EnemyTuningTest`, `DemoRunTest`, `HudRendererTest`, and `ModelPreviewAppTest` in `tools`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds, `.map`
+graphics context; the few that touch libGDX's `Gdx` globals put stubs there or clear them (`InputControllerTest`,
+`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `SoundVolumesTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`, `ShadersTest`, `WallTexturesTest`, `EnemyTuningTest`, `PixelFontTest`, `StageLoadoutFileTest`, `DemoRunTest`, `HudRendererTest`, and `ModelPreviewAppTest` in `tools`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds, `.map`
 levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/levels`, `assets/data` and `assets/shaders`, and the `tools` tests also read the textures in `assets/textures`. `core/build.gradle` and `tools/build.gradle` track all six folders, so editing an asset reruns them. They cover:
 
 - `GameSimulation` (`GameSimulationTest`): pistol hits, a charged blast from release to explosion, muzzle launch and
@@ -564,7 +607,7 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   (`ShotAccuracyTest`).
 - `MainGame` (`MainGameViewportTest`): the GL viewport on resize and on HiDPI displays, the windowed size to fall
   back to, a forced windowed start, and which screens draw the backdrop.
-- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
+- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit, the `loadout` header and finding a stage by its id), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
 - `render`: the Warden model (`WardenModelTest` reads the JSON part of `enemy-warden.glb`: its four animations, its
@@ -581,8 +624,10 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   and refusal on low energy), and the jump (its arc, the mid-air dash, and the jump buffer at low frame rates).
 - `hud`: the menu screens, the saved run, quick restart and the `Q` quit prompt (`MenuStateTest`,
   `MenuStateFlowTest`), the Select Stage rows and the lines of the results screen, including that they fit their
-  panels (`StageRecordsDisplayTest`), when the combat HUD is shown (`HudRendererTest`), and the pixel font's glyphs
-  (`PixelFontTest`).
+  panels (`StageRecordsDisplayTest`), when the combat HUD is shown (`HudRendererTest`), and the pixel font
+  (`PixelFontTest`): the glyphs of the shipped `pixel-font.txt` are the ones the font held in code, an altered or
+  added glyph changes what is drawn, an edited loose copy is read with no rebuild, and a broken file fails naming
+  the file, the line and the glyph.
 - `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, the saved run,
   best times and ranks (`GameSettingsAndSaveTest`), the medals (`MedalTest`), and damaged or hand-edited settings and
   save values (`CorruptPrefsTest`).
@@ -616,6 +661,23 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   shock grates, the boss flag, death bursts and noise, overdrive, punch sounds, difficulty scaling) and checks
   that no main source of `core`, `desktop` or `tools` calls a constructor that reads the tuning files itself.
   `TestTuning` holds the shipped values and one-value-changed copies of them for the other tests.
+- Weapon and world tuning: the shipped `weapons.txt` and `world.txt` hold the values the code had before them,
+  down to the pellet pattern, the falloff and the blast's radius, damage and cost bit for bit, a changed value
+  changes the fire rate, the rings, the blast, the meter, the zoom and the pickups, and a missing, unknown or
+  invalid value fails naming the file and the key, as do a pickup that gives less than 1, a zoom factor below 1
+  and an energy meter too small for a dash or for the smallest blast (`WeaponTuningTest`, `WorldTuningTest`).
+  `TunedWeaponSimulationTest` plays changed values through the whole simulation: shot damage and range, recoil
+  kicks, the blast, how far each kind of shot is heard, pickups, grates and canisters, the toast and hit-marker
+  times, the ammunition caps and the starter ammunition.
+- The `loadout` header: every campaign stage starts as it did when its position chose the loadout, a reordered
+  campaign keeps each stage's loadout, a stage without the header starts with the pistol alone, and which weapon
+  is in hand (`StageLoadoutTest`); `StageLoadoutFileTest` reads the shipped and edited stage files through
+  `Levels` and the menus. A `loadout` header in the Training Range's file fails the load, naming the file and
+  the line (`LevelsErrorMessagesTest`).
+- Palettes and render settings (`PalettesTest`): the shipped palette files and `render.txt` hold every colour and
+  value the models and the renderer had in code, the files name their materials and accents as the code's enums
+  do, an edited colour reaches the packed vertices, edited render settings change the fog, the camera and the
+  tables, and an unknown, missing or malformed row fails naming the file and the key.
 - Wall textures (`WallTexturesTest`): the shipped `walls.txt` gives each wall type the texture it had in code, a
   wall character without a line and a line for anything else fail the load, as does a value that is not a plain
   `.png` file name, an edited loose copy changes a wall's texture, a table built in code is checked the same way,

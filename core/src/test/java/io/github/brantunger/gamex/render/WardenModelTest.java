@@ -34,6 +34,11 @@ import java.util.Set;
  */
 class WardenModelTest {
 
+    private static final float[] PHASE1 =
+        TestTuning.PALETTES.world.accent(WorldModels.Accent.WARDEN_PHASE1.name);
+    private static final float[] OVERDRIVE =
+        TestTuning.PALETTES.world.accent(WorldModels.Accent.WARDEN_OVERDRIVE.name);
+
     private static JsonValue gltf;
 
     /**
@@ -207,17 +212,17 @@ class WardenModelTest {
 
     @Test
     void theGlowIsTheAccentOfThePhaseAndBrightensWithTheWindup() {
-        Color rest = WardenModel.glow(false, 0f, 0f, 0f, new Color());
-        float[] phase1 = WorldModels.ACCENT_WARDEN_PHASE1;
+        Color rest = WardenModel.glow(PHASE1, false, 0f, 0f, 0f, new Color());
+        float[] phase1 = PHASE1;
         assertTrue(rest.r > 0f && rest.r < 0.05f, "a faint tint, not a repaint: " + rest);
         assertEquals(phase1[1] / phase1[0], rest.g / rest.r, 1e-4f, "the hue of the phase 1 accent");
         assertEquals(phase1[2] / phase1[0], rest.b / rest.r, 1e-4f);
 
-        Color wound = WardenModel.glow(false, 1f, 0f, 0f, new Color());
+        Color wound = WardenModel.glow(PHASE1, false, 1f, 0f, 0f, new Color());
         assertEquals(3f * rest.r, wound.r, 1e-5f, "a full wind-up triples the glow");
 
-        float[] overdrive = WorldModels.ACCENT_WARDEN_OVERDRIVE;
-        Color cold = WardenModel.glow(true, 0f, 0f, 0f, new Color());
+        float[] overdrive = OVERDRIVE;
+        Color cold = WardenModel.glow(OVERDRIVE, true, 0f, 0f, 0f, new Color());
         assertEquals(overdrive[0] / overdrive[2], cold.r / cold.b, 1e-4f, "the hue of the overdrive accent");
         assertTrue(cold.b > cold.r, "overdrive glows blue: " + cold);
     }
@@ -225,19 +230,19 @@ class WardenModelTest {
     @Test
     void theOverdriveGlowPulsesWithTime() {
         // sin(9t) is 1 at t = pi / 18 and -1 at t = pi / 6.
-        Color peak = WardenModel.glow(true, 0f, 0f, (float) (Math.PI / 18.0), new Color());
-        Color trough = WardenModel.glow(true, 0f, 0f, (float) (Math.PI / 6.0), new Color());
+        Color peak = WardenModel.glow(OVERDRIVE, true, 0f, 0f, (float) (Math.PI / 18.0), new Color());
+        Color trough = WardenModel.glow(OVERDRIVE, true, 0f, 0f, (float) (Math.PI / 6.0), new Color());
         assertEquals(2.5f, peak.b / trough.b, 1e-3f);
 
-        Color early = WardenModel.glow(false, 0f, 0f, 0f, new Color());
-        Color late = WardenModel.glow(false, 0f, 0f, 1f, new Color());
+        Color early = WardenModel.glow(PHASE1, false, 0f, 0f, 0f, new Color());
+        Color late = WardenModel.glow(PHASE1, false, 0f, 0f, 1f, new Color());
         assertEquals(early, late, "phase 1 does not pulse");
     }
 
     @Test
     void aHitFlashesTheGlowRed() {
-        Color rest = WardenModel.glow(false, 0f, 0f, 0f, new Color());
-        Color hit = WardenModel.glow(false, 0f, 1f, 0f, new Color());
+        Color rest = WardenModel.glow(PHASE1, false, 0f, 0f, 0f, new Color());
+        Color hit = WardenModel.glow(PHASE1, false, 0f, 1f, 0f, new Color());
         assertTrue(hit.r - rest.r > 0.5f, "a fresh hit is far brighter than the accent: " + hit);
         assertEquals(0.25f * (hit.r - rest.r), hit.g - rest.g, 1e-5f, "and red");
         assertEquals(0.25f * (hit.r - rest.r), hit.b - rest.b, 1e-5f);

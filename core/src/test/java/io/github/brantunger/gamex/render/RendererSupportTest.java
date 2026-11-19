@@ -27,6 +27,8 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.LogCapture;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.player.Difficulty;
@@ -59,6 +61,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 class RendererSupportTest {
+
+    private static final Palettes PALETTES = TestTuning.PALETTES;
+    private static final ModelPalette WORLD = PALETTES.world;
+    private static final RenderSettings RENDER = TestTuning.RENDER;
 
     private static final float EPSILON = 1e-5f;
     private static final float FRAME = 1f / 60f;
@@ -196,7 +202,7 @@ class RendererSupportTest {
 
     @Test
     void worldAndViewmodelCamerasStayFiniteOnMinimizedStartupAndIgnoreZeroOrNegativeResizes() {
-        PerspectiveCamera worldMinimized = WorldRenderer.createWorldCamera(graphicsStub(0, 0));
+        PerspectiveCamera worldMinimized = WorldRenderer.createWorldCamera(graphicsStub(0, 0), RENDER);
         PerspectiveCamera viewmodelMinimized = ViewmodelRenderer.createViewmodelCamera(graphicsStub(0, 0));
         assertEquals(1280f, worldMinimized.viewportWidth, EPSILON);
         assertEquals(720f, worldMinimized.viewportHeight, EPSILON);
@@ -205,7 +211,7 @@ class RendererSupportTest {
         assertCameraMatricesFinite(worldMinimized, "worldMinimized");
         assertCameraMatricesFinite(viewmodelMinimized, "viewmodelMinimized");
 
-        assertCameraMatricesFinite(WorldRenderer.createWorldCamera(null), "worldNullGraphics");
+        assertCameraMatricesFinite(WorldRenderer.createWorldCamera(null, RENDER), "worldNullGraphics");
         assertCameraMatricesFinite(ViewmodelRenderer.createViewmodelCamera(null), "viewmodelNullGraphics");
 
         assertTrue(WorldRenderer.applyViewportResize(worldMinimized, 1920, 1080));
@@ -258,26 +264,26 @@ class RendererSupportTest {
         Vector3 cameraPos = new Vector3(1.5f, 0.56f, 1.5f);
         Color out = new Color();
 
-        // Unfogged close impact (distance <= FOG_START): full white RGB and full alpha.
-        WorldRenderer.scorchColor(new Vector3(1.5f, 0.56f, 1.5f + WorldRenderer.FOG_START), cameraPos, 0f, out);
+        // Unfogged close impact (distance <= fog.start): full white RGB and full alpha.
+        WorldRenderer.scorchColor(new Vector3(1.5f, 0.56f, 1.5f + RENDER.fogStart), cameraPos, 0f, RENDER, out);
         assertEquals(1f, out.r, EPSILON);
         assertEquals(1f, out.g, EPSILON);
         assertEquals(1f, out.b, EPSILON);
         assertEquals(1f, out.a, EPSILON);
 
         // Mid-fog impact: RGB remains (1, 1, 1) while alpha drops to 0.5 so scorch fades smoothly into wall fog.
-        float midFogDist = 0.5f * (WorldRenderer.FOG_START + WorldRenderer.FOG_END);
-        WorldRenderer.scorchColor(new Vector3(1.5f + midFogDist, 0.56f, 1.5f), cameraPos, 0.2f, out);
-        assertEquals(0.5f, WorldRenderer.fogFactor(midFogDist), EPSILON);
+        float midFogDist = 0.5f * (RENDER.fogStart + RENDER.fogEnd);
+        WorldRenderer.scorchColor(new Vector3(1.5f + midFogDist, 0.56f, 1.5f), cameraPos, 0.2f, RENDER, out);
+        assertEquals(0.5f, RENDER.fogFactor(midFogDist), EPSILON);
         assertEquals(1f, out.r, EPSILON);
         assertEquals(1f, out.g, EPSILON);
         assertEquals(1f, out.b, EPSILON);
         assertEquals(0.5f, out.a, EPSILON);
 
-        // At and beyond FOG_END (20u..60u weapon range): alpha reaches 0 instead of stamping opaque black over fog.
-        for (float farDist : new float[] {WorldRenderer.FOG_END, 45f}) {
-            WorldRenderer.scorchColor(new Vector3(1.5f + farDist, 0.56f, 1.5f), cameraPos, 0f, out);
-            assertEquals(1f, WorldRenderer.fogFactor(farDist), EPSILON);
+        // At and beyond fog.end (20u..60u weapon range): alpha reaches 0 instead of stamping opaque black over fog.
+        for (float farDist : new float[] {RENDER.fogEnd, 45f}) {
+            WorldRenderer.scorchColor(new Vector3(1.5f + farDist, 0.56f, 1.5f), cameraPos, 0f, RENDER, out);
+            assertEquals(1f, RENDER.fogFactor(farDist), EPSILON);
             assertEquals(1f, out.r, EPSILON);
             assertEquals(1f, out.g, EPSILON);
             assertEquals(1f, out.b, EPSILON);
@@ -285,13 +291,13 @@ class RendererSupportTest {
         }
 
         // Combined distance fog (visible = 0.5) and final-second lifetime fade ((1 - 0.9) * 5 = 0.5) -> alpha = 0.25.
-        WorldRenderer.scorchColor(new Vector3(1.5f + midFogDist, 0.56f, 1.5f), cameraPos, 0.9f, out);
+        WorldRenderer.scorchColor(new Vector3(1.5f + midFogDist, 0.56f, 1.5f), cameraPos, 0.9f, RENDER, out);
         assertEquals(1f, out.r, EPSILON);
         assertEquals(1f, out.g, EPSILON);
         assertEquals(1f, out.b, EPSILON);
         assertEquals(0.25f, out.a, EPSILON);
 
-        WorldRenderer.scorchColor(new Vector3(1.5f, 0.56f, 2.5f), cameraPos, 1f, out);
+        WorldRenderer.scorchColor(new Vector3(1.5f, 0.56f, 2.5f), cameraPos, 1f, RENDER, out);
         assertEquals(0f, out.a, EPSILON);
     }
 
@@ -518,7 +524,8 @@ class RendererSupportTest {
         assertTrue(nullTextFailure.getMessage().contains("null prop"), nullTextFailure.getMessage());
 
         GdxRuntimeException nullModelConvert = assertThrows(GdxRuntimeException.class,
-            () -> ModelMesh.convert(null, PistolModel.ASSET_PATH, "viewmodel pistol", PistolModel::from));
+            () -> ModelMesh.convert(null, PistolModel.ASSET_PATH, "viewmodel pistol",
+                obj -> PistolModel.from(obj, PALETTES.pistol)));
         assertTrue(nullModelConvert.getMessage().contains(PistolModel.ASSET_PATH), nullModelConvert.getMessage());
         assertTrue(nullModelConvert.getMessage().contains("viewmodel pistol"), nullModelConvert.getMessage());
     }
@@ -527,22 +534,26 @@ class RendererSupportTest {
     void viewmodelUnpackHelpersWrapInvalidMaterialsUngroupedFacesAndMissingPartsWithContext() throws IOException {
         // Real generated viewmodel assets unpack cleanly with non-empty indexed meshes.
         PistolModel validPistol = ViewmodelRenderer.unpackPistol(
-            ModelMesh.parseModel(PistolModel.ASSET_PATH, "viewmodel pistol", readAssetObj(PistolModel.ASSET_PATH)));
+            ModelMesh.parseModel(PistolModel.ASSET_PATH, "viewmodel pistol", readAssetObj(PistolModel.ASSET_PATH)),
+            PALETTES.pistol);
         assertTrue(validPistol.bodyMesh.triangleCount() > 0);
         assertTrue(validPistol.slideMesh.triangleCount() > 0);
 
         ScattergunModel validScatter = ViewmodelRenderer.unpackScattergun(ModelMesh.parseModel(
-            ScattergunModel.ASSET_PATH, "viewmodel scattergun", readAssetObj(ScattergunModel.ASSET_PATH)));
+            ScattergunModel.ASSET_PATH, "viewmodel scattergun", readAssetObj(ScattergunModel.ASSET_PATH)),
+            PALETTES.scattergun);
         assertTrue(validScatter.bodyMesh.triangleCount() > 0);
         assertTrue(validScatter.pumpMesh.triangleCount() > 0);
 
         RailLanceModel validRail = ViewmodelRenderer.unpackRailLance(ModelMesh.parseModel(
-            RailLanceModel.ASSET_PATH, "viewmodel rail lance", readAssetObj(RailLanceModel.ASSET_PATH)));
+            RailLanceModel.ASSET_PATH, "viewmodel rail lance", readAssetObj(RailLanceModel.ASSET_PATH)),
+            PALETTES.railLance);
         assertTrue(validRail.bodyMesh.triangleCount() > 0);
         assertTrue(validRail.boltMesh.triangleCount() > 0);
 
         ModelVertices.IndexedMesh validHand = ViewmodelRenderer.unpackHand(
-            ModelMesh.parseModel(HandModel.ASSET_PATH, "viewmodel hand", readAssetObj(HandModel.ASSET_PATH)));
+            ModelMesh.parseModel(HandModel.ASSET_PATH, "viewmodel hand", readAssetObj(HandModel.ASSET_PATH)),
+            PALETTES.hand);
         assertTrue(validHand.triangleCount() > 0);
 
         // Pistol missing slide (0 slide triangles -> slideMesh == null) names asset path + "viewmodel pistol slide".
@@ -554,7 +565,7 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException missingSlide = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackPistol(bodyOnlyWeapon));
+            () -> ViewmodelRenderer.unpackPistol(bodyOnlyWeapon, PALETTES.pistol));
         assertTrue(missingSlide.getMessage().contains(PistolModel.ASSET_PATH), missingSlide.getMessage());
         assertTrue(missingSlide.getMessage().contains("viewmodel pistol slide"), missingSlide.getMessage());
 
@@ -567,7 +578,7 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException missingPistolBody = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackPistol(slideOnlyPistol));
+            () -> ViewmodelRenderer.unpackPistol(slideOnlyPistol, PALETTES.pistol));
         assertTrue(missingPistolBody.getMessage().contains(PistolModel.ASSET_PATH), missingPistolBody.getMessage());
         assertTrue(missingPistolBody.getMessage().contains("viewmodel pistol body"), missingPistolBody.getMessage());
 
@@ -579,7 +590,7 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException pistolUngrouped = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackPistol(ungroupedFace));
+            () -> ViewmodelRenderer.unpackPistol(ungroupedFace, PALETTES.pistol));
         assertTrue(pistolUngrouped.getMessage().contains(PistolModel.ASSET_PATH), pistolUngrouped.getMessage());
         assertTrue(pistolUngrouped.getMessage().contains("viewmodel pistol"), pistolUngrouped.getMessage());
         assertInstanceOf(IllegalArgumentException.class, pistolUngrouped.getCause());
@@ -592,14 +603,14 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException pistolBadMat = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackPistol(unknownMatWeapon));
+            () -> ViewmodelRenderer.unpackPistol(unknownMatWeapon, PALETTES.pistol));
         assertTrue(pistolBadMat.getMessage().contains(PistolModel.ASSET_PATH), pistolBadMat.getMessage());
         assertTrue(pistolBadMat.getMessage().contains("viewmodel pistol"), pistolBadMat.getMessage());
         assertTrue(pistolBadMat.getMessage().contains("bogus_neon"), pistolBadMat.getMessage());
 
         // Scattergun missing pump, missing body, and unknown material.
         GdxRuntimeException missingPump = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackScattergun(bodyOnlyWeapon));
+            () -> ViewmodelRenderer.unpackScattergun(bodyOnlyWeapon, PALETTES.scattergun));
         assertTrue(missingPump.getMessage().contains(ScattergunModel.ASSET_PATH), missingPump.getMessage());
         assertTrue(missingPump.getMessage().contains("viewmodel scattergun pump"), missingPump.getMessage());
 
@@ -611,21 +622,21 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException missingScatterBody = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackScattergun(pumpOnlyScatter));
+            () -> ViewmodelRenderer.unpackScattergun(pumpOnlyScatter, PALETTES.scattergun));
         assertTrue(missingScatterBody.getMessage().contains(ScattergunModel.ASSET_PATH),
             missingScatterBody.getMessage());
         assertTrue(missingScatterBody.getMessage().contains("viewmodel scattergun body"),
             missingScatterBody.getMessage());
 
         GdxRuntimeException scatterBadMat = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackScattergun(unknownMatWeapon));
+            () -> ViewmodelRenderer.unpackScattergun(unknownMatWeapon, PALETTES.scattergun));
         assertTrue(scatterBadMat.getMessage().contains(ScattergunModel.ASSET_PATH), scatterBadMat.getMessage());
         assertTrue(scatterBadMat.getMessage().contains("viewmodel scattergun"), scatterBadMat.getMessage());
         assertInstanceOf(IllegalArgumentException.class, scatterBadMat.getCause());
 
         // Rail Lance missing bolt, missing body, and unknown material.
         GdxRuntimeException missingBolt = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackRailLance(bodyOnlyWeapon));
+            () -> ViewmodelRenderer.unpackRailLance(bodyOnlyWeapon, PALETTES.railLance));
         assertTrue(missingBolt.getMessage().contains(RailLanceModel.ASSET_PATH), missingBolt.getMessage());
         assertTrue(missingBolt.getMessage().contains("viewmodel rail lance bolt"), missingBolt.getMessage());
 
@@ -637,25 +648,25 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException missingRailBody = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackRailLance(boltOnlyRail));
+            () -> ViewmodelRenderer.unpackRailLance(boltOnlyRail, PALETTES.railLance));
         assertTrue(missingRailBody.getMessage().contains(RailLanceModel.ASSET_PATH), missingRailBody.getMessage());
         assertTrue(missingRailBody.getMessage().contains("viewmodel rail lance body"), missingRailBody.getMessage());
 
         GdxRuntimeException railBadMat = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackRailLance(unknownMatWeapon));
+            () -> ViewmodelRenderer.unpackRailLance(unknownMatWeapon, PALETTES.railLance));
         assertTrue(railBadMat.getMessage().contains(RailLanceModel.ASSET_PATH), railBadMat.getMessage());
         assertTrue(railBadMat.getMessage().contains("viewmodel rail lance"), railBadMat.getMessage());
         assertInstanceOf(IllegalArgumentException.class, railBadMat.getCause());
 
         // Hand unknown material and empty 0-triangle model.
         GdxRuntimeException handBadMat = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackHand(unknownMatWeapon));
+            () -> ViewmodelRenderer.unpackHand(unknownMatWeapon, PALETTES.hand));
         assertTrue(handBadMat.getMessage().contains(HandModel.ASSET_PATH), handBadMat.getMessage());
         assertTrue(handBadMat.getMessage().contains("viewmodel hand"), handBadMat.getMessage());
         assertInstanceOf(IllegalArgumentException.class, handBadMat.getCause());
 
         GdxRuntimeException emptyHand = assertThrows(GdxRuntimeException.class,
-            () -> ViewmodelRenderer.unpackHand(ObjModel.parse("")));
+            () -> ViewmodelRenderer.unpackHand(ObjModel.parse(""), PALETTES.hand));
         assertTrue(emptyHand.getMessage().contains(HandModel.ASSET_PATH), emptyHand.getMessage());
         assertTrue(emptyHand.getMessage().contains("viewmodel hand"), emptyHand.getMessage());
     }
@@ -667,18 +678,19 @@ class RendererSupportTest {
         ObjModel turretObj = ModelMesh.parseModel(
             WorldModels.TURRET_PATH, "turret", readAssetObj(WorldModels.TURRET_PATH));
         for (String part : new String[] {"base", "head", "barrels"}) {
-            assertTrue(WorldRenderer.unpackWorldPart(turretObj, WorldModels.TURRET_PATH, "turret", part)
+            assertTrue(WorldRenderer.unpackWorldPart(turretObj, WorldModels.TURRET_PATH, "turret", part, WORLD)
                 .triangleCount() > 0, "turret part " + part);
         }
 
         ObjModel droneObj = ModelMesh.parseModel(
             WorldModels.DRONE_PATH, "drone", readAssetObj(WorldModels.DRONE_PATH));
-        assertTrue(WorldRenderer.unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone").triangleCount() > 0);
+        assertTrue(
+            WorldRenderer.unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone", WORLD).triangleCount() > 0);
 
         ObjModel guardObj = ModelMesh.parseModel(
             WorldModels.GUARD_PATH, "guard", readAssetObj(WorldModels.GUARD_PATH));
         for (String part : new String[] {"pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r"}) {
-            assertTrue(WorldRenderer.unpackWorldPart(guardObj, WorldModels.GUARD_PATH, "guard", part)
+            assertTrue(WorldRenderer.unpackWorldPart(guardObj, WorldModels.GUARD_PATH, "guard", part, WORLD)
                 .triangleCount() > 0, "guard part " + part);
         }
 
@@ -692,15 +704,16 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         assertEquals(1,
-            WorldRenderer.unpackWorldPart(baseOnlyTurret, WorldModels.TURRET_PATH, "turret", "base").triangleCount());
+            WorldRenderer.unpackWorldPart(baseOnlyTurret, WorldModels.TURRET_PATH, "turret", "base", WORLD)
+                .triangleCount());
         GdxRuntimeException missingBarrels = assertThrows(GdxRuntimeException.class,
-            () -> WorldRenderer.unpackWorldPart(baseOnlyTurret, WorldModels.TURRET_PATH, "turret", "barrels"));
+            () -> WorldRenderer.unpackWorldPart(baseOnlyTurret, WorldModels.TURRET_PATH, "turret", "barrels", WORLD));
         assertTrue(missingBarrels.getMessage().contains(WorldModels.TURRET_PATH), missingBarrels.getMessage());
         assertTrue(missingBarrels.getMessage().contains("turret barrels"), missingBarrels.getMessage());
         assertInstanceOf(IllegalArgumentException.class, missingBarrels.getCause());
 
         GdxRuntimeException missingGuardArm = assertThrows(GdxRuntimeException.class,
-            () -> WorldRenderer.unpackWorldPart(baseOnlyTurret, WorldModels.GUARD_PATH, "guard", "arm_r"));
+            () -> WorldRenderer.unpackWorldPart(baseOnlyTurret, WorldModels.GUARD_PATH, "guard", "arm_r", WORLD));
         assertTrue(missingGuardArm.getMessage().contains(WorldModels.GUARD_PATH), missingGuardArm.getMessage());
         assertTrue(missingGuardArm.getMessage().contains("guard arm_r"), missingGuardArm.getMessage());
 
@@ -714,13 +727,13 @@ class RendererSupportTest {
                 + "v 0 1 0\n"
                 + "f 1 2 3\n");
         GdxRuntimeException badGuardMat = assertThrows(GdxRuntimeException.class,
-            () -> WorldRenderer.unpackWorldPart(badGuardTorso, WorldModels.GUARD_PATH, "guard", "torso"));
+            () -> WorldRenderer.unpackWorldPart(badGuardTorso, WorldModels.GUARD_PATH, "guard", "torso", WORLD));
         assertTrue(badGuardMat.getMessage().contains(WorldModels.GUARD_PATH), badGuardMat.getMessage());
         assertTrue(badGuardMat.getMessage().contains("guard torso"), badGuardMat.getMessage());
         assertTrue(badGuardMat.getMessage().contains("mystery_chrome"), badGuardMat.getMessage());
 
         GdxRuntimeException badDroneMat = assertThrows(GdxRuntimeException.class,
-            () -> WorldRenderer.unpackWorldModel(badGuardTorso, WorldModels.DRONE_PATH, "drone"));
+            () -> WorldRenderer.unpackWorldModel(badGuardTorso, WorldModels.DRONE_PATH, "drone", WORLD));
         assertTrue(badDroneMat.getMessage().contains(WorldModels.DRONE_PATH), badDroneMat.getMessage());
         assertTrue(badDroneMat.getMessage().contains("drone"), badDroneMat.getMessage());
         assertTrue(badDroneMat.getMessage().contains("mystery_chrome"), badDroneMat.getMessage());
@@ -853,7 +866,7 @@ class RendererSupportTest {
             "#####");
 
         HeadlessWorldBackend worldBackend = new HeadlessWorldBackend(objCache);
-        new WorldRenderer(room, graphicsStub(1280, 720), null, worldBackend).dispose();
+        new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, worldBackend).dispose();
         assertEquals(ShaderFilesTest.BASE_WORLD_VERTEX,
             ShaderFilesTest.withoutComments(worldBackend.worldVertexSource));
         assertEquals(ShaderFilesTest.BASE_WORLD_FRAGMENT,
@@ -864,7 +877,7 @@ class RendererSupportTest {
             ShaderFilesTest.withoutComments(worldBackend.modelFragmentSource));
 
         HeadlessViewmodelBackend viewmodelBackend = new HeadlessViewmodelBackend(objCache);
-        new ViewmodelRenderer(graphicsStub(1280, 720), null, viewmodelBackend).dispose();
+        new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, viewmodelBackend).dispose();
         assertEquals(ShaderFilesTest.BASE_VIEWMODEL_VERTEX,
             ShaderFilesTest.withoutComments(viewmodelBackend.vertexSource));
         assertEquals(ShaderFilesTest.BASE_VIEWMODEL_FRAGMENT,
@@ -883,21 +896,21 @@ class RendererSupportTest {
         HeadlessWorldBackend failWorldShader = new HeadlessWorldBackend(objCache);
         failWorldShader.worldShaderCompiled = false;
         GdxRuntimeException worldError = assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failWorldShader));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failWorldShader));
         assertTrue(worldError.getMessage().contains("shaders/world.vert.glsl"), worldError.getMessage());
         assertTrue(worldError.getMessage().contains("shaders/world.frag.glsl"), worldError.getMessage());
 
         HeadlessWorldBackend failModelShader = new HeadlessWorldBackend(objCache);
         failModelShader.modelShaderCompiled = false;
         GdxRuntimeException modelError = assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failModelShader));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failModelShader));
         assertTrue(modelError.getMessage().contains("shaders/model.vert.glsl"), modelError.getMessage());
         assertTrue(modelError.getMessage().contains("shaders/model.frag.glsl"), modelError.getMessage());
 
         HeadlessViewmodelBackend failViewmodelShader = new HeadlessViewmodelBackend(objCache);
         failViewmodelShader.shaderCompiled = false;
         GdxRuntimeException viewmodelError = assertThrows(GdxRuntimeException.class,
-            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failViewmodelShader));
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, failViewmodelShader));
         assertTrue(viewmodelError.getMessage().contains("shaders/viewmodel.vert.glsl"), viewmodelError.getMessage());
         assertTrue(viewmodelError.getMessage().contains("shaders/viewmodel.frag.glsl"), viewmodelError.getMessage());
     }
@@ -911,7 +924,7 @@ class RendererSupportTest {
         badShaderBackend.shaderCompiled = false;
         badShaderBackend.shaderLog = "syntax error at line 7";
         GdxRuntimeException shaderError = assertThrows(GdxRuntimeException.class,
-            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, badShaderBackend));
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, badShaderBackend));
         assertTrue(shaderError.getMessage().contains("The viewmodel shader did not compile: syntax error at line 7"),
             shaderError.getMessage());
         assertEquals(1, badShaderBackend.createdShaders.size());
@@ -922,7 +935,7 @@ class RendererSupportTest {
         HeadlessViewmodelBackend failRailLoad = new HeadlessViewmodelBackend(objCache);
         failRailLoad.failModelAsset = RailLanceModel.ASSET_PATH;
         assertThrows(GdxRuntimeException.class,
-            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failRailLoad));
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, failRailLoad));
         assertEquals(1, failRailLoad.createdShaders.get(0).disposeCount);
         assertEquals(4, failRailLoad.createdMeshes.size(), "pistol(2) + scattergun(2) built before rail lance load");
         for (RecordedDisposable mesh : failRailLoad.createdMeshes) {
@@ -933,7 +946,7 @@ class RendererSupportTest {
         HeadlessViewmodelBackend failBoltBuild = new HeadlessViewmodelBackend(objCache);
         failBoltBuild.failOnMeshBuild = 6;
         assertThrows(GdxRuntimeException.class,
-            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failBoltBuild));
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, failBoltBuild));
         assertEquals(1, failBoltBuild.createdShaders.get(0).disposeCount);
         assertEquals(5, failBoltBuild.createdMeshes.size());
         for (RecordedDisposable mesh : failBoltBuild.createdMeshes) {
@@ -944,7 +957,7 @@ class RendererSupportTest {
         HeadlessViewmodelBackend failBatch = new HeadlessViewmodelBackend(objCache);
         failBatch.failDecalBatch = true;
         assertThrows(GdxRuntimeException.class,
-            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failBatch));
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, failBatch));
         assertEquals(1, failBatch.createdShaders.get(0).disposeCount);
         assertEquals(7, failBatch.createdMeshes.size());
         for (RecordedDisposable mesh : failBatch.createdMeshes) assertEquals(1, mesh.disposeCount);
@@ -953,7 +966,7 @@ class RendererSupportTest {
         HeadlessViewmodelBackend failDecals = new HeadlessViewmodelBackend(objCache);
         failDecals.failInitDecals = true;
         assertThrows(IllegalArgumentException.class,
-            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, failDecals));
+            () -> new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, failDecals));
         assertEquals(1, failDecals.createdShaders.get(0).disposeCount);
         for (RecordedDisposable mesh : failDecals.createdMeshes) assertEquals(1, mesh.disposeCount);
         assertEquals(1, failDecals.createdStrategies.get(0).disposeCount);
@@ -963,7 +976,7 @@ class RendererSupportTest {
         HeadlessViewmodelBackend okBackend = new HeadlessViewmodelBackend(objCache);
         ViewmodelRenderer renderer;
         try (LogCapture capture = LogCapture.of(ViewmodelRenderer.class, Level.INFO)) {
-            renderer = new ViewmodelRenderer(graphicsStub(1280, 720), null, okBackend);
+            renderer = new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, okBackend);
             assertEquals(List.of("Loaded 4 viewmodel models"), capture.messages(Level.INFO));
         }
         assertEquals(7, okBackend.createdMeshes.size());
@@ -996,14 +1009,14 @@ class RendererSupportTest {
         HeadlessWorldBackend failWardenCheck = new HeadlessWorldBackend(objCache);
         failWardenCheck.failWardenCheck = true;
         assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failWardenCheck));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failWardenCheck));
         assertTrue(failWardenCheck.worldShaders.isEmpty());
 
         // 1) World shader compile failure disposes world shader handle before rethrowing.
         HeadlessWorldBackend failWorldShader = new HeadlessWorldBackend(objCache);
         failWorldShader.worldShaderCompiled = false;
         GdxRuntimeException worldShaderErr = assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failWorldShader));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failWorldShader));
         assertTrue(worldShaderErr.getMessage().contains("The world shader did not compile: world shader error"),
             worldShaderErr.getMessage());
         assertEquals(1, failWorldShader.worldShaders.get(0).disposeCount);
@@ -1013,7 +1026,7 @@ class RendererSupportTest {
         HeadlessWorldBackend failModelShader = new HeadlessWorldBackend(objCache);
         failModelShader.modelShaderCompiled = false;
         GdxRuntimeException modelShaderErr = assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failModelShader));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failModelShader));
         assertTrue(modelShaderErr.getMessage().contains("The world model shader did not compile: model shader error"),
             modelShaderErr.getMessage());
         assertEquals(1, failModelShader.worldShaders.get(0).disposeCount);
@@ -1023,14 +1036,14 @@ class RendererSupportTest {
         // 3) Null map or setMap failure in constructor disposes both shaders and any partial map surfaces.
         HeadlessWorldBackend failNullMap = new HeadlessWorldBackend(objCache);
         assertThrows(IllegalArgumentException.class,
-            () -> new WorldRenderer(null, graphicsStub(1280, 720), null, failNullMap));
+            () -> new WorldRenderer(null, graphicsStub(1280, 720), null, WORLD, RENDER, failNullMap));
         assertEquals(1, failNullMap.worldShaders.get(0).disposeCount);
         assertEquals(1, failNullMap.modelShaders.get(0).disposeCount);
 
         HeadlessWorldBackend failInitialMapSurface = new HeadlessWorldBackend(objCache);
         failInitialMapSurface.failOnSurfaceBuild = 2;
         assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failInitialMapSurface));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failInitialMapSurface));
         assertEquals(1, failInitialMapSurface.worldShaders.get(0).disposeCount);
         assertEquals(1, failInitialMapSurface.modelShaders.get(0).disposeCount);
         assertEquals(1, failInitialMapSurface.surfaceHandles.size());
@@ -1041,7 +1054,7 @@ class RendererSupportTest {
         HeadlessWorldBackend failGuardPart = new HeadlessWorldBackend(objCache);
         failGuardPart.failOnModelMeshBuild = 20;
         assertThrows(GdxRuntimeException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failGuardPart));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failGuardPart));
         assertEquals(1, failGuardPart.worldShaders.get(0).disposeCount);
         assertEquals(1, failGuardPart.modelShaders.get(0).disposeCount);
         assertEquals(3, failGuardPart.surfaceHandles.size());
@@ -1056,7 +1069,7 @@ class RendererSupportTest {
         HeadlessWorldBackend failRegions = new HeadlessWorldBackend(objCache);
         failRegions.failInitRegions = true;
         assertThrows(IllegalArgumentException.class,
-            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, failRegions));
+            () -> new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, failRegions));
         assertEquals(1, failRegions.worldShaders.get(0).disposeCount);
         assertEquals(1, failRegions.modelShaders.get(0).disposeCount);
         for (RecordedDisposable s : failRegions.surfaceHandles) assertEquals(1, s.disposeCount);
@@ -1069,7 +1082,7 @@ class RendererSupportTest {
         HeadlessWorldBackend okBackend = new HeadlessWorldBackend(objCache);
         WorldRenderer renderer;
         try (LogCapture capture = LogCapture.of(WorldRenderer.class, Level.DEBUG)) {
-            renderer = new WorldRenderer(room, graphicsStub(1280, 720), null, okBackend);
+            renderer = new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, okBackend);
             assertEquals(List.of("Built the geometry of a 5x3 map: 1 wall textures"), capture.messages(Level.DEBUG));
             assertEquals(List.of("Loaded 19 world models"), capture.messages(Level.INFO));
         }
@@ -1109,7 +1122,7 @@ class RendererSupportTest {
             "##%%&&");
 
         HeadlessWorldBackend backend = new HeadlessWorldBackend(objCache);
-        WorldRenderer renderer = new WorldRenderer(stage1, graphicsStub(1280, 720), null, backend);
+        WorldRenderer renderer = new WorldRenderer(stage1, graphicsStub(1280, 720), null, WORLD, RENDER, backend);
         assertSame(stage1, renderer.getCurrentMap());
         assertEquals(3, renderer.getSurfaceCount());
         List<RecordedDisposable> stage1Surfaces = new ArrayList<>(backend.surfaceHandles);

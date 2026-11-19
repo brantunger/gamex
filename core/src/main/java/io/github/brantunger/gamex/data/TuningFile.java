@@ -1,6 +1,7 @@
 package io.github.brantunger.gamex.data;
 
 import io.github.brantunger.gamex.hud.GlyphCheck;
+import io.github.brantunger.gamex.hud.PixelFont;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -416,26 +417,28 @@ public final class TuningFile {
     /**
      * Reads player-visible text.
      * @param key a key declared as required or optional
+     * @param font the loaded font the text will be drawn with
      * @return the key's value
-     * @throws IllegalArgumentException if the value is empty or holds a character the pixel font cannot draw (see
+     * @throws IllegalArgumentException if the value is empty or holds a character the font cannot draw (see
      *     {@link GlyphCheck})
      */
-    public String getDisplayString(String key) {
+    public String getDisplayString(String key, PixelFont font) {
         Entry entry = entry(key);
-        return GlyphCheck.require(nonEmpty(entry), where(entry));
+        return GlyphCheck.require(font, nonEmpty(entry), where(entry));
     }
 
     /**
      * Reads player-visible lines of text.
      * @param key a declared key of any kind
+     * @param font the loaded font the text will be drawn with
      * @return the value of each of the key's lines, in file order
-     * @throws IllegalArgumentException if a value is empty or holds a character the pixel font cannot draw (see
+     * @throws IllegalArgumentException if a value is empty or holds a character the font cannot draw (see
      *     {@link GlyphCheck})
      */
-    public List<String> getDisplayStrings(String key) {
+    public List<String> getDisplayStrings(String key, PixelFont font) {
         List<String> values = new ArrayList<>();
         for (Entry entry : entries(key)) {
-            values.add(GlyphCheck.require(nonEmpty(entry), where(entry)));
+            values.add(GlyphCheck.require(font, nonEmpty(entry), where(entry)));
         }
         return Collections.unmodifiableList(values);
     }

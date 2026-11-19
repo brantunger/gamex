@@ -3,21 +3,20 @@ package io.github.brantunger.gamex.weapon;
 /** The pistol's trigger timing. It has unlimited ammunition; its only limit is the fire rate. */
 public final class Pistol {
 
-    /** The shortest time between two shots, in seconds. */
-    public static final float FIRE_INTERVAL = 0.3f;
-    /** The damage of one shot. */
-    public static final float DAMAGE = 20f;
-    /** The range of a shot in world units. */
-    public static final float RANGE = 60f;
-    /** How long the muzzle flash shows after a shot, in seconds. */
-    public static final float FLASH_TIME = 0.07f;
-
+    private final WeaponTuning tuning;
     private float cooldown;
     private float sinceShot = Float.POSITIVE_INFINITY;
 
+    /** @param tuning the weapon balance; its pistol values set the fire rate and the flash */
+    public Pistol(WeaponTuning tuning) {
+        if (tuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
+        this.tuning = tuning;
+    }
+
     /**
      * Advances the timers and fires if the trigger is held and the pistol is ready. With the trigger held, the pistol
-     * fires once per {@link #FIRE_INTERVAL} on average whatever the length of the steps, and at most once per step.
+     * fires once per {@link WeaponTuning#pistolFireInterval} on average whatever the length of the steps, and at most
+     * once per step.
      * @param dt the time step in seconds
      * @param trigger whether the trigger is held
      * @return whether a shot was fired during this step
@@ -35,13 +34,13 @@ public final class Pistol {
         if (cooldown > 0f) return false;
         // Under held fire, the time by which this step overshot the interval counts towards the next shot, so the
         // rate does not depend on the frame rate. A pistol that was already ready starts a fresh interval.
-        cooldown = wasReady ? FIRE_INTERVAL : cooldown + FIRE_INTERVAL;
+        cooldown = wasReady ? tuning.pistolFireInterval : cooldown + tuning.pistolFireInterval;
         sinceShot = 0f;
         return true;
     }
 
     /** @return whether the muzzle flash is showing. */
     public boolean isFlashVisible() {
-        return sinceShot < FLASH_TIME;
+        return sinceShot < tuning.pistolFlashTime;
     }
 }

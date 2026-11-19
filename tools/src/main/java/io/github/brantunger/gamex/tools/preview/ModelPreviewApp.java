@@ -31,6 +31,7 @@ import io.github.brantunger.gamex.model.ModelRig;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.render.ModelMesh;
+import io.github.brantunger.gamex.render.Palettes;
 import io.github.brantunger.gamex.render.Shaders;
 import io.github.brantunger.gamex.tools.GenerateAllModels;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
@@ -84,22 +85,33 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     private static final float PREVIEW_LIGHT = 1f;
     private static final float PREVIEW_HIT_FLASH = 0f;
 
-    private static final float[][] DOOR_ACCENTS = {
-        WorldModels.ACCENT_DOOR_UNLOCKED,
-        WorldModels.ACCENT_DOOR_AMBER,
-        WorldModels.ACCENT_DOOR_CYAN,
-        WorldModels.ACCENT_DOOR_LOCKDOWN,
-        WorldModels.ACCENT_DOOR_BOSS,
-        WorldModels.ACCENT_DOOR_OPEN
+    private static final WorldModels.Accent[] DOOR_ACCENTS = {
+        WorldModels.Accent.DOOR_UNLOCKED,
+        WorldModels.Accent.DOOR_AMBER,
+        WorldModels.Accent.DOOR_CYAN,
+        WorldModels.Accent.DOOR_LOCKDOWN,
+        WorldModels.Accent.DOOR_BOSS,
+        WorldModels.Accent.DOOR_OPEN
     };
     private static final String[] DOOR_ACCENT_NAMES = {"UNLOCKED", "AMBER", "CYAN", "LOCKDOWN", "BOSS", "OPEN"};
 
     private final List<Entry> entries = new ArrayList<>();
+    /**
+     * The accent colours of the palette files the entries were last loaded with: the world's by
+     * {@link WorldModels.Accent#ordinal()} and the Rail Lance's by {@link RailLanceModel.Accent#ordinal()}.
+     */
+    private float[][] worldAccents = new float[0][];
+    private float[][] railAccents = new float[0][];
     private PerspectiveCamera camera;
     private ShaderProgram shader;
     private ShapeRenderer shapes;
     private SpriteBatch batch;
     private Texture white;
+    /**
+     * The game's HUD font, read from {@code assets/data/} with the models in {@link #loadAllEntries()} and again on
+     * every reload; it draws the overlay text.
+     */
+    private PixelFont font;
 
     private int currentIndex;
     private int accentIndex;
@@ -343,12 +355,20 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     void loadAllEntries() {
         Path dir = resolveModelsDir();
         List<Entry> loaded = new ArrayList<>();
+        Palettes palettes;
+        PixelFont loadedFont;
         try {
+            // The game's own palette files in assets/data/, read again on every reload so that an edited colour
+            // shows after R.
+            palettes = Palettes.load();
+            // The game's own font file, read again in the same way. A missing or broken one stops the first load
+            // and fails a reload, naming the file; the font in use stays until the whole reload has succeeded.
+            loadedFont = PixelFont.load();
             // 0: Combined first-person viewmodel (pistol + hand).
             ObjModel pistolObj = readObj(dir.resolve("viewmodel-pistol.obj"), "pistol");
             ObjModel handObj = readObj(dir.resolve("viewmodel-hand.obj"), "hand");
-            PistolModel pistol = PistolModel.from(pistolObj);
-            ModelVertices.IndexedMesh handIndexed = HandModel.packIndexed(handObj);
+            PistolModel pistol = PistolModel.from(pistolObj, palettes.pistol);
+            ModelVertices.IndexedMesh handIndexed = HandModel.packIndexed(handObj, palettes.hand);
             Entry vm = new Entry("viewmodel (pistol+hand)", pistolObj, 0f, -0.06f, 0.08f, 0.55f, 0f, 0f);
             loaded.add(vm);
             addPartMesh(vm, "body", pistol.bodyMesh);
@@ -362,7 +382,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             vm.rawVertices = vm.totalTriangles * 3;
 
             ObjModel scatterObj = readObj(dir.resolve("viewmodel-scattergun.obj"), "scattergun");
-            ScattergunModel scatter = ScattergunModel.from(scatterObj);
+            ScattergunModel scatter = ScattergunModel.from(scatterObj, palettes.scattergun);
             Entry vmScatter = new Entry("viewmodel-scattergun (scattergun+hand)", scatterObj, 0f, -0.05f, 0.01f, 0.62f,
                 0f, 0f);
             loaded.add(vmScatter);
@@ -377,7 +397,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             vmScatter.rawVertices = vmScatter.totalTriangles * 3;
 
             ObjModel railObj = readObj(dir.resolve("viewmodel-raillance.obj"), "raillance");
-            RailLanceModel rail = RailLanceModel.from(railObj);
+            RailLanceModel rail = RailLanceModel.from(railObj, palettes.railLance);
             Entry vmRail = new Entry("viewmodel-raillance (raillance+hand)", railObj, 0f, -0.05f, -0.03f, 0.76f,
                 0f, 0f);
             loaded.add(vmRail);
@@ -391,33 +411,33 @@ public final class ModelPreviewApp extends ApplicationAdapter {
                 + handIndexed.vertexCount();
             vmRail.rawVertices = vmRail.totalTriangles * 3;
 
-            addWorldEntry(loaded, dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
+            addWorldEntry(loaded, palettes, dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
                 Enemy.Kind.GUARD.radius, Enemy.Kind.GUARD.height,
                 "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
-            addWorldEntry(loaded, dir, "enemy-turret.obj", 0f, Enemy.Kind.TURRET.height * 0.5f, 0f, 1.25f,
+            addWorldEntry(loaded, palettes, dir, "enemy-turret.obj", 0f, Enemy.Kind.TURRET.height * 0.5f, 0f, 1.25f,
                 Enemy.Kind.TURRET.radius, Enemy.Kind.TURRET.height,
                 "base", "head", "barrels");
-            addWorldEntry(loaded, dir, "enemy-drone.obj", 0f, 0.35f, 0f, 1.05f,
+            addWorldEntry(loaded, palettes, dir, "enemy-drone.obj", 0f, 0.35f, 0f, 1.05f,
                 Enemy.Kind.DRONE.radius, Enemy.Kind.DRONE.height);
-            addWorldEntry(loaded, dir, "door-bulkhead.obj", 0f, 0.50f, 0f, 1.70f, 0f, GameMap.WALL_HEIGHT);
-            addWorldEntry(loaded, dir, "hazard-grate.obj", 0f, 0.012f, 0f, 1.45f, 0f, 0.024f);
-            addWorldEntry(loaded, dir, "security-console.obj", 0f, 0.36f, 0f, 1.15f,
+            addWorldEntry(loaded, palettes, dir, "door-bulkhead.obj", 0f, 0.50f, 0f, 1.70f, 0f, GameMap.WALL_HEIGHT);
+            addWorldEntry(loaded, palettes, dir, "hazard-grate.obj", 0f, 0.012f, 0f, 1.45f, 0f, 0.024f);
+            addWorldEntry(loaded, palettes, dir, "security-console.obj", 0f, 0.36f, 0f, 1.15f,
                 SecurityConsole.RADIUS, SecurityConsole.HEIGHT);
-            addWorldEntry(loaded, dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
-            addWorldEntry(loaded, dir, "pickup-shells.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.27f);
-            addWorldEntry(loaded, dir, "pickup-raillance.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.31f);
-            addWorldEntry(loaded, dir, "pickup-slugs.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.28f);
-            addWorldEntry(loaded, dir, "pickup-keycard.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
-            addWorldEntry(loaded, dir, "pickup-medkit.obj", 0f, 0.14f, 0f, 0.72f, Pickup.RADIUS, 0.28f);
-            addWorldEntry(loaded, dir, "pickup-armor.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
-            addWorldEntry(loaded, dir, "pickup-energy.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
-            addWorldEntry(loaded, dir, "canister.obj", 0f, 0.28f, 0f, 1.05f,
+            addWorldEntry(loaded, palettes, dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
+            addWorldEntry(loaded, palettes, dir, "pickup-shells.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.27f);
+            addWorldEntry(loaded, palettes, dir, "pickup-raillance.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.31f);
+            addWorldEntry(loaded, palettes, dir, "pickup-slugs.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.28f);
+            addWorldEntry(loaded, palettes, dir, "pickup-keycard.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
+            addWorldEntry(loaded, palettes, dir, "pickup-medkit.obj", 0f, 0.14f, 0f, 0.72f, Pickup.RADIUS, 0.28f);
+            addWorldEntry(loaded, palettes, dir, "pickup-armor.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
+            addWorldEntry(loaded, palettes, dir, "pickup-energy.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
+            addWorldEntry(loaded, palettes, dir, "canister.obj", 0f, 0.28f, 0f, 1.05f,
                 Target.Kind.CANISTER.radius, Target.Kind.CANISTER.height);
-            addWorldEntry(loaded, dir, "ring-board.obj", 0f, 0.40f, 0f, 1.25f,
+            addWorldEntry(loaded, palettes, dir, "ring-board.obj", 0f, 0.40f, 0f, 1.25f,
                 Target.Kind.RING_BOARD.radius, Target.Kind.RING_BOARD.height);
-            addWorldEntry(loaded, dir, "blast-orb.obj", 0f, 0f, 0f, 0.55f, BlastProjectile.RADIUS, 0f);
-            addWorldEntry(loaded, dir, "rail-beam.obj", 0f, 0f, -0.5f, 1.25f, 0f, 0f);
-            addWorldEntry(loaded, dir, "enemy-bolt.obj", 0f, 0f, 0f, 0.45f, EnemyProjectile.RADIUS, 0f);
+            addWorldEntry(loaded, palettes, dir, "blast-orb.obj", 0f, 0f, 0f, 0.55f, BlastProjectile.RADIUS, 0f);
+            addWorldEntry(loaded, palettes, dir, "rail-beam.obj", 0f, 0f, -0.5f, 1.25f, 0f, 0f);
+            addWorldEntry(loaded, palettes, dir, "enemy-bolt.obj", 0f, 0f, 0f, 0.45f, EnemyProjectile.RADIUS, 0f);
         } catch (RuntimeException | Error e) {
             try {
                 disposeEntryList(loaded);
@@ -430,6 +450,17 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         boolean hadEntries = !entries.isEmpty();
         disposeEntries();
         entries.addAll(loaded);
+        font = loadedFont;
+        WorldModels.Accent[] worldNames = WorldModels.Accent.values();
+        worldAccents = new float[worldNames.length][];
+        for (WorldModels.Accent accent : worldNames) {
+            worldAccents[accent.ordinal()] = palettes.world.accent(accent.name);
+        }
+        RailLanceModel.Accent[] railNames = RailLanceModel.Accent.values();
+        railAccents = new float[railNames.length][];
+        for (RailLanceModel.Accent accent : railNames) {
+            railAccents[accent.ordinal()] = palettes.railLance.accent(accent.name);
+        }
         if (entries.isEmpty()) {
             currentIndex = 0;
         } else if (!hadEntries) {
@@ -439,6 +470,11 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
             resetCameraForEntry();
         }
+    }
+
+    /** @return the font the overlay text is drawn with, or {@code null} before the first load */
+    PixelFont getFont() {
+        return font;
     }
 
     private void selectRequestedEntry() {
@@ -452,7 +488,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         }
     }
 
-    private void addWorldEntry(List<Entry> target, Path dir, String fileName,
+    private void addWorldEntry(List<Entry> target, Palettes palettes, Path dir, String fileName,
                                float cx, float cy, float cz, float defaultDist,
                                float cylRadius, float cylHeight, String... parts) {
         ObjModel model = readObj(dir.resolve(fileName), fileName);
@@ -460,14 +496,14 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         e.rig = new ModelRig(model);
         target.add(e);
         if (parts.length == 0) {
-            ModelVertices.IndexedMesh indexed = WorldModels.packIndexed(model);
+            ModelVertices.IndexedMesh indexed = WorldModels.packIndexed(model, palettes.world);
             addPartMesh(e, ObjModel.ROOT_PART, indexed);
             e.totalTriangles = indexed.triangleCount();
             e.uniqueVertices = indexed.vertexCount();
             e.rawVertices = indexed.triangleCount() * 3;
         } else {
             for (String p : parts) {
-                ModelVertices.IndexedMesh indexed = WorldModels.packPartIndexed(model, p);
+                ModelVertices.IndexedMesh indexed = WorldModels.packPartIndexed(model, p, palettes.world);
                 addPartMesh(e, p, indexed);
                 e.totalTriangles += indexed.triangleCount();
                 e.uniqueVertices += indexed.vertexCount();
@@ -600,7 +636,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         String accentLabel = "NONE";
         if (entry.label.equals("door-bulkhead.obj")) {
             int i = Math.floorMod(accentIndex, DOOR_ACCENTS.length);
-            accent = DOOR_ACCENTS[i];
+            accent = worldAccents[DOOR_ACCENTS[i].ordinal()];
             accentLabel = DOOR_ACCENT_NAMES[i];
             if (animate) {
                 float phase = 0.5f - 0.5f * MathUtils.cos(time * 2.2f);
@@ -608,24 +644,27 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             }
         } else if (entry.label.equals("pickup-keycard.obj")) {
             boolean cyan = Math.floorMod(accentIndex, 2) == 1;
-            accent = cyan ? WorldModels.ACCENT_KEYCARD_CYAN : WorldModels.ACCENT_KEYCARD_AMBER;
+            accent = worldAccents[(cyan ? WorldModels.Accent.KEYCARD_CYAN : WorldModels.Accent.KEYCARD_AMBER)
+                .ordinal()];
             accentLabel = cyan ? "CYAN" : "AMBER";
         } else if (entry.label.equals("security-console.obj")) {
             boolean active = Math.floorMod(accentIndex, 2) == 1;
-            accent = active ? WorldModels.ACCENT_CONSOLE_ACTIVE : WorldModels.ACCENT_CONSOLE_LOCKED;
+            accent = worldAccents[(active ? WorldModels.Accent.CONSOLE_ACTIVE : WorldModels.Accent.CONSOLE_LOCKED)
+                .ordinal()];
             accentLabel = active ? "ACTIVE" : "LOCKED";
         } else if (entry.label.equals("hazard-grate.obj")) {
-            accent = WorldModels.ACCENT_HAZARD_LIVE;
+            accent = worldAccents[WorldModels.Accent.HAZARD_LIVE.ordinal()];
             accentLabel = "LIVE";
         } else if (entry.label.equals("pickup-raillance.obj") || entry.label.equals("pickup-slugs.obj")) {
-            accent = WorldModels.ACCENT_RAIL_READY;
+            accent = worldAccents[WorldModels.Accent.RAIL_READY.ordinal()];
             accentLabel = "READY";
         } else if (entry.label.equals("rail-beam.obj")) {
-            accent = WorldModels.ACCENT_RAIL_BEAM;
+            accent = worldAccents[WorldModels.Accent.RAIL_BEAM.ordinal()];
             accentLabel = "BEAM";
         } else if (entry.label.startsWith("viewmodel-raillance")) {
             boolean recharging = Math.floorMod(accentIndex, 2) == 1;
-            accent = recharging ? RailLanceModel.ACCENT_RECHARGING : RailLanceModel.ACCENT_READY;
+            accent = railAccents[(recharging ? RailLanceModel.Accent.RECHARGING : RailLanceModel.Accent.READY)
+                .ordinal()];
             accentLabel = recharging ? "RECHARGING" : "READY";
             if (animate) {
                 float boltKick = Math.max(0f, MathUtils.sin(time * 2.8f)) * RailLanceModel.BOLT_TRAVEL;
@@ -698,24 +737,24 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             Gdx.gl.glDisable(GL20.GL_CULL_FACE);
             Gdx.gl.glEnable(GL20.GL_BLEND);
         }
-        if (batch != null && white != null) {
+        if (batch != null && white != null && font != null) {
             batch.begin();
             int hudH = Gdx.graphics != null ? Math.max(1, Gdx.graphics.getHeight()) : 800;
             float u = hudH / 800f;
             float topY = hudH - 28f * u;
             batch.setColor(0.55f, 0.95f, 1f, 1f);
-            PixelFont.draw(batch, white, "MODEL: " + entry.label.toUpperCase(Locale.ROOT), 20f * u, topY, 3f * u);
+            font.draw(batch, white, "MODEL: " + entry.label.toUpperCase(Locale.ROOT), 20f * u, topY, 3f * u);
             batch.setColor(0.88f, 0.92f, 0.96f, 0.95f);
-            PixelFont.draw(batch, white,
+            font.draw(batch, white,
                 "TRIS " + entry.totalTriangles + "  VERTS " + entry.uniqueVertices + " / " + entry.rawVertices
                     + "  ACCENT: " + accentLabel,
                 20f * u, topY - 26f * u, 2.2f * u);
             if (statusTimer > 0f) {
                 batch.setColor(0.45f, 1f, 0.65f, 1f);
-                PixelFont.draw(batch, white, statusToast, 20f * u, topY - 52f * u, 2.4f * u);
+                font.draw(batch, white, statusToast, 20f * u, topY - 52f * u, 2.4f * u);
             }
             batch.setColor(0.70f, 0.76f, 0.85f, 0.9f);
-            PixelFont.draw(batch, white,
+            font.draw(batch, white,
                 "DRAG: ORBIT  SCROLL: ZOOM  LEFT/RIGHT: MODEL  SPACE: ANIM  C: ACCENT  G: GIZMOS  W: WIRE  R: REBUILD",
                 20f * u, 20f * u, 1.9f * u);
             batch.end();

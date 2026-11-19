@@ -13,7 +13,6 @@ import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
@@ -78,12 +77,13 @@ class TunedSimulationTest {
     void railDamageToAKindIsTheRailDamageTimesItsScale() {
         assertEquals(90f, railDamage(TestTuning.ENEMIES, 'B'), 1e-3f);
         EnemyTuning halfHide = TestTuning.enemiesWith("warden.rail_damage_scale", "0.5");
-        assertEquals(RailLance.DAMAGE * 0.5f, railDamage(halfHide, 'B'), 1e-3f);
-        assertEquals(RailLance.DAMAGE, railDamage(TestTuning.enemiesWith("warden.rail_damage_scale", "1"), 'B'), 1e-3f);
+        assertEquals(TestTuning.WEAPONS.railDamage * 0.5f, railDamage(halfHide, 'B'), 1e-3f);
+        assertEquals(TestTuning.WEAPONS.railDamage,
+            railDamage(TestTuning.enemiesWith("warden.rail_damage_scale", "1"), 'B'), 1e-3f);
         // A guard has 100 health, so only a scaled slug leaves it standing.
         assertEquals(100f, railDamage(TestTuning.ENEMIES, 'G'), 1e-3f);
         EnemyTuning armouredGuard = TestTuning.enemiesWith("guard.rail_damage_scale", "0.25");
-        assertEquals(RailLance.DAMAGE * 0.25f, railDamage(armouredGuard, 'G'), 1e-3f);
+        assertEquals(TestTuning.WEAPONS.railDamage * 0.25f, railDamage(armouredGuard, 'G'), 1e-3f);
     }
 
     /** Sends the enemy through a one-cell choke with a shock grate in it and returns what health it lost. */
@@ -284,19 +284,19 @@ class TunedSimulationTest {
     void pickupsAndDamageAreScaledByTheDifficultyTuningGiven() {
         float[] normal = medkitThenGrate(TestTuning.DIFFICULTY, Difficulty.NORMAL);
         assertEquals(85f, normal[0], 1e-3f);
-        assertEquals(GameSimulation.HAZARD_DAMAGE, normal[1], 1e-3f);
+        assertEquals(TestTuning.WORLD.grateDamage, normal[1], 1e-3f);
 
         float[] easy = medkitThenGrate(TestTuning.DIFFICULTY, Difficulty.EASY);
         assertEquals(60f + Math.round(25f * 1.25f), easy[0], 1e-3f, "a pickup gives a whole amount");
-        assertEquals(GameSimulation.HAZARD_DAMAGE * 0.7f, easy[1], 1e-3f);
+        assertEquals(TestTuning.WORLD.grateDamage * 0.7f, easy[1], 1e-3f);
 
         DifficultyTuning tuned = TestTuning.difficultyWith("normal.pickup", "0.4");
         assertEquals(70f, medkitThenGrate(tuned, Difficulty.NORMAL)[0], 1e-3f);
         tuned = TestTuning.difficultyWith("normal.damage_taken", "2.5");
-        assertEquals(GameSimulation.HAZARD_DAMAGE * 2.5f, medkitThenGrate(tuned, Difficulty.NORMAL)[1], 1e-3f);
+        assertEquals(TestTuning.WORLD.grateDamage * 2.5f, medkitThenGrate(tuned, Difficulty.NORMAL)[1], 1e-3f);
         // A value of another difficulty changes nothing on this one.
         tuned = TestTuning.difficultyWith("hard.damage_taken", "9");
-        assertEquals(GameSimulation.HAZARD_DAMAGE, medkitThenGrate(tuned, Difficulty.NORMAL)[1], 1e-3f);
+        assertEquals(TestTuning.WORLD.grateDamage, medkitThenGrate(tuned, Difficulty.NORMAL)[1], 1e-3f);
     }
 
     @Test
@@ -347,15 +347,17 @@ class TunedSimulationTest {
             for (Path source : sources) {
                 String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
                 scanned++;
-                offenders.addAll(shortCalls(source, text, "GameSimulation", 5));
-                offenders.addAll(shortCalls(source, text, "MenuState", 4));
+                offenders.addAll(shortCalls(source, text, "GameSimulation", 7));
+                offenders.addAll(shortCalls(source, text, "MenuState", 5));
             }
         }
         assertTrue(scanned > 50, "only " + scanned + " sources were found");
         assertEquals(List.of(), offenders);
         // The check itself: a short call is seen, a full one is not.
         Path sample = Paths.get("Sample.java");
-        assertEquals(1, shortCalls(sample, "a = new GameSimulation(map, f(a, b), false);", "GameSimulation", 5).size());
-        assertEquals(0, shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d);", "GameSimulation", 5).size());
+        assertEquals(1, shortCalls(sample, "a = new GameSimulation(map, f(a, b), false);", "GameSimulation", 7).size());
+        assertEquals(1, shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d);", "GameSimulation", 7).size());
+        assertEquals(0,
+            shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d, w, g);", "GameSimulation", 7).size());
     }
 }

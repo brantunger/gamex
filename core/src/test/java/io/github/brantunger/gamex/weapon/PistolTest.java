@@ -4,13 +4,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import org.junit.jupiter.api.Test;
 
 class PistolTest {
 
+    /** The shipped weapon balance. */
+    private static final WeaponTuning W = TestTuning.WEAPONS;
+
     @Test
     void firesAtOnceWhenTheTriggerIsPulled() {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
 
         assertFalse(pistol.update(0.01f, false));
         assertTrue(pistol.update(0.01f, true));
@@ -18,7 +22,7 @@ class PistolTest {
 
     @Test
     void heldTriggerFiresNoFasterThanTheFireInterval() {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
         int shots = 0;
 
         // 0.95 seconds in steps of 0.01: shots at about 0, 0.3, 0.6 and 0.9 seconds.
@@ -31,16 +35,16 @@ class PistolTest {
 
     @Test
     void tappingFasterThanTheFireIntervalDoesNotFireFaster() {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
 
         assertTrue(pistol.update(0.01f, true));
         assertFalse(pistol.update(0.01f, false));
-        assertFalse(pistol.update(Pistol.FIRE_INTERVAL / 2f, true));
-        assertTrue(pistol.update(Pistol.FIRE_INTERVAL / 2f, true));
+        assertFalse(pistol.update(W.pistolFireInterval / 2f, true));
+        assertTrue(pistol.update(W.pistolFireInterval / 2f, true));
     }
 
     private static int shotsWhileHeld(int framesPerSecond, int seconds) {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
         int shots = 0;
         for (int i = 0; i < framesPerSecond * seconds; i++) {
             if (pistol.update(1f / framesPerSecond, true)) shots++;
@@ -58,7 +62,7 @@ class PistolTest {
 
     @Test
     void timeSpentIdleDoesNotBankExtraShots() {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
         for (int i = 0; i < 300; i++) pistol.update(1f / 60f, false);
 
         int shots = 0;
@@ -72,19 +76,19 @@ class PistolTest {
 
     @Test
     void muzzleFlashShowsBrieflyAfterAShot() {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
         assertFalse(pistol.isFlashVisible());
 
         pistol.update(0.01f, true);
         assertTrue(pistol.isFlashVisible());
 
-        pistol.update(Pistol.FLASH_TIME + 0.01f, false);
+        pistol.update(W.pistolFlashTime + 0.01f, false);
         assertFalse(pistol.isFlashVisible());
     }
 
     @Test
     void nonFiniteAndNegativeDeltaTimesAreNoOpsWhileZeroDeltaAllowsReadyShot() {
-        Pistol pistol = new Pistol();
+        Pistol pistol = new Pistol(W);
         for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.25f}) {
             assertFalse(pistol.update(badDt, true), "bad dt must not fire: " + badDt);
             assertFalse(pistol.isFlashVisible());
@@ -104,7 +108,7 @@ class PistolTest {
             assertTrue(pistol.isFlashVisible(), "bad dt must not clear muzzle flash: " + badDt);
         }
 
-        assertFalse(pistol.update(Pistol.FIRE_INTERVAL - 0.03f, true), "cooldown still remaining");
+        assertFalse(pistol.update(W.pistolFireInterval - 0.03f, true), "cooldown still remaining");
         assertTrue(pistol.update(0.02f, true), "fires once remaining cooldown elapses");
     }
 }

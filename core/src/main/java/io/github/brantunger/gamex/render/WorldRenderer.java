@@ -23,6 +23,7 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelRig;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
@@ -30,7 +31,6 @@ import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
-import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Effect;
 import io.github.brantunger.gamex.world.Enemy;
@@ -61,11 +61,6 @@ public final class WorldRenderer implements Disposable {
     static final int DEFAULT_VIEWPORT_WIDTH = 1280;
     static final int DEFAULT_VIEWPORT_HEIGHT = 720;
     private static final float FIELD_OF_VIEW = 70f;
-    private static final float NEAR = 0.1f;
-    private static final float FAR = 60f;
-    private static final Color FOG_COLOUR = new Color(0.035f, 0.035f, 0.055f, 1f);
-    static final float FOG_START = 3.5f;
-    static final float FOG_END = 20f;
     /** How far the view rises and falls with each step, in world units. */
     private static final float BOB_HEIGHT = 0.012f;
     /** How long the spark of a pistol impact shows over its scorch mark, in seconds. */
@@ -139,6 +134,15 @@ public final class WorldRenderer implements Disposable {
 
     private PerspectiveCamera camera;
     private final ProceduralTextures textures;
+    private final ModelPalette palette;
+    private final RenderSettings renderSettings;
+    private final Color fogColour;
+    /** The accent colours of the world palette, by {@link WorldModels.Accent#ordinal()}. */
+    private final float[][] accents;
+    /** The colour of the halo under each kind of pickup, by {@link Pickup.Kind#ordinal()}. */
+    private final float[][] pickupHalos;
+    private final float[] consoleHaloActive;
+    private final float[] consoleHaloLocked;
     private final SurfaceMeshBuilder surfaceMeshBuilder;
     private ShaderProgram shader;
     private ShaderProgram modelShader;
@@ -207,20 +211,35 @@ public final class WorldRenderer implements Disposable {
     /**
      * @param map the initial map to build the static meshes from
      * @param textures the textures to draw with; the caller keeps ownership of them
+     * @param palette the colours of the world models' materials and accents
+     * @param settings the clip range, the fog, the halos and the accent of each kind of door and pickup
      */
-    public WorldRenderer(GameMap map, ProceduralTextures textures) {
-        this(map, Gdx.graphics, textures, null);
+    public WorldRenderer(GameMap map, ProceduralTextures textures, ModelPalette palette, RenderSettings settings) {
+        this(map, Gdx.graphics, textures, palette, settings, null);
     }
 
-    WorldRenderer(GameMap map, Graphics graphics, ProceduralTextures textures, ResourceBackend backend) {
+    WorldRenderer(GameMap map, Graphics graphics, ProceduralTextures textures, ModelPalette palette,
+                  RenderSettings settings, ResourceBackend backend) {
         this.textures = textures;
+        this.palette = palette;
+        this.renderSettings = settings;
+        fogColour = new Color(settings.fogRed, settings.fogGreen, settings.fogBlue, 1f);
+        // Looked up once, so that drawing a frame neither searches the palette nor copies a colour.
+        WorldModels.Accent[] accentNames = WorldModels.Accent.values();
+        accents = new float[accentNames.length][];
+        for (WorldModels.Accent accent : accentNames) accents[accent.ordinal()] = palette.accent(accent.name);
+        Pickup.Kind[] pickupKinds = Pickup.Kind.values();
+        pickupHalos = new float[pickupKinds.length][];
+        for (Pickup.Kind kind : pickupKinds) pickupHalos[kind.ordinal()] = settings.pickupHalo(kind);
+        consoleHaloActive = settings.consoleHalo(true);
+        consoleHaloLocked = settings.consoleHalo(false);
         ResourceBackend active = backend != null ? backend : createGlBackend();
         this.surfaceMeshBuilder = active::buildSurface;
         try {
             // The Warden's model is loaded later; whether it is there to load is found out now.
             active.checkWardenModel();
             int modelsBefore = ModelMesh.getLoadedCount();
-            camera = createWorldCamera(graphics);
+            camera = createWorldCamera(graphics, settings);
 
             // The shader text is read from assets/shaders/; a missing file stops the start here, by name.
             Disposable worldShaderHandle = active.createWorldShader(
@@ -269,7 +288,8 @@ public final class WorldRenderer implements Disposable {
             ObjModel droneObj = active.loadModel(WorldModels.DRONE_PATH, "drone");
             droneRig = new ModelRig(droneObj);
             droneMesh = trackResource(active.buildIndexedMesh(
-                unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone"), WorldModels.DRONE_PATH, "drone"),
+                unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone", palette), WorldModels.DRONE_PATH,
+                "drone"),
                 Mesh.class);
 
             ObjModel guardObj = active.loadModel(WorldModels.GUARD_PATH, "guard");
@@ -406,14 +426,16 @@ public final class WorldRenderer implements Disposable {
     }
 
     private Mesh loadSingleWorldMesh(ResourceBackend active, String assetPath, String label) {
-        return trackResource(active.loadIndexedMesh(assetPath, label, WorldModels::packIndexed), Mesh.class);
+        return trackResource(
+            active.loadIndexedMesh(assetPath, label, obj -> WorldModels.packIndexed(obj, palette)), Mesh.class);
     }
 
     private Mesh buildWorldPartMesh(ResourceBackend active, ObjModel model, String assetPath, String modelLabel,
                                     String partName) {
         String label = modelLabel + " " + partName;
         return trackResource(
-            active.buildIndexedMesh(unpackWorldPart(model, assetPath, modelLabel, partName), assetPath, label),
+            active.buildIndexedMesh(unpackWorldPart(model, assetPath, modelLabel, partName, palette), assetPath,
+                label),
             Mesh.class);
     }
 
@@ -454,13 +476,15 @@ public final class WorldRenderer implements Disposable {
     }
 
     static ModelVertices.IndexedMesh unpackWorldPart(ObjModel model, String assetPath, String modelLabel,
-                                                     String partName) {
+                                                     String partName, ModelPalette palette) {
         String label = modelLabel + " " + partName;
-        return ModelMesh.convertMesh(model, assetPath, label, obj -> WorldModels.packPartIndexed(obj, partName));
+        return ModelMesh.convertMesh(model, assetPath, label,
+            obj -> WorldModels.packPartIndexed(obj, partName, palette));
     }
 
-    static ModelVertices.IndexedMesh unpackWorldModel(ObjModel model, String assetPath, String modelLabel) {
-        return ModelMesh.convertMesh(model, assetPath, modelLabel, WorldModels::packIndexed);
+    static ModelVertices.IndexedMesh unpackWorldModel(ObjModel model, String assetPath, String modelLabel,
+                                                      ModelPalette palette) {
+        return ModelMesh.convertMesh(model, assetPath, modelLabel, obj -> WorldModels.packIndexed(obj, palette));
     }
 
     static short[] buildQuadIndices(float[] quads) {
@@ -516,13 +540,13 @@ public final class WorldRenderer implements Disposable {
             : DEFAULT_VIEWPORT_HEIGHT;
     }
 
-    static PerspectiveCamera createWorldCamera(Graphics graphics) {
+    static PerspectiveCamera createWorldCamera(Graphics graphics, RenderSettings settings) {
         PerspectiveCamera cam = new PerspectiveCamera();
         cam.fieldOfView = FIELD_OF_VIEW;
         cam.viewportWidth = initialViewportWidth(graphics);
         cam.viewportHeight = initialViewportHeight(graphics);
-        cam.near = NEAR;
-        cam.far = FAR;
+        cam.near = settings.clipNear;
+        cam.far = settings.clipFar;
         cam.update(Gdx.app != null && Gdx.gl != null);
         return cam;
     }
@@ -554,7 +578,7 @@ public final class WorldRenderer implements Disposable {
         setMap(simulation.map);
         Player player = simulation.player;
         float zoom = simulation.getZoom();
-        float zoomScale = zoom > 0f ? 1f / (1f + (RailLance.ZOOM_FACTOR - 1f) * zoom) : 1f;
+        float zoomScale = zoom > 0f ? 1f / (1f + (simulation.getZoomFactor() - 1f) * zoom) : 1f;
         camera.fieldOfView = settings.getFov() * zoomScale;
         player.eye(camera.position);
         if (settings.isViewBob() && !player.isDead()) {
@@ -626,7 +650,7 @@ public final class WorldRenderer implements Disposable {
 
     private void beginWorldPass(float roomLight) {
         Gdx.gl.glDepthMask(true);
-        ScreenUtils.clear(FOG_COLOUR, true);
+        ScreenUtils.clear(fogColour, true);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
@@ -636,8 +660,8 @@ public final class WorldRenderer implements Disposable {
         shader.bind();
         shader.setUniformMatrix("u_projViewTrans", camera.combined);
         shader.setUniformf("u_cameraPosition", camera.position);
-        shader.setUniformf("u_fogRange", FOG_START, FOG_END);
-        shader.setUniformf("u_fogColour", FOG_COLOUR.r, FOG_COLOUR.g, FOG_COLOUR.b);
+        shader.setUniformf("u_fogRange", renderSettings.fogStart, renderSettings.fogEnd);
+        shader.setUniformf("u_fogColour", fogColour.r, fogColour.g, fogColour.b);
         shader.setUniformf("u_light", roomLight);
         shader.setUniformi("u_texture", 0);
         for (Surface surface : surfaces) {
@@ -688,23 +712,24 @@ public final class WorldRenderer implements Disposable {
         modelShader.bind();
         modelShader.setUniformMatrix("u_projViewTrans", camera.combined);
         modelShader.setUniformf("u_cameraPosition", camera.position);
-        modelShader.setUniformf("u_fogRange", FOG_START, FOG_END);
-        modelShader.setUniformf("u_fogColour", FOG_COLOUR.r, FOG_COLOUR.g, FOG_COLOUR.b);
+        modelShader.setUniformf("u_fogRange", renderSettings.fogStart, renderSettings.fogEnd);
+        modelShader.setUniformf("u_fogColour", fogColour.r, fogColour.g, fogColour.b);
 
         modelShader.setUniformf("u_light", roomLight);
         setAccent(null);
         List<GameMap.HazardCell> hazardCells = simulation.map.getHazardCells();
         if (!hazardCells.isEmpty()) {
+            float[] hazardLive = accent(WorldModels.Accent.HAZARD_LIVE);
             modelShader.setUniformf("u_hitFlash", 0f);
             for (int i = 0; i < hazardCells.size(); i++) {
                 GameMap.HazardCell cell = hazardCells.get(i);
                 float pulse = hazardGratePulse(animTime, cell.col, cell.row);
                 modelShader.setUniformf("u_light", Math.max(roomLight, 0.92f + 0.34f * pulse));
                 modelShader.setUniformf("u_accentColour",
-                    WorldModels.ACCENT_HAZARD_LIVE[0] * (0.72f + 0.28f * pulse),
-                    WorldModels.ACCENT_HAZARD_LIVE[1] * (0.78f + 0.22f * pulse),
-                    WorldModels.ACCENT_HAZARD_LIVE[2],
-                    WorldModels.ACCENT_HAZARD_LIVE[3]);
+                    hazardLive[0] * (0.72f + 0.28f * pulse),
+                    hazardLive[1] * (0.78f + 0.22f * pulse),
+                    hazardLive[2],
+                    hazardLive[3]);
                 modelTransform.idt().translate(cell.x, 0f, cell.z);
                 drawModelMesh(hazardGrateMesh, modelTransform);
             }
@@ -780,7 +805,7 @@ public final class WorldRenderer implements Disposable {
             modelTransform.idt()
                 .translate(pickup.getX(), hover, pickup.getZ())
                 .rotate(Vector3.Y, pickupSpinDegrees(animTime, pickup.getX(), pickup.getZ()));
-            setAccent(pickupAccent(pickup.getKind()));
+            setAccent(accent(renderSettings.pickupAccent(pickup.getKind())));
             drawModelMesh(pickupMesh(pickup.getKind()), modelTransform);
         }
 
@@ -830,7 +855,9 @@ public final class WorldRenderer implements Disposable {
         modelShader.setUniformf("u_light", Math.max(roomLight, 1.05f));
         for (SecurityConsole console : simulation.consoles) {
             modelTransform.idt().translate(console.getX(), 0f, console.getZ());
-            setAccent(console.isActivated() ? WorldModels.ACCENT_CONSOLE_ACTIVE : WorldModels.ACCENT_CONSOLE_LOCKED);
+            setAccent(accent(console.isActivated()
+                ? WorldModels.Accent.CONSOLE_ACTIVE
+                : WorldModels.Accent.CONSOLE_LOCKED));
             drawModelMesh(consoleMesh, modelTransform);
         }
 
@@ -876,7 +903,10 @@ public final class WorldRenderer implements Disposable {
             if (wardenModel != null) wardenModel.releasePuppets();
             return;
         }
-        if (wardenModel == null) wardenModel = new WardenModel(FOG_COLOUR, FOG_START, FOG_END);
+        if (wardenModel == null) {
+            wardenModel = new WardenModel(fogColour, renderSettings.fogStart, renderSettings.fogEnd,
+                accent(WorldModels.Accent.WARDEN_PHASE1), accent(WorldModels.Accent.WARDEN_OVERDRIVE));
+        }
         wardenModel.draw(camera, simulation.enemies, animTime, roomLight);
 
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
@@ -935,35 +965,14 @@ public final class WorldRenderer implements Disposable {
             .rotate(Vector3.X, tiltPitch);
     }
 
-    private static float[] doorAccent(Door door) {
-        if (door.isOpening()) return WorldModels.ACCENT_DOOR_OPEN;
-        switch (door.getLockKind()) {
-            case AMBER_KEY:
-                return WorldModels.ACCENT_DOOR_AMBER;
-            case CYAN_KEY:
-                return WorldModels.ACCENT_DOOR_CYAN;
-            case LOCKDOWN:
-                return WorldModels.ACCENT_DOOR_LOCKDOWN;
-            case BOSS:
-                return WorldModels.ACCENT_DOOR_BOSS;
-            case NONE:
-            default:
-                return WorldModels.ACCENT_DOOR_UNLOCKED;
-        }
+    /** @return the colour of {@code accent} in the world palette, or null for no accent */
+    private float[] accent(WorldModels.Accent accent) {
+        return accent == null ? null : accents[accent.ordinal()];
     }
 
-    private static float[] pickupAccent(Pickup.Kind kind) {
-        switch (kind) {
-            case AMBER_KEYCARD:
-                return WorldModels.ACCENT_KEYCARD_AMBER;
-            case CYAN_KEYCARD:
-                return WorldModels.ACCENT_KEYCARD_CYAN;
-            case RAIL_LANCE:
-            case RAIL_SLUGS:
-                return WorldModels.ACCENT_RAIL_READY;
-            default:
-                return null;
-        }
+    private float[] doorAccent(Door door) {
+        return accent(door.isOpening() ? renderSettings.doorOpeningAccent
+            : renderSettings.doorAccent(door.getLockKind()));
     }
 
     private Mesh pickupMesh(Pickup.Kind kind) {
@@ -1008,50 +1017,22 @@ public final class WorldRenderer implements Disposable {
     private void addPickupGlows(GameSimulation simulation) {
         for (Pickup pickup : simulation.pickups) {
             if (pickup.isCollected()) continue;
-            Decal halo = nextDecal(orb, 0.42f, 0.42f, true);
+            Decal halo = nextDecal(orb, renderSettings.pickupHaloSize, renderSettings.pickupHaloSize, true);
             halo.setPosition(pickup.getX(), FLOOR_GLOW_HEIGHT, pickup.getZ());
             halo.setRotation(Vector3.Y, Vector3.Z);
-            switch (pickup.getKind()) {
-                case MEDKIT:
-                    halo.setColor(1f, 0.35f, 0.4f, 0.4f);
-                    break;
-                case ARMOR:
-                    halo.setColor(0.3f, 0.78f, 1f, 0.45f);
-                    break;
-                case AMBER_KEYCARD:
-                    halo.setColor(1f, 0.74f, 0.18f, 0.52f);
-                    break;
-                case CYAN_KEYCARD:
-                    halo.setColor(0.2f, 0.92f, 1f, 0.52f);
-                    break;
-                case SCATTERGUN:
-                    halo.setColor(1f, 0.56f, 0.20f, 0.54f);
-                    break;
-                case SHELLS:
-                    halo.setColor(0.95f, 0.34f, 0.24f, 0.48f);
-                    break;
-                case RAIL_LANCE:
-                    halo.setColor(0.22f, 0.94f, 1.00f, 0.56f);
-                    break;
-                case RAIL_SLUGS:
-                    halo.setColor(0.18f, 0.80f, 1.00f, 0.48f);
-                    break;
-                case ENERGY_CELL:
-                default:
-                    halo.setColor(0.75f, 0.42f, 1f, 0.48f);
-                    break;
-            }
+            float[] colour = pickupHalos[pickup.getKind().ordinal()];
+            halo.setColor(colour[0], colour[1], colour[2], colour[3]);
             decalBatch.add(halo);
         }
     }
 
     private void addConsoleGlows(GameSimulation simulation) {
         for (SecurityConsole console : simulation.consoles) {
-            Decal halo = nextDecal(orb, 0.46f, 0.46f, true);
+            Decal halo = nextDecal(orb, renderSettings.consoleHaloSize, renderSettings.consoleHaloSize, true);
             halo.setPosition(console.getX(), FLOOR_GLOW_HEIGHT, console.getZ());
             halo.setRotation(Vector3.Y, Vector3.Z);
-            if (console.isActivated()) halo.setColor(0.25f, 0.96f, 0.52f, 0.42f);
-            else halo.setColor(1f, 0.28f, 0.22f, 0.38f);
+            float[] colour = console.isActivated() ? consoleHaloActive : consoleHaloLocked;
+            halo.setColor(colour[0], colour[1], colour[2], colour[3]);
             decalBatch.add(halo);
         }
     }
@@ -1064,7 +1045,7 @@ public final class WorldRenderer implements Disposable {
             scratch.set(camera.position).sub(projectile.position);
             float camDist = scratch.len();
             float pullForward = camDist > 1e-4f
-                ? Math.min(meshOuterRadius + 0.02f, Math.max(0f, camDist - NEAR - 0.03f))
+                ? Math.min(meshOuterRadius + 0.02f, Math.max(0f, camDist - renderSettings.clipNear - 0.03f))
                 : 0f;
             float decalDist = camDist - pullForward;
             float perspectiveScale = camDist > 1e-4f ? decalDist / camDist : 1f;
@@ -1145,7 +1126,7 @@ public final class WorldRenderer implements Disposable {
                 float pz = beam.start.z + scratch.z * s;
                 float dist = (float) Math.hypot(px - camera.position.x,
                     Math.hypot(py - camera.position.y, pz - camera.position.z));
-                float fog = fogFactor(dist);
+                float fog = renderSettings.fogFactor(dist);
                 Decal ring = nextDecal(orb, size, size, true);
                 ring.setPosition(px, py, pz);
                 faceCamera(ring);
@@ -1164,7 +1145,7 @@ public final class WorldRenderer implements Disposable {
                     mark.setPosition(effect.position);
                     // Lie flat on the surface; a floor or ceiling mark needs an up vector that is not its normal.
                     mark.setRotation(effect.normal, Math.abs(effect.normal.y) > 0.5f ? Vector3.Z : Vector3.Y);
-                    scorchColor(effect.position, camera.position, progress, scratchColor);
+                    scorchColor(effect.position, camera.position, progress, renderSettings, scratchColor);
                     mark.setColor(scratchColor.r, scratchColor.g, scratchColor.b, scratchColor.a);
                     decalBatch.add(mark);
                     if (effect.getAge() < IMPACT_SPARK_TIME) {
@@ -1259,18 +1240,15 @@ public final class WorldRenderer implements Disposable {
         return decal;
     }
 
-    static float fogFactor(float distance) {
-        return MathUtils.clamp((distance - FOG_START) / (FOG_END - FOG_START), 0f, 1f);
-    }
-
-    static Color scorchColor(Vector3 position, Vector3 cameraPosition, float progress, Color out) {
-        float visible = 1f - fogFactor(position.dst(cameraPosition));
+    static Color scorchColor(Vector3 position, Vector3 cameraPosition, float progress, RenderSettings settings,
+                             Color out) {
+        float visible = 1f - settings.fogFactor(position.dst(cameraPosition));
         float alpha = visible * MathUtils.clamp((1f - progress) * 5f, 0f, 1f);
         return out.set(1f, 1f, 1f, alpha);
     }
 
     private float fogAt(Vector3 position) {
-        return fogFactor(position.dst(camera.position));
+        return renderSettings.fogFactor(position.dst(camera.position));
     }
 
     @Override

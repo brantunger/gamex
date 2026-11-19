@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.tools;
 
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelRig;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
@@ -28,6 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MeshBuilderTest {
 
+    /** The world palette the game ships with, from {@code assets/data/}. */
+    private static final ModelPalette WORLD_PALETTE = WorldModels.loadPalette();
+
     @Test
     void leadingRootGeometryRemainsAssignedToRootWhenChildPartsAreDeclared() {
         MeshBuilder builder = new MeshBuilder()
@@ -53,8 +57,8 @@ class MeshBuilderTest {
             assertEquals("turret", model.getPart(t));
         }
 
-        ModelVertices.IndexedMesh rootMesh = WorldModels.packPartIndexed(model, ObjModel.ROOT_PART);
-        ModelVertices.IndexedMesh turretMesh = WorldModels.packPartIndexed(model, "turret");
+        ModelVertices.IndexedMesh rootMesh = WorldModels.packPartIndexed(model, ObjModel.ROOT_PART, WORLD_PALETTE);
+        ModelVertices.IndexedMesh turretMesh = WorldModels.packPartIndexed(model, "turret", WORLD_PALETTE);
         assertEquals(36, rootMesh.indexCount());
         assertEquals(36, turretMesh.indexCount());
     }
@@ -385,7 +389,7 @@ class MeshBuilderTest {
         assertTrue(volume > 1e-7, label + " must have positive outward volume, got " + volume);
 
         // Also ensure WorldModels.packIndexed succeeds cleanly on every generated primitive.
-        ModelVertices.IndexedMesh indexed = WorldModels.packIndexed(model);
+        ModelVertices.IndexedMesh indexed = WorldModels.packIndexed(model, WORLD_PALETTE);
         assertTrue(indexed.vertexCount() > 0 && indexed.indexCount() == model.getTriangleCount() * 3);
     }
 

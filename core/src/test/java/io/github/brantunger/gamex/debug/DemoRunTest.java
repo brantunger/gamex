@@ -17,6 +17,7 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.LogCapture;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
@@ -79,7 +80,7 @@ class DemoRunTest {
             simulation.update(DemoRun.FRAME_TIME, input);
             if (range.map.isHazardAt(simulation.player.position.x, simulation.player.position.y)) {
                 wasOverTheGrate = true;
-                assertTrue(simulation.player.getJumpHeight() > GameSimulation.HAZARD_CLEARANCE_HEIGHT,
+                assertTrue(simulation.player.getJumpHeight() > TestTuning.WORLD.grateClearanceHeight,
                     "airborne over the grate on frame " + (frame + 1));
             }
         }

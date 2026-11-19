@@ -15,6 +15,7 @@ import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -136,7 +137,7 @@ class MenuStateTest {
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertEquals(100f, menu.getActiveLoadout().health, 1e-4f);
         assertTrue(menu.getActiveLoadout().hasScattergun, "Stage 02+ direct select starts with Scattergun");
-        assertEquals(Scattergun.PICKUP_WEAPON_SHELLS, menu.getActiveLoadout().shells);
+        assertEquals(TestTuning.WEAPONS.scattergunWeaponPickupShells, menu.getActiveLoadout().shells);
         assertEquals(WeaponSlot.SCATTERGUN, menu.getActiveLoadout().activeWeapon);
     }
 
@@ -195,7 +196,9 @@ class MenuStateTest {
         GameSettings settings = new GameSettings();
         MapKeyValueStore store = new MapKeyValueStore();
         SaveData save = new SaveData(store);
-        save.saveCampaignRun(5, PlayerLoadout.forStage(5, Difficulty.NORMAL, TestTuning.DIFFICULTY));
+        save.saveCampaignRun(5,
+            PlayerLoadout.forStage(Levels.stage("06_warden_core"), Difficulty.NORMAL, TestTuning.DIFFICULTY,
+                TestTuning.WEAPONS));
         MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
 
         menu.confirm(); // CONTINUE CAMPAIGN -> Stage 06

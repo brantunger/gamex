@@ -13,8 +13,6 @@ import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
-import io.github.brantunger.gamex.weapon.RailLance;
-import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.Levels;
@@ -103,18 +101,23 @@ public final class HudRenderer implements Disposable {
     private final SpriteBatch batch;
     private final Matrix4 fallbackProjection = new Matrix4();
     private final ProceduralTextures textures;
+    private final PixelFont font;
     private float width;
     private float height;
     /** One HUD unit in pixels. */
     private float unit;
 
-    /** @param textures the textures to draw with; the caller keeps ownership of them */
-    public HudRenderer(ProceduralTextures textures) {
-        this(textures, new SpriteBatch());
+    /**
+     * @param textures the textures to draw with; the caller keeps ownership of them
+     * @param font the loaded font all text is drawn with
+     */
+    public HudRenderer(ProceduralTextures textures, PixelFont font) {
+        this(textures, font, new SpriteBatch());
     }
 
-    HudRenderer(ProceduralTextures textures, SpriteBatch batch) {
+    HudRenderer(ProceduralTextures textures, PixelFont font, SpriteBatch batch) {
         this.textures = textures;
+        this.font = font;
         this.batch = batch;
         int initialWidth = Gdx.graphics != null ? Gdx.graphics.getWidth() : 0;
         int initialHeight = Gdx.graphics != null ? Gdx.graphics.getHeight() : 0;
@@ -359,7 +362,7 @@ public final class HudRenderer implements Disposable {
         rect(cx - boxW * 0.5f, bottom, boxW, boxH);
         if (prompt.startsWith("[E]")) batch.setColor(0.62f, 1f, 0.86f, 0.95f);
         else batch.setColor(1f, 0.72f, 0.30f, 0.95f);
-        PixelFont.drawCentred(batch, textures.white, prompt, cx, bottom + padY, pixel);
+        font.drawCentred(batch, textures.white, prompt, cx, bottom + padY, pixel);
     }
 
     private void drawHurtOverlay(Player player) {
@@ -513,7 +516,7 @@ public final class HudRenderer implements Disposable {
         float bottom = chargeBottomY(height, unit, simulation.getActiveWeapon(), simulation.getZoom());
         if (charger.isRefused() || player.isDashRefused()) {
             batch.setColor(1f, 0.35f, 0.3f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, "LOW ENERGY", centreX, bottom, 3f * unit);
+            font.drawCentred(batch, textures.white, "LOW ENERGY", centreX, bottom, 3f * unit);
             return;
         }
         if (!charger.isCharging()) return;
@@ -523,9 +526,9 @@ public final class HudRenderer implements Disposable {
         else batch.setColor(0.5f, 0.5f, 0.6f, 1f);
         rect(left, bottom, barWidth * charger.getCharge(), barHeight);
         batch.setColor(1f, 1f, 1f, 0.9f);
-        rect(left + barWidth * BlastCharger.MIN_CHARGE - unit, bottom - 4f * unit, 2f * unit,
+        rect(left + barWidth * charger.getMinCharge() - unit, bottom - 4f * unit, 2f * unit,
             barHeight + 8f * unit);
-        PixelFont.drawCentred(batch, textures.white, "CHARGE", centreX, bottom - 26f * unit, 3f * unit);
+        font.drawCentred(batch, textures.white, "CHARGE", centreX, bottom - 26f * unit, 3f * unit);
     }
 
     private void drawVitalsAndEnergy(GameSimulation simulation) {
@@ -539,7 +542,7 @@ public final class HudRenderer implements Disposable {
         float gap = 4f * unit;
         float span = ENERGY_SEGMENTS * (segmentWidth + gap) - gap;
 
-        boolean low = !energy.canSpend(BlastCharger.MIN_COST);
+        boolean low = !energy.canSpend(charger.getMinCost());
         float filled = energy.getFraction() * ENERGY_SEGMENTS;
         for (int i = 0; i < ENERGY_SEGMENTS; i++) {
             float x = left + i * (segmentWidth + gap);
@@ -559,13 +562,13 @@ public final class HudRenderer implements Disposable {
         rect(left + span * dashFrac - unit, energyBottom - 2f * unit, 2f * unit, segmentHeight + 4f * unit);
 
         if (charger.isReadyToFire()) {
-            float cost = BlastCharger.costFor(charger.getCharge()) / energy.getCapacity();
+            float cost = charger.costFor(charger.getCharge()) / energy.getCapacity();
             float from = Math.max(0f, energy.getFraction() - cost);
             batch.setColor(1f, 1f, 1f, 0.85f);
             rect(left + span * from, energyBottom - 6f * unit, span * (energy.getFraction() - from), 3f * unit);
         }
         batch.setColor(0.8f, 0.72f, 1f, 0.95f);
-        PixelFont.draw(batch, textures.white, "ENERGY [SHIFT: DASH]", left,
+        font.draw(batch, textures.white, "ENERGY [SHIFT: DASH]", left,
             energyBottom + segmentHeight + 6f * unit, 2.3f * unit);
 
         // Health bar.
@@ -580,7 +583,7 @@ public final class HudRenderer implements Disposable {
         rect(left, healthY, barW * hpFrac, barH);
         batch.setColor(0.9f, 1f, 0.94f, 0.95f);
         int shownHp = player.isDead() ? 0 : Math.max(1, Math.round(player.getHealth()));
-        PixelFont.draw(batch, textures.white, "HP " + shownHp, left + barW + 10f * unit, healthY + unit,
+        font.draw(batch, textures.white, "HP " + shownHp, left + barW + 10f * unit, healthY + unit,
             2.6f * unit);
 
         // Armor bar.
@@ -593,7 +596,7 @@ public final class HudRenderer implements Disposable {
             rect(left, armorY, barW * armorFrac, barH);
         }
         batch.setColor(0.72f, 0.90f, 1f, 0.95f);
-        PixelFont.draw(batch, textures.white, "ARMOR " + Math.round(player.getArmor()),
+        font.draw(batch, textures.white, "ARMOR " + Math.round(player.getArmor()),
             left + barW + 10f * unit, armorY + unit, 2.6f * unit);
 
         // Active weapon slots and held security keycards.
@@ -601,7 +604,7 @@ public final class HudRenderer implements Disposable {
         boolean pistolSelected = selectedWeapon == WeaponSlot.PISTOL;
         batch.setColor(pistolSelected ? 0.80f : 0.45f, pistolSelected ? 1f : 0.58f,
             pistolSelected ? 0.88f : 0.52f, pistolSelected ? 0.95f : 0.65f);
-        PixelFont.draw(batch, textures.white, (pistolSelected ? "> " : "  ") + "1: PISTOL [INF]",
+        font.draw(batch, textures.white, (pistolSelected ? "> " : "  ") + "1: PISTOL [INF]",
             left, 114f * unit, 2.4f * unit);
 
         boolean showScatterRow = simulation.hasScattergun() || simulation.getShells() > 0;
@@ -609,8 +612,8 @@ public final class HudRenderer implements Disposable {
             boolean scatterSelected = selectedWeapon == WeaponSlot.SCATTERGUN;
             if (!simulation.hasScattergun()) {
                 batch.setColor(0.75f, 0.58f, 0.44f, 0.72f);
-                PixelFont.draw(batch, textures.white, "  SHELLS [" + simulation.getShells() + "/"
-                    + Scattergun.MAX_SHELLS + "]", left, 136f * unit, 2.4f * unit);
+                font.draw(batch, textures.white, "  SHELLS [" + simulation.getShells() + "/"
+                    + simulation.getMaxShells() + "]", left, 136f * unit, 2.4f * unit);
             } else {
                 if (simulation.getShells() <= 0) {
                     batch.setColor(0.95f, 0.42f, 0.36f, scatterSelected ? 0.96f : 0.72f);
@@ -619,8 +622,8 @@ public final class HudRenderer implements Disposable {
                 } else {
                     batch.setColor(0.55f, 0.52f, 0.48f, 0.68f);
                 }
-                PixelFont.draw(batch, textures.white, (scatterSelected ? "> " : "  ")
-                    + "2: SCATTERGUN [" + simulation.getShells() + "/" + Scattergun.MAX_SHELLS + "]",
+                font.draw(batch, textures.white, (scatterSelected ? "> " : "  ")
+                    + "2: SCATTERGUN [" + simulation.getShells() + "/" + simulation.getMaxShells() + "]",
                     left, 136f * unit, 2.4f * unit);
             }
         }
@@ -631,8 +634,8 @@ public final class HudRenderer implements Disposable {
             float railY = showScatterRow ? 158f * unit : 136f * unit;
             if (!simulation.hasRailLance()) {
                 batch.setColor(0.42f, 0.72f, 0.80f, 0.72f);
-                PixelFont.draw(batch, textures.white, "  SLUGS [" + simulation.getSlugs() + "/"
-                    + RailLance.MAX_SLUGS + "]", left, railY, 2.4f * unit);
+                font.draw(batch, textures.white, "  SLUGS [" + simulation.getSlugs() + "/"
+                    + simulation.getMaxSlugs() + "]", left, railY, 2.4f * unit);
             } else {
                 if (simulation.getSlugs() <= 0) {
                     batch.setColor(0.95f, 0.42f, 0.36f, railSelected ? 0.96f : 0.72f);
@@ -641,8 +644,8 @@ public final class HudRenderer implements Disposable {
                 } else {
                     batch.setColor(0.44f, 0.62f, 0.68f, 0.70f);
                 }
-                PixelFont.draw(batch, textures.white, (railSelected ? "> " : "  ")
-                    + "3: RAIL LANCE [" + simulation.getSlugs() + "/" + RailLance.MAX_SLUGS + "]",
+                font.draw(batch, textures.white, (railSelected ? "> " : "  ")
+                    + "3: RAIL LANCE [" + simulation.getSlugs() + "/" + simulation.getMaxSlugs() + "]",
                     left, railY, 2.4f * unit);
             }
         }
@@ -654,12 +657,12 @@ public final class HudRenderer implements Disposable {
         if (simulation.hasKeycard(Pickup.Kind.AMBER_KEYCARD)) {
             batch.setColor(1f, 0.76f, 0.22f, 0.96f);
             String badge = "[AMBER KEY]";
-            PixelFont.draw(batch, textures.white, badge, keyX, keyY, keySize);
+            font.draw(batch, textures.white, badge, keyX, keyY, keySize);
             keyX += PixelFont.width(badge, keySize) + 14f * unit;
         }
         if (simulation.hasKeycard(Pickup.Kind.CYAN_KEYCARD)) {
             batch.setColor(0.26f, 0.94f, 1f, 0.96f);
-            PixelFont.draw(batch, textures.white, "[CYAN KEY]", keyX, keyY, keySize);
+            font.draw(batch, textures.white, "[CYAN KEY]", keyX, keyY, keySize);
         }
     }
 
@@ -687,11 +690,11 @@ public final class HudRenderer implements Disposable {
             if (remaining > 0) batch.setColor(1f, 0.52f, 0.46f, 0.95f);
             else batch.setColor(0.55f, 1f, 0.82f, 0.95f);
             String hostiles = "HOSTILES " + remaining + "/" + simulation.enemies.size();
-            PixelFont.draw(batch, textures.white, hostiles, 28f * unit, topY, pixel);
+            font.draw(batch, textures.white, hostiles, 28f * unit, topY, pixel);
         } else {
             batch.setColor(0.8f, 1f, 0.88f, 0.92f);
             String targets = "TARGETS " + simulation.getTargetsRemaining() + "/" + simulation.targets.size();
-            PixelFont.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
+            font.draw(batch, textures.white, targets, 28f * unit, topY, pixel);
         }
 
         String objective = simulation.getObjectiveText();
@@ -700,15 +703,15 @@ public final class HudRenderer implements Disposable {
             float objectiveY = objectiveBottomY(width, height, unit);
             batch.setColor(0.55f, 0.95f, 1f, 0.9f);
             // Drawn in two parts, so the line is not built anew each frame.
-            PixelFont.draw(batch, textures.white, OBJECTIVE_PREFIX, STATUS_LEFT * unit, objectiveY, objectivePixel);
-            PixelFont.draw(batch, textures.white, objective,
+            font.draw(batch, textures.white, OBJECTIVE_PREFIX, STATUS_LEFT * unit, objectiveY, objectivePixel);
+            font.draw(batch, textures.white, objective,
                 STATUS_LEFT * unit + PixelFont.width(OBJECTIVE_PREFIX, objectivePixel) + objectivePixel, objectiveY,
                 objectivePixel);
         }
 
         String timer = "TIME " + formatTime(simulation.getTime());
         batch.setColor(0.86f, 0.88f, 0.95f, 0.9f);
-        PixelFont.draw(batch, textures.white, timer,
+        font.draw(batch, textures.white, timer,
             width - 28f * unit - PixelFont.width(timer, pixel), topY, pixel);
     }
 
@@ -732,7 +735,7 @@ public final class HudRenderer implements Disposable {
         String title = overdrive ? "WARDEN // OVERDRIVE" : "WARDEN";
         if (overdrive) batch.setColor(0.42f, 0.86f, 1.00f, 0.98f);
         else batch.setColor(1.00f, 0.44f, 0.28f, 0.98f);
-        PixelFont.drawCentred(batch, textures.white, title, width * 0.5f, barBottom + barH + 6f * unit, labelPix);
+        font.drawCentred(batch, textures.white, title, width * 0.5f, barBottom + barH + 6f * unit, labelPix);
 
         batch.setColor(0.14f, 0.15f, 0.22f, 0.95f);
         rect(left, barBottom, barW, barH);
@@ -760,7 +763,7 @@ public final class HudRenderer implements Disposable {
         batch.setColor(0.06f, 0.08f, 0.14f, 0.78f * alpha);
         rect(cx - boxW * 0.5f, y, boxW, boxH);
         batch.setColor(0.55f, 1f, 0.82f, alpha);
-        PixelFont.drawCentred(batch, textures.white, msg, cx, y + padY, pixel);
+        font.drawCentred(batch, textures.white, msg, cx, y + padY, pixel);
     }
 
     // ---- Menu Screens ----
@@ -772,16 +775,16 @@ public final class HudRenderer implements Disposable {
 
         drawPanel(cx, cy + 6f * unit, 600f * unit, 488f * unit);
         batch.setColor(0.76f, 0.56f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "GAMEX", cx, cy + 168f * unit, 12f * unit);
+        font.drawCentred(batch, textures.white, "GAMEX", cx, cy + 168f * unit, 12f * unit);
         batch.setColor(0.62f, 0.95f, 0.88f, 0.95f);
-        PixelFont.drawCentred(batch, textures.white, "SECTOR BREACH // TACTICAL FPS", cx, cy + 130f * unit,
+        font.drawCentred(batch, textures.white, "SECTOR BREACH // TACTICAL FPS", cx, cy + 130f * unit,
             3f * unit);
 
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.TITLE));
         drawQuitPrompt(menuState, cx, cy - 222f * unit);
 
         batch.setColor(0.65f, 0.70f, 0.78f, 0.85f);
-        PixelFont.drawCentred(batch, textures.white,
+        font.drawCentred(batch, textures.white,
             "WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
             cx, 32f * unit, 2.0f * unit);
     }
@@ -792,16 +795,16 @@ public final class HudRenderer implements Disposable {
         float cy = height * 0.5f;
         drawPanel(cx, cy + 4f * unit, STAGE_SELECT_PANEL_WIDTH * unit, 468f * unit);
         batch.setColor(0.55f, 0.95f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 174f * unit, 5.5f * unit);
+        font.drawCentred(batch, textures.white, "SELECT STAGE", cx, cy + 174f * unit, 5.5f * unit);
         batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
-        PixelFont.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 144f * unit,
+        font.drawCentred(batch, textures.white, "CHOOSE ANY UNLOCKED STAGE TO DEPLOY", cx, cy + 144f * unit,
             2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.STAGE_SELECT));
         // Medals of the highlighted stage, in the strip under BACK.
         String detail = menuState.getStageSelectDetail();
         if (detail != null) {
             batch.setColor(1f, 0.88f, 0.36f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, detail, cx, cy - 208f * unit, MEDAL_PIXEL * unit);
+            font.drawCentred(batch, textures.white, detail, cx, cy - 208f * unit, MEDAL_PIXEL * unit);
         }
     }
 
@@ -811,7 +814,7 @@ public final class HudRenderer implements Disposable {
         float cy = height * 0.5f;
         drawPanel(cx, cy, 580f * unit, 340f * unit);
         batch.setColor(0.78f, 0.62f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SELECT DIFFICULTY", cx, cy + 112f * unit, 5.5f * unit);
+        font.drawCentred(batch, textures.white, "SELECT DIFFICULTY", cx, cy + 112f * unit, 5.5f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.DIFFICULTY_SELECT));
     }
 
@@ -823,19 +826,19 @@ public final class HudRenderer implements Disposable {
         drawPanel(cx, cy, 660f * unit, 420f * unit);
 
         batch.setColor(0.55f, 0.95f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, stage.title, cx, cy + 144f * unit, 5.2f * unit);
+        font.drawCentred(batch, textures.white, stage.title, cx, cy + 144f * unit, 5.2f * unit);
 
         String meta = "DIFFICULTY: " + menuState.getActiveLoadout().difficulty.label
             + "   //   PAR TIME: " + formatTime(stage.parSeconds);
         batch.setColor(0.76f, 0.72f, 0.95f, 0.9f);
-        PixelFont.drawCentred(batch, textures.white, meta, cx, cy + 108f * unit, 2.5f * unit);
+        font.drawCentred(batch, textures.white, meta, cx, cy + 108f * unit, 2.5f * unit);
 
         // Terminal log box.
         batch.setColor(0.04f, 0.06f, 0.10f, 0.85f);
         rect(cx - 290f * unit, cy - 42f * unit, 580f * unit, 128f * unit);
         batch.setColor(0.68f, 0.98f, 0.82f, 0.95f);
         for (int i = 0; i < stage.briefing.size(); i++) {
-            PixelFont.drawCentred(batch, textures.white, "> " + stage.briefing.get(i), cx,
+            font.drawCentred(batch, textures.white, "> " + stage.briefing.get(i), cx,
                 cy + (52f - i * 32f) * unit, 2.4f * unit);
         }
 
@@ -848,7 +851,7 @@ public final class HudRenderer implements Disposable {
         float cy = height * 0.5f;
         drawPanel(cx, cy - 10f * unit, 560f * unit, 370f * unit);
         batch.setColor(0.8f, 0.72f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "PAUSED", cx, cy + 114f * unit, 6.5f * unit);
+        font.drawCentred(batch, textures.white, "PAUSED", cx, cy + 114f * unit, 6.5f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.PAUSED));
         drawQuitPrompt(menuState, cx, cy - 178f * unit);
     }
@@ -859,9 +862,9 @@ public final class HudRenderer implements Disposable {
         float cy = height * 0.5f;
         drawPanel(cx, cy, 600f * unit, 472f * unit);
         batch.setColor(0.78f, 0.65f, 1f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SETTINGS", cx, cy + 168f * unit, 5.8f * unit);
+        font.drawCentred(batch, textures.white, "SETTINGS", cx, cy + 168f * unit, 5.8f * unit);
         batch.setColor(0.66f, 0.78f, 0.86f, 0.88f);
-        PixelFont.drawCentred(batch, textures.white, "LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", cx,
+        font.drawCentred(batch, textures.white, "LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", cx,
             cy + 140f * unit, 2.2f * unit);
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.SETTINGS));
     }
@@ -872,14 +875,14 @@ public final class HudRenderer implements Disposable {
         float cy = height * 0.5f;
         drawPanel(cx, cy, 560f * unit, 310f * unit);
         batch.setColor(1f, 0.30f, 0.34f, 1f);
-        PixelFont.drawCentred(batch, textures.white, "SIGNAL LOST", cx, cy + 78f * unit, 6.5f * unit);
+        font.drawCentred(batch, textures.white, "SIGNAL LOST", cx, cy + 78f * unit, 6.5f * unit);
         if (simulation != null) {
             String tally = simulation.enemies.isEmpty()
                 ? "TARGETS " + simulation.getTargetsDestroyed() + "/" + simulation.targets.size()
                 : "HOSTILES " + simulation.getEnemiesDestroyed() + "/" + simulation.enemies.size();
             String sub = "SURVIVED " + formatTime(simulation.getTime()) + "   //   " + tally;
             batch.setColor(0.90f, 0.80f, 0.82f, 0.92f);
-            PixelFont.drawCentred(batch, textures.white, sub, cx, cy + 32f * unit, 2.5f * unit);
+            font.drawCentred(batch, textures.white, sub, cx, cy + 32f * unit, 2.5f * unit);
         }
         drawOptionRows(menuState, firstOptionBottomY(height, unit, MenuState.Screen.DEAD));
     }
@@ -896,16 +899,16 @@ public final class HudRenderer implements Disposable {
 
         if (campaignDone) {
             batch.setColor(1f, 0.88f, 0.36f, 1f);
-            PixelFont.drawCentred(batch, textures.white, "CAMPAIGN COMPLETE", cx, cy + 174f * unit, 5.6f * unit);
+            font.drawCentred(batch, textures.white, "CAMPAIGN COMPLETE", cx, cy + 174f * unit, 5.6f * unit);
         } else {
             batch.setColor(0.52f, 1f, 0.82f, 1f);
-            PixelFont.drawCentred(batch, textures.white, "STAGE COMPLETE", cx, cy + 174f * unit, 5.8f * unit);
+            font.drawCentred(batch, textures.white, "STAGE COMPLETE", cx, cy + 174f * unit, 5.8f * unit);
         }
         batch.setColor(0.78f, 0.84f, 1f, 0.95f);
-        PixelFont.drawCentred(batch, textures.white, stage.title, cx, cy + 138f * unit, 3.2f * unit);
+        font.drawCentred(batch, textures.white, stage.title, cx, cy + 138f * unit, 3.2f * unit);
         if (campaignDone) {
             batch.setColor(0.52f, 1f, 0.82f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, "SECTOR CLEARED - ALL STAGES COMPLETE", cx,
+            font.drawCentred(batch, textures.white, "SECTOR CLEARED - ALL STAGES COMPLETE", cx,
                 cy + 112f * unit, 2.4f * unit);
         }
 
@@ -914,26 +917,26 @@ public final class HudRenderer implements Disposable {
             boolean hostiles = !stage.map.getEnemySpawns().isEmpty();
 
             batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, tallyTimeLine(sum, stage.parSeconds), cx, cy + 86f * unit,
+            font.drawCentred(batch, textures.white, tallyTimeLine(sum, stage.parSeconds), cx, cy + 86f * unit,
                 statPix);
             if (sum.newBestTime) batch.setColor(1f, 0.88f, 0.36f, 1f);
-            PixelFont.drawCentred(batch, textures.white,
+            font.drawCentred(batch, textures.white,
                 tallyBestLine(sum, menuState.getActiveLoadout().difficulty.label), cx, cy + 62f * unit, statPix);
             batch.setColor(0.92f, 0.95f, 1f, 0.95f);
-            PixelFont.drawCentred(batch, textures.white, tallyClearedLine(sum, hostiles), cx, cy + 38f * unit,
+            font.drawCentred(batch, textures.white, tallyClearedLine(sum, hostiles), cx, cy + 38f * unit,
                 statPix);
-            PixelFont.drawCentred(batch, textures.white, tallyStatsLine(sum), cx, cy + 14f * unit, statPix);
+            font.drawCentred(batch, textures.white, tallyStatsLine(sum), cx, cy + 14f * unit, statPix);
 
             if (sum.rank == 'S') batch.setColor(1f, 0.88f, 0.36f, 1f);
             else if (sum.rank == 'A') batch.setColor(0.45f, 0.96f, 0.85f, 1f);
             else batch.setColor(0.80f, 0.68f, 1f, 1f);
-            PixelFont.drawCentred(batch, textures.white, "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]",
+            font.drawCentred(batch, textures.white, "RANK: [" + sum.rank + "]   BEST: [" + sum.bestRank + "]",
                 cx, cy - 28f * unit, 4f * unit);
 
             if (!sum.newMedals.isEmpty()) batch.setColor(1f, 0.88f, 0.36f, 1f);
             else if (!sum.medals.isEmpty()) batch.setColor(0.52f, 1f, 0.82f, 0.95f);
             else batch.setColor(0.70f, 0.78f, 0.90f, 0.88f);
-            PixelFont.drawCentred(batch, textures.white, tallyMedalLine(sum), cx, cy - 58f * unit,
+            font.drawCentred(batch, textures.white, tallyMedalLine(sum), cx, cy - 58f * unit,
                 MEDAL_PIXEL * unit);
         }
 
@@ -944,7 +947,7 @@ public final class HudRenderer implements Disposable {
     private void drawQuitPrompt(MenuState menuState, float cx, float y) {
         if (!menuState.isQuitPromptVisible()) return;
         batch.setColor(1f, 0.72f, 0.30f, 0.95f);
-        PixelFont.drawCentred(batch, textures.white, MenuState.QUIT_PROMPT, cx, y, 2.8f * unit);
+        font.drawCentred(batch, textures.white, MenuState.QUIT_PROMPT, cx, y, 2.8f * unit);
     }
 
     private void drawBackdropShade(float alpha) {
@@ -976,13 +979,13 @@ public final class HudRenderer implements Disposable {
                 batch.setColor(0.42f, 0.28f, 0.76f, 0.85f);
                 rect(cx - boxW * 0.5f, bottom, boxW, rowH);
                 batch.setColor(1f, 1f, 1f, 1f);
-                PixelFont.drawCentred(batch, textures.white, "> " + options.get(i) + " <", cx,
+                font.drawCentred(batch, textures.white, "> " + options.get(i) + " <", cx,
                     bottom + (rowH - PixelFont.height(textSize)) * 0.5f, textSize);
             } else {
                 batch.setColor(0.12f, 0.13f, 0.20f, 0.65f);
                 rect(cx - boxW * 0.5f, bottom, boxW, rowH);
                 batch.setColor(0.78f, 0.84f, 0.90f, 0.92f);
-                PixelFont.drawCentred(batch, textures.white, options.get(i), cx,
+                font.drawCentred(batch, textures.white, options.get(i), cx,
                     bottom + (rowH - PixelFont.height(textSize)) * 0.5f, textSize);
             }
         }

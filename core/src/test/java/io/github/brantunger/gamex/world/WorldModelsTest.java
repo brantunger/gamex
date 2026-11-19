@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelRig;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
@@ -29,6 +31,8 @@ import java.util.Set;
 
 /** Checks the shipped 3D world object models and how they are packed into vertices. */
 class WorldModelsTest {
+
+    private static final ModelPalette PALETTE = TestTuning.PALETTES.world;
 
     private static final ObjModel CANISTER = load(WorldModels.CANISTER_PATH);
     private static final ObjModel RING_BOARD = load(WorldModels.RING_BOARD_PATH);
@@ -220,7 +224,7 @@ class WorldModelsTest {
     @Test
     void verticesHaveUnitNormalsAndValidColoursAndUnknownMaterialsAreRejected() {
         for (ObjModel model : ALL_MODELS) {
-            float[] vertices = WorldModels.vertices(model);
+            float[] vertices = WorldModels.vertices(model, PALETTE);
             assertEquals(model.getTriangleCount() * 3 * WorldModels.VERTEX_SIZE, vertices.length);
             for (int at = 0; at < vertices.length; at += WorldModels.VERTEX_SIZE) {
                 float length = new Vector3(vertices[at + 3], vertices[at + 4], vertices[at + 5]).len();
@@ -233,7 +237,7 @@ class WorldModelsTest {
 
         ObjModel stray = ObjModel.parse("v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl chrome\nf 1 2 3\n");
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-            () -> WorldModels.vertices(stray));
+            () -> WorldModels.vertices(stray, PALETTE));
         assertTrue(error.getMessage().contains("chrome"), error.getMessage());
     }
 
@@ -243,15 +247,16 @@ class WorldModelsTest {
         assertBoundsFitCylinder(DRONE, 0.1f, Enemy.Kind.DRONE.height, Enemy.Kind.DRONE.radius, false);
         assertBoundsFitCylinder(GUARD, 0f, Enemy.Kind.GUARD.height, Enemy.Kind.GUARD.radius, true);
 
-        float[] turretBase = WorldModels.verticesForGroupPrefix(TURRET, "base_");
-        float[] turretHead = WorldModels.verticesForGroupPrefix(TURRET, "head_");
-        assertEquals(WorldModels.vertices(TURRET).length, turretBase.length + turretHead.length);
+        float[] turretBase = WorldModels.verticesForGroupPrefix(TURRET, "base_", PALETTE);
+        float[] turretHead = WorldModels.verticesForGroupPrefix(TURRET, "head_", PALETTE);
+        assertEquals(WorldModels.vertices(TURRET, PALETTE).length, turretBase.length + turretHead.length);
 
-        float[] guardBase = WorldModels.verticesForGroupPrefix(GUARD, "base_");
-        float[] guardHead = WorldModels.verticesForGroupPrefix(GUARD, "head_");
-        assertEquals(WorldModels.vertices(GUARD).length, guardBase.length + guardHead.length);
+        float[] guardBase = WorldModels.verticesForGroupPrefix(GUARD, "base_", PALETTE);
+        float[] guardHead = WorldModels.verticesForGroupPrefix(GUARD, "head_", PALETTE);
+        assertEquals(WorldModels.vertices(GUARD, PALETTE).length, guardBase.length + guardHead.length);
 
-        assertThrows(IllegalArgumentException.class, () -> WorldModels.verticesForGroupPrefix(DRONE, "missing_"));
+        assertThrows(IllegalArgumentException.class,
+            () -> WorldModels.verticesForGroupPrefix(DRONE, "missing_", PALETTE));
     }
 
     @Test
@@ -329,7 +334,7 @@ class WorldModelsTest {
         assertTrue(RAIL_BEAM.isAccentMaterial("rail_beam"));
         assertFalse(RAIL_BEAM.isAccentMaterial("rail_beam_core"));
 
-        float[] hazardVerts = WorldModels.vertices(HAZARD_GRATE);
+        float[] hazardVerts = WorldModels.vertices(HAZARD_GRATE, PALETTE);
         for (int t = 0; t < HAZARD_GRATE.getTriangleCount(); t++) {
             for (int c = 0; c < 3; c++) {
                 Vector3 p = position(HAZARD_GRATE, t, c);
@@ -343,7 +348,7 @@ class WorldModelsTest {
             }
         }
 
-        float[] doorVerts = WorldModels.vertices(DOOR_BULKHEAD);
+        float[] doorVerts = WorldModels.vertices(DOOR_BULKHEAD, PALETTE);
         for (int t = 0; t < DOOR_BULKHEAD.getTriangleCount(); t++) {
             float expectedAccent = DOOR_BULKHEAD.isAccentMaterial(DOOR_BULKHEAD.getMaterial(t)) ? 1f : 0f;
             for (int c = 0; c < 3; c++) {
@@ -356,7 +361,7 @@ class WorldModelsTest {
 
     @Test
     void articulatedEnemyRigsAndIndexedMeshesMatchWorldConstants() {
-        ModelVertices.IndexedMesh doorIndexed = WorldModels.packIndexed(DOOR_BULKHEAD);
+        ModelVertices.IndexedMesh doorIndexed = WorldModels.packIndexed(DOOR_BULKHEAD, PALETTE);
         assertTrue(doorIndexed.vertexCount() > 0 && doorIndexed.vertexCount() < doorIndexed.indexCount());
         assertEquals(DOOR_BULKHEAD.getTriangleCount() * 3, doorIndexed.indexCount());
 
@@ -384,7 +389,7 @@ class WorldModelsTest {
         assertEquals(WorldModels.GUARD_MUZZLE_Z, guardMuzzle.z, 1e-5f);
         assertTrue(GUARD.getSocket("telegraph") != null);
 
-        ModelVertices.IndexedMesh guardLeftLeg = WorldModels.packPartIndexed(GUARD, "leg_l");
+        ModelVertices.IndexedMesh guardLeftLeg = WorldModels.packPartIndexed(GUARD, "leg_l", PALETTE);
         assertTrue(guardLeftLeg.vertexCount() > 0);
         for (int i = 0; i < guardLeftLeg.vertices.length; i += WorldModels.VERTEX_SIZE) {
             assertTrue(guardLeftLeg.vertices[i + 1] <= 1e-4f, "leg_l vertices must be relative to hip pivot");

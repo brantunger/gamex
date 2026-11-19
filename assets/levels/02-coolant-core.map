@@ -2,6 +2,7 @@ id: 02_coolant_core
 title: 02: COOLANT CORE
 par: 65
 complete_on_all_targets: false
+loadout: scattergun
 briefing: HEAVY GUARD BOTS PATROL THE PRIMARY COOLANT CONDUITS.
 briefing: STRAFE INCOMING BOLTS AND BAIT FIRE INTO CANISTERS.
 briefing: BREACH THE REACTOR LANES TO THE SOUTH EXTRACTION PAD.

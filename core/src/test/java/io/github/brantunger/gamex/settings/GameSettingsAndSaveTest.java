@@ -10,6 +10,7 @@ import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -65,20 +66,23 @@ class GameSettingsAndSaveTest {
         assertEquals(9, save.getSavedLoadout().slugs);
         assertEquals(WeaponSlot.RAIL_LANCE, save.getSavedLoadout().activeWeapon);
 
-        PlayerLoadout s1 = PlayerLoadout.forStage(0, Difficulty.NORMAL, TestTuning.DIFFICULTY);
+        PlayerLoadout s1 = PlayerLoadout.forStage(Levels.stage("01_outer_breach"), Difficulty.NORMAL,
+            TestTuning.DIFFICULTY, TestTuning.WEAPONS);
         assertFalse(s1.hasScattergun);
         assertEquals(0, s1.shells);
         assertFalse(s1.hasRailLance);
         assertEquals(0, s1.slugs);
         assertEquals(WeaponSlot.PISTOL, s1.activeWeapon);
 
-        PlayerLoadout s2 = PlayerLoadout.forStage(1, Difficulty.NORMAL, TestTuning.DIFFICULTY);
+        PlayerLoadout s2 = PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.NORMAL,
+            TestTuning.DIFFICULTY, TestTuning.WEAPONS);
         assertTrue(s2.hasScattergun);
         assertEquals(8, s2.shells);
         assertFalse(s2.hasRailLance);
         assertEquals(WeaponSlot.SCATTERGUN, s2.activeWeapon);
 
-        PlayerLoadout s4 = PlayerLoadout.forStage(3, Difficulty.NORMAL, TestTuning.DIFFICULTY);
+        PlayerLoadout s4 = PlayerLoadout.forStage(Levels.stage("04_lockdown_wing"), Difficulty.NORMAL,
+            TestTuning.DIFFICULTY, TestTuning.WEAPONS);
         assertTrue(s4.hasScattergun);
         assertEquals(8, s4.shells);
         assertTrue(s4.hasRailLance);

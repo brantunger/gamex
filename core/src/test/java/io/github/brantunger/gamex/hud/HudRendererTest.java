@@ -110,7 +110,7 @@ class HudRendererTest {
     @Test
     void constructorAndResizeGuardZeroAndNegativeDimensionsWithoutNaNProjection() {
         Gdx.graphics = graphicsStub(0, 0);
-        HudRenderer hud = new HudRenderer(null, null);
+        HudRenderer hud = new HudRenderer(null, null, null);
         assertEquals(1280f, hud.getWidth(), 1e-4f);
         assertEquals(720f, hud.getHeight(), 1e-4f);
         assertEquals(1f, hud.getUnit(), 1e-6f);

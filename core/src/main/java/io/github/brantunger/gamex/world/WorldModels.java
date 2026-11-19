@@ -1,13 +1,18 @@
 package io.github.brantunger.gamex.world;
 
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * The 3D world objects (targets and blast projectiles), loaded from Wavefront OBJ files. This class names their asset
- * paths and gives each material in those files a colour and gloss, turning parsed models into the game's vertex
- * layout without graphics types. The Warden is the exception: it is a glTF model with its own materials, and
- * only its path, height, flare position and glow colours are here.
+ * paths, the materials those files may use and the accents drawn on them, and turns parsed models into the game's
+ * vertex layout, with the colours of a {@link ModelPalette}, without graphics types. The Warden is the exception:
+ * it is a glTF model with its own materials, and only its path, height, flare position and the names of its glow
+ * colours are here.
  */
 public final class WorldModels {
 
@@ -83,90 +88,104 @@ public final class WorldModels {
     public static final float WARDEN_TELEGRAPH_Y = 0.68f;
     public static final float WARDEN_TELEGRAPH_Z = -0.26f;
 
-    /** Per-draw accent shader colours ({r, g, b, gloss}) substituting {@code # @accent} surfaces without VBO clones. */
-    public static final float[] ACCENT_DOOR_UNLOCKED = {0.62f, 0.78f, 0.92f, 0.85f};
-    public static final float[] ACCENT_DOOR_AMBER = {1.00f, 0.72f, 0.16f, 0.95f};
-    public static final float[] ACCENT_DOOR_CYAN = {0.18f, 0.92f, 0.98f, 0.95f};
-    public static final float[] ACCENT_DOOR_LOCKDOWN = {0.98f, 0.22f, 0.24f, 0.95f};
-    public static final float[] ACCENT_DOOR_BOSS = {0.84f, 0.24f, 0.96f, 0.95f};
-    public static final float[] ACCENT_DOOR_OPEN = {0.24f, 0.96f, 0.48f, 0.95f};
-    public static final float[] ACCENT_KEYCARD_AMBER = {1.00f, 0.72f, 0.16f, 0.85f};
-    public static final float[] ACCENT_KEYCARD_CYAN = {0.18f, 0.92f, 0.98f, 0.85f};
-    public static final float[] ACCENT_CONSOLE_LOCKED = {0.98f, 0.28f, 0.22f, 0.95f};
-    public static final float[] ACCENT_CONSOLE_ACTIVE = {0.24f, 0.96f, 0.48f, 0.95f};
-    public static final float[] ACCENT_WARDEN_PHASE1 = {1.00f, 0.30f, 0.14f, 0.96f};
-    public static final float[] ACCENT_WARDEN_OVERDRIVE = {0.42f, 0.54f, 1.00f, 0.98f};
-    public static final float[] ACCENT_HAZARD_LIVE = {0.18f, 0.86f, 1.00f, 0.95f};
-    public static final float[] ACCENT_RAIL_READY = {0.18f, 0.94f, 1.00f, 0.98f};
-    public static final float[] ACCENT_RAIL_BEAM = {0.36f, 0.96f, 1.00f, 1.00f};
+    /** The path of the file inside the assets folder that gives each {@link Material} and {@link Accent} a colour. */
+    public static final String PALETTE_PATH = "data/palette-world.txt";
 
-    /** The materials the world object model files may use. */
+    private static final String PALETTE_LABEL = "world";
+
+    /**
+     * Per-draw accent shader colours ({r, g, b, gloss}) substituting {@code # @accent} surfaces without VBO clones.
+     * {@link #PALETTE_PATH} holds the colour of each.
+     */
+    public enum Accent {
+        DOOR_UNLOCKED("door_unlocked"),
+        DOOR_AMBER("door_amber"),
+        DOOR_CYAN("door_cyan"),
+        DOOR_LOCKDOWN("door_lockdown"),
+        DOOR_BOSS("door_boss"),
+        DOOR_OPEN("door_open"),
+        KEYCARD_AMBER("keycard_amber"),
+        KEYCARD_CYAN("keycard_cyan"),
+        CONSOLE_LOCKED("console_locked"),
+        CONSOLE_ACTIVE("console_active"),
+        WARDEN_PHASE1("warden_phase1"),
+        WARDEN_OVERDRIVE("warden_overdrive"),
+        HAZARD_LIVE("hazard_live"),
+        RAIL_READY("rail_ready"),
+        RAIL_BEAM("rail_beam");
+
+        /** The name of the accent in the palette file, after {@code accent.}. */
+        public final String name;
+
+        Accent(String name) {
+            this.name = name;
+        }
+    }
+
+    /** The materials the world object model files may use. {@link #PALETTE_PATH} holds the colour of each. */
     public enum Material {
-        CANISTER_BODY("canister_body", 0.22f, 0.82f, 0.71f, 0.45f),
-        CANISTER_BAND("canister_band", 0.16f, 0.27f, 0.30f, 0.3f),
-        CANISTER_CAP("canister_cap", 0.50f, 0.53f, 0.55f, 0.8f),
-        CANISTER_EMBLEM("canister_emblem", 0.91f, 0.96f, 0.81f, 0.2f),
-        BOARD_FOOT("board_foot", 0.36f, 0.35f, 0.33f, 0.2f),
-        BOARD_POST("board_post", 0.47f, 0.45f, 0.42f, 0.3f),
-        BOARD_RIM("board_rim", 0.12f, 0.10f, 0.18f, 0.2f),
-        BOARD_WHITE("board_white", 0.91f, 0.90f, 0.85f, 0.1f),
-        BOARD_VIOLET("board_violet", 0.41f, 0.27f, 0.77f, 0.2f),
-        BOARD_BULLSEYE("board_bullseye", 0.89f, 0.24f, 0.56f, 0.3f),
-        ORB_CORE("orb_core", 0.95f, 0.85f, 1.00f, 1.0f),
-        ORB_SHELL("orb_shell", 0.62f, 0.32f, 1.00f, 0.8f),
-        MEDKIT_CASE("medkit_case", 0.90f, 0.92f, 0.90f, 0.35f),
-        MEDKIT_TRIM("medkit_trim", 0.30f, 0.35f, 0.38f, 0.5f),
-        MEDKIT_CROSS("medkit_cross", 0.92f, 0.20f, 0.26f, 0.4f),
-        ARMOR_PLATE("armor_plate", 0.18f, 0.52f, 0.86f, 0.65f),
-        ARMOR_TRIM("armor_trim", 0.42f, 0.48f, 0.56f, 0.75f),
-        ARMOR_CORE("armor_core", 0.45f, 0.92f, 1.00f, 0.9f),
-        CELL_CAP("cell_cap", 0.32f, 0.28f, 0.42f, 0.6f),
-        CELL_CORE("cell_core", 0.76f, 0.42f, 1.00f, 0.95f),
-        BOT_ARMOR("bot_armor", 0.34f, 0.37f, 0.43f, 0.65f),
-        BOT_DARK("bot_dark", 0.15f, 0.17f, 0.21f, 0.40f),
-        BOT_TRIM("bot_trim", 0.52f, 0.56f, 0.63f, 0.80f),
-        BOT_VISOR("bot_visor", 1.00f, 0.22f, 0.28f, 0.95f),
-        BOT_CORE("bot_core", 1.00f, 0.48f, 0.18f, 0.90f),
-        BOLT_CORE("bolt_core", 1.00f, 0.82f, 0.78f, 1.00f),
-        BOLT_SHELL("bolt_shell", 1.00f, 0.22f, 0.26f, 0.85f),
-        DOOR_ARMOR("door_armor", 0.36f, 0.40f, 0.46f, 0.55f),
-        DOOR_TRIM("door_trim", 0.22f, 0.25f, 0.30f, 0.65f),
-        DOOR_DARK("door_dark", 0.13f, 0.15f, 0.18f, 0.35f),
-        DOOR_STATUS("door_status", 0.62f, 0.78f, 0.92f, 0.85f),
-        KEYCARD_BODY("keycard_body", 1.00f, 0.72f, 0.16f, 0.85f),
-        KEYCARD_TRIM("keycard_trim", 0.22f, 0.25f, 0.30f, 0.70f),
-        KEYCARD_STRIPE("keycard_stripe", 0.12f, 0.14f, 0.18f, 0.50f),
-        KEYCARD_CHIP("keycard_chip", 0.98f, 0.94f, 0.68f, 0.95f),
-        CONSOLE_DARK("console_dark", 0.16f, 0.19f, 0.23f, 0.45f),
-        CONSOLE_BODY("console_body", 0.30f, 0.34f, 0.40f, 0.60f),
-        CONSOLE_TRIM("console_trim", 0.48f, 0.52f, 0.58f, 0.75f),
-        CONSOLE_KEYPAD("console_keypad", 0.20f, 0.24f, 0.28f, 0.40f),
-        CONSOLE_SCREEN("console_screen", 0.98f, 0.28f, 0.22f, 0.95f),
-        SHOTGUN_METAL("shotgun_metal", 0.25f, 0.28f, 0.33f, 0.70f),
-        SHOTGUN_DARK("shotgun_dark", 0.11f, 0.13f, 0.16f, 0.45f),
-        SHOTGUN_POLYMER("shotgun_polymer", 0.26f, 0.28f, 0.32f, 0.18f),
-        SHOTGUN_WOOD("shotgun_wood", 0.46f, 0.27f, 0.14f, 0.22f),
-        SHELL_CRIMSON("shell_crimson", 0.88f, 0.17f, 0.20f, 0.45f),
-        SHELL_BRASS("shell_brass", 0.96f, 0.72f, 0.22f, 0.80f),
-        SHELL_CRATE("shell_crate", 0.20f, 0.26f, 0.22f, 0.30f),
-        HAZARD_FRAME("hazard_frame", 0.22f, 0.25f, 0.30f, 0.65f),
-        HAZARD_DARK("hazard_dark", 0.08f, 0.10f, 0.12f, 0.30f),
-        HAZARD_COIL("hazard_coil", 0.18f, 0.86f, 1.00f, 0.95f),
-        RAIL_METAL("rail_metal", 0.24f, 0.28f, 0.35f, 0.72f),
-        RAIL_DARK("rail_dark", 0.10f, 0.12f, 0.16f, 0.45f),
-        RAIL_COPPER("rail_copper", 0.88f, 0.54f, 0.22f, 0.80f),
-        RAIL_CORE("rail_core", 0.18f, 0.94f, 1.00f, 0.98f),
-        RAIL_BEAM("rail_beam", 0.36f, 0.96f, 1.00f, 1.00f),
-        RAIL_BEAM_CORE("rail_beam_core", 0.88f, 0.98f, 1.00f, 1.00f);
+        CANISTER_BODY("canister_body"),
+        CANISTER_BAND("canister_band"),
+        CANISTER_CAP("canister_cap"),
+        CANISTER_EMBLEM("canister_emblem"),
+        BOARD_FOOT("board_foot"),
+        BOARD_POST("board_post"),
+        BOARD_RIM("board_rim"),
+        BOARD_WHITE("board_white"),
+        BOARD_VIOLET("board_violet"),
+        BOARD_BULLSEYE("board_bullseye"),
+        ORB_CORE("orb_core"),
+        ORB_SHELL("orb_shell"),
+        MEDKIT_CASE("medkit_case"),
+        MEDKIT_TRIM("medkit_trim"),
+        MEDKIT_CROSS("medkit_cross"),
+        ARMOR_PLATE("armor_plate"),
+        ARMOR_TRIM("armor_trim"),
+        ARMOR_CORE("armor_core"),
+        CELL_CAP("cell_cap"),
+        CELL_CORE("cell_core"),
+        BOT_ARMOR("bot_armor"),
+        BOT_DARK("bot_dark"),
+        BOT_TRIM("bot_trim"),
+        BOT_VISOR("bot_visor"),
+        BOT_CORE("bot_core"),
+        BOLT_CORE("bolt_core"),
+        BOLT_SHELL("bolt_shell"),
+        DOOR_ARMOR("door_armor"),
+        DOOR_TRIM("door_trim"),
+        DOOR_DARK("door_dark"),
+        DOOR_STATUS("door_status"),
+        KEYCARD_BODY("keycard_body"),
+        KEYCARD_TRIM("keycard_trim"),
+        KEYCARD_STRIPE("keycard_stripe"),
+        KEYCARD_CHIP("keycard_chip"),
+        CONSOLE_DARK("console_dark"),
+        CONSOLE_BODY("console_body"),
+        CONSOLE_TRIM("console_trim"),
+        CONSOLE_KEYPAD("console_keypad"),
+        CONSOLE_SCREEN("console_screen"),
+        SHOTGUN_METAL("shotgun_metal"),
+        SHOTGUN_DARK("shotgun_dark"),
+        SHOTGUN_POLYMER("shotgun_polymer"),
+        SHOTGUN_WOOD("shotgun_wood"),
+        SHELL_CRIMSON("shell_crimson"),
+        SHELL_BRASS("shell_brass"),
+        SHELL_CRATE("shell_crate"),
+        HAZARD_FRAME("hazard_frame"),
+        HAZARD_DARK("hazard_dark"),
+        HAZARD_COIL("hazard_coil"),
+        RAIL_METAL("rail_metal"),
+        RAIL_DARK("rail_dark"),
+        RAIL_COPPER("rail_copper"),
+        RAIL_CORE("rail_core"),
+        RAIL_BEAM("rail_beam"),
+        RAIL_BEAM_CORE("rail_beam_core");
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;
-        /** The red, green and blue of the material, and its gloss from 0 (matt) to 1 (polished). */
-        final float[] colour;
 
-        Material(String name, float red, float green, float blue, float gloss) {
+        Material(String name) {
             this.name = name;
-            this.colour = new float[] {red, green, blue, gloss};
         }
 
         /**
@@ -186,22 +205,61 @@ public final class WorldModels {
     private WorldModels() {}
 
     /**
+     * Reads the colours of the world models from {@link #PALETTE_PATH}.
+     * @return the loaded palette
+     * @throws IllegalArgumentException if the file breaks the format, lacks a material or accent, holds a name
+     *     this class does not list, or holds a value that is not four numbers from 0 to 1
+     */
+    public static ModelPalette loadPalette() {
+        return ModelPalette.load(PALETTE_LABEL, PALETTE_PATH, materialNames(), accentNames());
+    }
+
+    /**
+     * Parses the text of a palette file of the world models.
+     * @param assetPath path label included in error messages
+     * @param text raw file contents
+     * @return the parsed palette
+     * @throws IllegalArgumentException as {@link #loadPalette} does
+     */
+    public static ModelPalette parsePalette(String assetPath, String text) {
+        return ModelPalette.parse(PALETTE_LABEL, assetPath, text, materialNames(), accentNames());
+    }
+
+    private static List<String> materialNames() {
+        List<String> names = new ArrayList<>();
+        for (Material material : Material.values()) names.add(material.name);
+        return names;
+    }
+
+    private static List<String> accentNames() {
+        List<String> names = new ArrayList<>();
+        for (Accent accent : Accent.values()) names.add(accent.name);
+        return names;
+    }
+
+    private static float[] colour(ModelPalette palette, String material) {
+        return palette.colour(Material.named(material).name);
+    }
+
+    /**
      * Turns a parsed world model into packed triangles of position, normal, colour and gloss.
      * @param model the parsed model file
+     * @param palette the colours of the world materials
      * @return three vertices per triangle
      * @throws IllegalArgumentException if a face uses a material that {@link Material} does not list
      */
-    public static float[] vertices(ObjModel model) {
-        return ModelVertices.pack(model, name -> Material.named(name).colour);
+    public static float[] vertices(ObjModel model, ModelPalette palette) {
+        return ModelVertices.pack(model, name -> colour(palette, name));
     }
 
     /**
      * Packs an entire world model into deduplicated vertices and 16-bit triangle indices around origin.
      * @param model parsed world model
+     * @param palette colours of the world materials
      * @return indexed vertex and triangle index arrays
      */
-    public static ModelVertices.IndexedMesh packIndexed(ObjModel model) {
-        return ModelVertices.packIndexed(model, name -> Material.named(name).colour);
+    public static ModelVertices.IndexedMesh packIndexed(ObjModel model, ModelPalette palette) {
+        return ModelVertices.packIndexed(model, name -> colour(palette, name));
     }
 
     /**
@@ -209,26 +267,29 @@ public final class WorldModels {
      * part's local pivot.
      * @param model parsed world model
      * @param partName part name to extract
+     * @param palette colours of the world materials
      * @return pivot-relative indexed vertex and triangle index arrays
      * @throws IllegalArgumentException if no triangles belong to {@code partName} or a material is unknown
      */
-    public static ModelVertices.IndexedMesh packPartIndexed(ObjModel model, String partName) {
+    public static ModelVertices.IndexedMesh packPartIndexed(ObjModel model, String partName,
+                                                            ModelPalette palette) {
         ObjModel.PartSpec spec = model.getPartSpec(partName);
         float px = spec == null ? 0f : spec.pivotX;
         float py = spec == null ? 0f : spec.pivotY;
         float pz = spec == null ? 0f : spec.pivotZ;
         return ModelVertices.packIndexed(model, t -> partName.equals(model.getPart(t)),
-            px, py, pz, name -> Material.named(name).colour);
+            px, py, pz, name -> colour(palette, name));
     }
 
     /**
      * Turns only the triangles whose OBJ group starts with {@code groupPrefix} into packed vertices.
      * @param model the parsed model file
      * @param groupPrefix prefix matched against {@link ObjModel#getGroup(int)}
+     * @param palette the colours of the world materials
      * @return three vertices per matching triangle
      * @throws IllegalArgumentException if no triangle matches {@code groupPrefix} or a material is unknown
      */
-    public static float[] verticesForGroupPrefix(ObjModel model, String groupPrefix) {
+    public static float[] verticesForGroupPrefix(ObjModel model, String groupPrefix, ModelPalette palette) {
         int count = 0;
         for (int t = 0; t < model.getTriangleCount(); t++) {
             if (model.getGroup(t).startsWith(groupPrefix)) count++;
@@ -240,7 +301,7 @@ public final class WorldModels {
         int at = 0;
         for (int t = 0; t < model.getTriangleCount(); t++) {
             if (!model.getGroup(t).startsWith(groupPrefix)) continue;
-            ModelVertices.writeTriangle(model, t, Material.named(model.getMaterial(t)).colour, out, at);
+            ModelVertices.writeTriangle(model, t, colour(palette, model.getMaterial(t)), out, at);
             at += 3 * VERTEX_SIZE;
         }
         return out;

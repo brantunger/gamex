@@ -2,14 +2,18 @@ package io.github.brantunger.gamex.world;
 
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.data.TuningFile;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -22,6 +26,17 @@ import java.util.regex.Pattern;
  * begin with {@code key: value} metadata headers ({@code id}, {@code title}, {@code par},
  * {@code complete_on_all_targets}, and one or more {@code briefing} lines), followed by a blank line and the
  * rectangular {@link GameMap} layout. Lines whose trimmed text begins with {@code //} are treated as comments.
+ *
+ * <p>A stage file may also hold one {@code loadout} header: the weapons a player deployed straight to the stage
+ * starts with, by name and separated by commas (for example {@code loadout: scattergun, raillance}). The names are
+ * {@code pistol}, {@code scattergun} and {@code raillance}; the pistol is carried whether it is listed or not, so a
+ * stage without the header starts with the pistol alone. The header counts for campaign stages only: from the
+ * menu the Training Range is entered with the pistol alone, and {@link #trainingRange()} refuses a file that holds
+ * the header.
+ *
+ * <p>The campaign's stages are the files listed in {@link #CAMPAIGN_PATH}, in play order; {@link #stage(String)}
+ * finds one of them by its {@code id}. {@link #FIRST_PATH} and {@link #TRAINING_RANGE_PATH} are not campaign stages
+ * and have entries of their own.
  *
  * <p>The files are read with {@link AssetText} and the headers are parsed by {@link TuningFile}, the loader shared
  * with the tuning files in {@code assets/data/}; the checks particular to a stage (the form of its {@code id}, a
@@ -39,22 +54,14 @@ public final class Levels {
     public static final String FIRST_PATH = LEVELS_DIR + "/first.map";
     /** Internal asset path of the Training Range stage. */
     public static final String TRAINING_RANGE_PATH = LEVELS_DIR + "/training-range.map";
-    /** Internal asset path of Campaign Stage 01 ("01: OUTER BREACH"). */
-    public static final String OUTER_BREACH_PATH = LEVELS_DIR + "/01-outer-breach.map";
-    /** Internal asset path of Campaign Stage 02 ("02: COOLANT CORE"). */
-    public static final String COOLANT_CORE_PATH = LEVELS_DIR + "/02-coolant-core.map";
-    /** Internal asset path of Campaign Stage 03 ("03: SECURITY HUB"). */
-    public static final String SECURITY_HUB_PATH = LEVELS_DIR + "/03-security-hub.map";
-    /** Internal asset path of Campaign Stage 04 ("04: LOCKDOWN WING"). */
-    public static final String LOCKDOWN_WING_PATH = LEVELS_DIR + "/04-lockdown-wing.map";
-    /** Internal asset path of Campaign Stage 05 ("05: COMMAND VAULT"). */
-    public static final String COMMAND_VAULT_PATH = LEVELS_DIR + "/05-command-vault.map";
-    /** Internal asset path of Campaign Stage 06 ("06: WARDEN CORE"). */
-    public static final String WARDEN_CORE_PATH = LEVELS_DIR + "/06-warden-core.map";
 
     private static final List<String> SINGLE_HEADERS =
         Arrays.asList("id", "title", "par", "complete_on_all_targets");
     private static final List<String> REPEATED_HEADERS = Collections.singletonList("briefing");
+    private static final String LOADOUT_HEADER = "loadout";
+    private static final List<String> OPTIONAL_HEADERS = Collections.singletonList(LOADOUT_HEADER);
+    /** The weapon names a {@code loadout} header may list, in slot order. */
+    private static final Map<String, WeaponSlot> WEAPON_NAMES = weaponNames();
     private static final Pattern STAGE_ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]+");
     private static final Pattern POSITIVE_DECIMAL = Pattern.compile("[+]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)");
 
@@ -72,19 +79,40 @@ public final class Levels {
         public final boolean completeOnAllTargets;
         /** The parsed level map. */
         public final GameMap map;
+        /**
+         * The weapons a player deployed straight to the stage starts with, from its {@code loadout} header; the
+         * pistol is always among them, and is the only one when the stage has no such header. Unmodifiable.
+         */
+        public final Set<WeaponSlot> startingWeapons;
 
         Stage(String id, String title, float parSeconds, boolean completeOnAllTargets, GameMap map,
               String... briefing) {
+            this(id, title, parSeconds, completeOnAllTargets, map, EnumSet.of(WeaponSlot.PISTOL), briefing);
+        }
+
+        Stage(String id, String title, float parSeconds, boolean completeOnAllTargets, GameMap map,
+              Set<WeaponSlot> startingWeapons, String... briefing) {
             this.id = id;
             this.title = title;
             this.parSeconds = parSeconds;
             this.completeOnAllTargets = completeOnAllTargets;
             this.map = map;
+            EnumSet<WeaponSlot> weapons = EnumSet.of(WeaponSlot.PISTOL);
+            weapons.addAll(startingWeapons);
+            this.startingWeapons = Collections.unmodifiableSet(weapons);
             this.briefing = Collections.unmodifiableList(Arrays.asList(briefing));
         }
     }
 
     private Levels() {}
+
+    private static Map<String, WeaponSlot> weaponNames() {
+        Map<String, WeaponSlot> names = new LinkedHashMap<>();
+        names.put("pistol", WeaponSlot.PISTOL);
+        names.put("scattergun", WeaponSlot.SCATTERGUN);
+        names.put("raillance", WeaponSlot.RAIL_LANCE);
+        return Collections.unmodifiableMap(names);
+    }
 
     /**
      * Loads the original first level from {@link #FIRST_PATH}: a brick hall with pillars where the player starts, a
@@ -95,44 +123,38 @@ public final class Levels {
         return loadMap(FIRST_PATH);
     }
 
-    /** @return the Training Range stage loaded from {@link #TRAINING_RANGE_PATH}. */
+    /**
+     * Loads the Training Range from {@link #TRAINING_RANGE_PATH}. Its file may not hold a {@code loadout} header:
+     * from the menu the range is entered with the pistol alone, so the header would be read and then ignored.
+     * @return the Training Range stage
+     * @throws IllegalArgumentException if the file holds a {@code loadout} header; the message names the file and
+     *     the line
+     */
     public static Stage trainingRange() {
-        return loadStage(TRAINING_RANGE_PATH);
-    }
-
-    /** @return Campaign Stage 01 ("01: OUTER BREACH") loaded from {@link #OUTER_BREACH_PATH}. */
-    public static Stage outerBreach() {
-        return loadStage(OUTER_BREACH_PATH);
-    }
-
-    /** @return Campaign Stage 02 ("02: COOLANT CORE") loaded from {@link #COOLANT_CORE_PATH}. */
-    public static Stage coolantCore() {
-        return loadStage(COOLANT_CORE_PATH);
-    }
-
-    /** @return Campaign Stage 03 ("03: SECURITY HUB") loaded from {@link #SECURITY_HUB_PATH}. */
-    public static Stage securityHub() {
-        return loadStage(SECURITY_HUB_PATH);
-    }
-
-    /** @return Campaign Stage 04 ("04: LOCKDOWN WING") loaded from {@link #LOCKDOWN_WING_PATH}. */
-    public static Stage lockdownWing() {
-        return loadStage(LOCKDOWN_WING_PATH);
-    }
-
-    /** @return Campaign Stage 05 ("05: COMMAND VAULT") loaded from {@link #COMMAND_VAULT_PATH}. */
-    public static Stage commandVault() {
-        return loadStage(COMMAND_VAULT_PATH);
-    }
-
-    /** @return Campaign Stage 06 ("06: WARDEN CORE") loaded from {@link #WARDEN_CORE_PATH}. */
-    public static Stage wardenCore() {
-        return loadStage(WARDEN_CORE_PATH);
+        return loadStage(TRAINING_RANGE_PATH, false);
     }
 
     /** @return the ordered list of campaign stages listed in {@link #CAMPAIGN_PATH}. */
     public static List<Stage> campaign() {
         return loadCampaign(CAMPAIGN_PATH);
+    }
+
+    /**
+     * Finds a campaign stage by the {@code id} header of its file (for example {@code "01_outer_breach"}), wherever
+     * {@link #CAMPAIGN_PATH} lists it. The Training Range is not a campaign stage; see {@link #trainingRange()}.
+     * @param id the stage's persistent identifier
+     * @return the campaign stage with that id
+     * @throws IllegalArgumentException if no stage listed in {@link #CAMPAIGN_PATH} has the id
+     */
+    public static Stage stage(String id) {
+        List<Stage> campaign = campaign();
+        List<String> ids = new ArrayList<>();
+        for (Stage stage : campaign) {
+            if (stage.id.equals(id)) return stage;
+            ids.add(stage.id);
+        }
+        throw new IllegalArgumentException("Unknown stage id '" + id + "': the stages listed in " + CAMPAIGN_PATH
+            + " are " + String.join(", ", ids));
     }
 
     /**
@@ -152,7 +174,11 @@ public final class Levels {
      * @return the parsed stage
      */
     public static Stage loadStage(String assetPath) {
-        Stage stage = parseStage(assetPath, AssetText.read("level", assetPath));
+        return loadStage(assetPath, true);
+    }
+
+    private static Stage loadStage(String assetPath, boolean loadoutAllowed) {
+        Stage stage = parseStage(assetPath, AssetText.read("level", assetPath), loadoutAllowed);
         log.debug("Loaded stage {} from {}: {}x{}, par {} s", stage.id, assetPath, stage.map.getWidth(),
             stage.map.getHeight(), stage.parSeconds);
         return stage;
@@ -210,18 +236,22 @@ public final class Levels {
 
     /**
      * Parses stage-file text (header {@code key: value} block + blank line + {@link GameMap} layout) into a
-     * {@link Stage}.
+     * {@link Stage}. The {@code loadout} header may be left out.
      * @param assetPath path label included in error messages
      * @param text raw UTF-8 file contents
      * @return parsed stage
      */
     public static Stage parseStage(String assetPath, String text) {
+        return parseStage(assetPath, text, true);
+    }
+
+    private static Stage parseStage(String assetPath, String text, boolean loadoutAllowed) {
         if (text == null) {
             throw new IllegalArgumentException("Stage text for " + assetPath + " is null");
         }
         List<String> lines = AssetText.splitLines(text);
         TuningFile header = TuningFile.parseHeader(assetPath, lines, "stage", "map layout", SINGLE_HEADERS,
-            REPEATED_HEADERS);
+            REPEATED_HEADERS, OPTIONAL_HEADERS);
 
         TuningFile.Entry idHeader = header.entry("id");
         String id = idHeader.value;
@@ -241,6 +271,7 @@ public final class Levels {
             }
             briefing.add(line.value);
         }
+        Set<WeaponSlot> startingWeapons = parseLoadout(header, loadoutAllowed);
 
         int index = header.bodyStart();
         List<String> rows = new ArrayList<>();
@@ -270,7 +301,8 @@ public final class Levels {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid map layout in " + assetPath + ": " + e.getMessage(), e);
         }
-        return new Stage(id, title, parSeconds, completeOnAllTargets, map, briefing.toArray(new String[0]));
+        return new Stage(id, title, parSeconds, completeOnAllTargets, map, startingWeapons,
+            briefing.toArray(new String[0]));
     }
 
     /**
@@ -306,6 +338,34 @@ public final class Levels {
             throw new IllegalArgumentException("Campaign manifest " + assetPath + " lists no stages");
         }
         return Collections.unmodifiableList(stages);
+    }
+
+    /**
+     * Reads the weapons of the optional {@code loadout} header; a stage without it starts with the pistol. The
+     * Training Range is not allowed the header, and is refused when it holds one.
+     */
+    private static Set<WeaponSlot> parseLoadout(TuningFile header, boolean loadoutAllowed) {
+        Set<WeaponSlot> weapons = EnumSet.of(WeaponSlot.PISTOL);
+        if (!header.has(LOADOUT_HEADER)) return weapons;
+        if (!loadoutAllowed) {
+            throw header.invalid(LOADOUT_HEADER,
+                "the Training Range takes no loadout header (from the menu it is entered with the pistol alone)");
+        }
+        Set<String> listed = new HashSet<>();
+        // The limit keeps the empty name a trailing comma leaves, so it is reported and not dropped.
+        for (String item : header.getString(LOADOUT_HEADER).split(",", -1)) {
+            String name = item.trim();
+            WeaponSlot weapon = WEAPON_NAMES.get(name);
+            if (weapon == null) {
+                throw header.invalid(LOADOUT_HEADER, "unknown weapon '" + name + "' (the weapons are "
+                    + String.join(", ", WEAPON_NAMES.keySet()) + ")");
+            }
+            if (!listed.add(name)) {
+                throw header.invalid(LOADOUT_HEADER, "weapon '" + name + "' is listed twice");
+            }
+            weapons.add(weapon);
+        }
+        return weapons;
     }
 
     private static float parseParSeconds(String assetPath, int lineNumber, String value) {

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import org.junit.jupiter.api.Test;
@@ -28,8 +30,10 @@ import java.util.Set;
 /** Checks the shipped Combat Scattergun model, manifold integrity, rig sockets, and hand clearance. */
 class ScattergunModelTest {
 
+    private static final ModelPalette PALETTE = TestTuning.PALETTES.scattergun;
+
     private static final ObjModel RAW_MODEL = load(ScattergunModel.ASSET_PATH);
-    private static final ScattergunModel MODEL = ScattergunModel.from(RAW_MODEL);
+    private static final ScattergunModel MODEL = ScattergunModel.from(RAW_MODEL, PALETTE);
     private static final ObjModel HAND_OBJ = load(HandModel.ASSET_PATH);
     private static final String[] GLOVE_GROUPS = {
         "palm", "thumb", "index_finger", "middle_finger", "ring_finger", "little_finger",
@@ -179,7 +183,8 @@ class ScattergunModelTest {
     void rejectsUnknownMaterialNameWithDiagnosticMessage() {
         IllegalArgumentException err = assertThrows(IllegalArgumentException.class,
             () -> ModelVertices.read(ScattergunModel.ASSET_PATH, "scattergun",
-                "v 0 0 0\nv 1 0 0\nv 0 1 0\ng grip\nusemtl chrome\nf 1 2 3\n", ScattergunModel::from));
+                "v 0 0 0\nv 1 0 0\nv 0 1 0\ng grip\nusemtl chrome\nf 1 2 3\n",
+                model -> ScattergunModel.from(model, PALETTE)));
         assertTrue(err.getMessage().contains("chrome"));
     }
 

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import org.junit.jupiter.api.Test;
@@ -27,8 +29,11 @@ import java.util.function.ToDoubleFunction;
 /** Checks the shipped hand model file, and how it is turned into vertices. */
 class HandModelTest {
 
+    private static final ModelPalette PALETTE = TestTuning.PALETTES.hand;
+
     private static final ObjModel MODEL = load(HandModel.ASSET_PATH);
-    private static final PistolModel PISTOL = PistolModel.from(load(PistolModel.ASSET_PATH));
+    private static final PistolModel PISTOL =
+        PistolModel.from(load(PistolModel.ASSET_PATH), TestTuning.PALETTES.pistol);
     /** The pistol's grip, the solid the hand is wrapped round. Every grip measurement below is read off it. */
     private static final PistolModel.Solid GRIP = pistolSolid("grip");
     /** The half-width of the grip with its stippling, which is the widest thing a finger lies against. */
@@ -198,7 +203,7 @@ class HandModelTest {
 
     @Test
     void verticesAreLaidOutLikeThePistolsWithUnitNormalsAndTheMaterialsColours() {
-        float[] vertices = HandModel.vertices(MODEL);
+        float[] vertices = HandModel.vertices(MODEL, PALETTE);
 
         assertEquals(MODEL.getTriangleCount() * 3 * PistolModel.VERTEX_SIZE, vertices.length);
         Set<String> colours = new LinkedHashSet<>();
@@ -226,7 +231,7 @@ class HandModelTest {
         ObjModel stray = ObjModel.parse("v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl chrome\nf 1 2 3\n");
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-            () -> HandModel.vertices(stray));
+            () -> HandModel.vertices(stray, PALETTE));
         assertTrue(error.getMessage().contains("chrome"), error.getMessage());
     }
 
@@ -624,14 +629,15 @@ class HandModelTest {
     @Test
     void modelReadErrorNamesBothTheHandFileAndTheLineOrMaterial() {
         IllegalArgumentException parseError = assertThrows(IllegalArgumentException.class,
-            () -> ModelVertices.read(HandModel.ASSET_PATH, "hand", "v 0 0 0\nl 1 1\n", HandModel::vertices));
+            () -> ModelVertices.read(HandModel.ASSET_PATH, "hand", "v 0 0 0\nl 1 1\n",
+                model -> HandModel.vertices(model, PALETTE)));
         assertTrue(parseError.getMessage().contains("hand"), parseError.getMessage());
         assertTrue(parseError.getMessage().contains(HandModel.ASSET_PATH), parseError.getMessage());
         assertTrue(parseError.getMessage().contains("Line 2"), parseError.getMessage());
 
         IllegalArgumentException materialError = assertThrows(IllegalArgumentException.class,
             () -> ModelVertices.read(HandModel.ASSET_PATH, "hand",
-                "v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl chrome\nf 1 2 3\n", HandModel::vertices));
+                "v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl chrome\nf 1 2 3\n", model -> HandModel.vertices(model, PALETTE)));
         assertTrue(materialError.getMessage().contains("hand"), materialError.getMessage());
         assertTrue(materialError.getMessage().contains(HandModel.ASSET_PATH), materialError.getMessage());
         assertTrue(materialError.getMessage().contains("chrome"), materialError.getMessage());

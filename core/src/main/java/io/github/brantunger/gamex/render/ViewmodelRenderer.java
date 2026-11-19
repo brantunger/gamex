@@ -19,6 +19,7 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -99,6 +100,9 @@ public final class ViewmodelRenderer implements Disposable {
     private ObjModel.SocketSpec muzzleSocket;
     private ObjModel.SocketSpec scatterMuzzleSocket;
     private ObjModel.SocketSpec railMuzzleSocket;
+    private final float[] railAccentReady;
+    private final float[] railAccentRecharging;
+    private final float[] railAccentEmpty;
     private final float[] railAccentScratch = new float[4];
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
@@ -125,12 +129,18 @@ public final class ViewmodelRenderer implements Disposable {
         void initDecals(ProceduralTextures textures);
     }
 
-    /** @param textures the textures of the muzzle flash and the charge glow; the caller keeps ownership of them */
-    public ViewmodelRenderer(ProceduralTextures textures) {
-        this(Gdx.graphics, textures, null);
+    /**
+     * @param textures the textures of the muzzle flash and the charge glow; the caller keeps ownership of them
+     * @param palettes the colours of the weapons and the hand
+     */
+    public ViewmodelRenderer(ProceduralTextures textures, Palettes palettes) {
+        this(Gdx.graphics, textures, palettes, null);
     }
 
-    ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, ResourceBackend backend) {
+    ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, Palettes palettes, ResourceBackend backend) {
+        railAccentReady = palettes.railLance.accent(RailLanceModel.Accent.READY.name);
+        railAccentRecharging = palettes.railLance.accent(RailLanceModel.Accent.RECHARGING.name);
+        railAccentEmpty = palettes.railLance.accent(RailLanceModel.Accent.EMPTY.name);
         ResourceBackend active = backend != null ? backend : createGlBackend();
         try {
             // The camera never moves: it sits at the origin of view space, looking down negative z.
@@ -150,14 +160,14 @@ public final class ViewmodelRenderer implements Disposable {
             }
             int modelsBefore = ModelMesh.getLoadedCount();
             ObjModel pistolObj = active.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");
-            PistolModel pistol = unpackPistol(pistolObj);
+            PistolModel pistol = unpackPistol(pistolObj, palettes.pistol);
             muzzleSocket = pistolObj.getSocket("muzzle");
             body = trackResource(
                 active.buildMesh(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body"), Mesh.class);
             slide = trackResource(
                 active.buildMesh(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide"), Mesh.class);
             ObjModel scatterObj = active.loadModel(ScattergunModel.ASSET_PATH, "viewmodel scattergun");
-            ScattergunModel scatter = unpackScattergun(scatterObj);
+            ScattergunModel scatter = unpackScattergun(scatterObj, palettes.scattergun);
             scatterMuzzleSocket = scatterObj.getSocket("muzzle");
             scatterBody = trackResource(
                 active.buildMesh(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body"),
@@ -166,7 +176,7 @@ public final class ViewmodelRenderer implements Disposable {
                 active.buildMesh(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump"),
                 Mesh.class);
             ObjModel railObj = active.loadModel(RailLanceModel.ASSET_PATH, "viewmodel rail lance");
-            RailLanceModel rail = unpackRailLance(railObj);
+            RailLanceModel rail = unpackRailLance(railObj, palettes.railLance);
             railMuzzleSocket = railObj.getSocket("muzzle");
             railBody = trackResource(
                 active.buildMesh(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body"), Mesh.class);
@@ -175,7 +185,8 @@ public final class ViewmodelRenderer implements Disposable {
             // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
             ObjModel handObj = active.loadModel(HandModel.ASSET_PATH, "viewmodel hand");
             hand = trackResource(
-                active.buildMesh(unpackHand(handObj), HandModel.ASSET_PATH, "viewmodel hand"), Mesh.class);
+                active.buildMesh(unpackHand(handObj, palettes.hand), HandModel.ASSET_PATH, "viewmodel hand"),
+                Mesh.class);
             log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
 
             Disposable strategyHandle = active.createGroupStrategy(camera);
@@ -256,32 +267,33 @@ public final class ViewmodelRenderer implements Disposable {
         return null;
     }
 
-    static PistolModel unpackPistol(ObjModel pistolObj) {
+    static PistolModel unpackPistol(ObjModel pistolObj, ModelPalette palette) {
         PistolModel pistol = ModelMesh.convert(
-            pistolObj, PistolModel.ASSET_PATH, "viewmodel pistol", PistolModel::from);
+            pistolObj, PistolModel.ASSET_PATH, "viewmodel pistol", obj -> PistolModel.from(obj, palette));
         ModelMesh.requireMesh(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body");
         ModelMesh.requireMesh(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide");
         return pistol;
     }
 
-    static ScattergunModel unpackScattergun(ObjModel scatterObj) {
-        ScattergunModel scatter = ModelMesh.convert(
-            scatterObj, ScattergunModel.ASSET_PATH, "viewmodel scattergun", ScattergunModel::from);
+    static ScattergunModel unpackScattergun(ObjModel scatterObj, ModelPalette palette) {
+        ScattergunModel scatter = ModelMesh.convert(scatterObj, ScattergunModel.ASSET_PATH, "viewmodel scattergun",
+            obj -> ScattergunModel.from(obj, palette));
         ModelMesh.requireMesh(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body");
         ModelMesh.requireMesh(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump");
         return scatter;
     }
 
-    static RailLanceModel unpackRailLance(ObjModel railObj) {
-        RailLanceModel rail = ModelMesh.convert(
-            railObj, RailLanceModel.ASSET_PATH, "viewmodel rail lance", RailLanceModel::from);
+    static RailLanceModel unpackRailLance(ObjModel railObj, ModelPalette palette) {
+        RailLanceModel rail = ModelMesh.convert(railObj, RailLanceModel.ASSET_PATH, "viewmodel rail lance",
+            obj -> RailLanceModel.from(obj, palette));
         ModelMesh.requireMesh(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body");
         ModelMesh.requireMesh(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt");
         return rail;
     }
 
-    static ModelVertices.IndexedMesh unpackHand(ObjModel handObj) {
-        return ModelMesh.convertMesh(handObj, HandModel.ASSET_PATH, "viewmodel hand", HandModel::packIndexed);
+    static ModelVertices.IndexedMesh unpackHand(ObjModel handObj, ModelPalette palette) {
+        return ModelMesh.convertMesh(handObj, HandModel.ASSET_PATH, "viewmodel hand",
+            obj -> HandModel.packIndexed(obj, palette));
     }
 
     static int initialViewportWidth(Graphics graphics) {
@@ -508,18 +520,17 @@ public final class ViewmodelRenderer implements Disposable {
         viewToWorld.idt();
         Mesh weaponBody = rail ? railBody : (scatter ? scatterBody : body);
         Mesh weaponMoving = rail ? railBolt : (scatter ? scatterPump : slide);
-        drawModel(weaponBody, weaponMoving, 1f, 0f, rail ? RailLanceModel.ACCENT_READY : null);
+        drawModel(weaponBody, weaponMoving, 1f, 0f, rail ? railAccentReady : null);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
     private float[] railAccent(GameSimulation simulation) {
-        if (simulation.getSlugs() <= 0) return RailLanceModel.ACCENT_EMPTY;
+        if (simulation.getSlugs() <= 0) return railAccentEmpty;
         float charge = simulation.railLance.getChargeProgress();
-        if (charge >= 0.999f) return RailLanceModel.ACCENT_READY;
+        if (charge >= 0.999f) return railAccentReady;
         for (int i = 0; i < 4; i++) {
-            railAccentScratch[i] = MathUtils.lerp(RailLanceModel.ACCENT_RECHARGING[i],
-                RailLanceModel.ACCENT_READY[i], charge);
+            railAccentScratch[i] = MathUtils.lerp(railAccentRecharging[i], railAccentReady[i], charge);
         }
         return railAccentScratch;
     }

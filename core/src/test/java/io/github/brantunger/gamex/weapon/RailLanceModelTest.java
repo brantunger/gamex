@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import org.junit.jupiter.api.Test;
@@ -28,8 +30,10 @@ import java.util.Set;
 /** Checks the shipped Rail Lance viewmodel, manifold integrity, accent marking, sockets, and hand clearance. */
 class RailLanceModelTest {
 
+    private static final ModelPalette PALETTE = TestTuning.PALETTES.railLance;
+
     private static final ObjModel RAW_MODEL = load(RailLanceModel.ASSET_PATH);
-    private static final RailLanceModel MODEL = RailLanceModel.from(RAW_MODEL);
+    private static final RailLanceModel MODEL = RailLanceModel.from(RAW_MODEL, PALETTE);
     private static final ObjModel HAND_OBJ = load(HandModel.ASSET_PATH);
     private static final String[] GLOVE_GROUPS = {
         "palm", "thumb", "index_finger", "middle_finger", "ring_finger", "little_finger",
@@ -181,7 +185,8 @@ class RailLanceModelTest {
     void rejectsUnknownMaterialNameWithDiagnosticMessage() {
         IllegalArgumentException err = assertThrows(IllegalArgumentException.class,
             () -> ModelVertices.read(RailLanceModel.ASSET_PATH, "rail lance",
-                "v 0 0 0\nv 1 0 0\nv 0 1 0\ng grip\nusemtl titanium\nf 1 2 3\n", RailLanceModel::from));
+                "v 0 0 0\nv 1 0 0\nv 0 1 0\ng grip\nusemtl titanium\nf 1 2 3\n",
+                model -> RailLanceModel.from(model, PALETTE)));
         assertTrue(err.getMessage().contains("titanium"));
     }
 

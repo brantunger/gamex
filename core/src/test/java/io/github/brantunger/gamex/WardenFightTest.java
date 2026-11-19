@@ -86,7 +86,7 @@ class WardenFightTest {
      * @return how many cells a player was stood in
      */
     private static int cellsTheWardenReachesOnStageSix(boolean lockdownOpen) {
-        Levels.Stage stage = Levels.wardenCore();
+        Levels.Stage stage = Levels.stage("06_warden_core");
         GameSimulation survey = new GameSimulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
         openLockdown(survey, lockdownOpen);
         Enemy boss = warden(survey);

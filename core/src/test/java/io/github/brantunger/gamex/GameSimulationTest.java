@@ -16,7 +16,6 @@ import io.github.brantunger.gamex.weapon.BlastCharger;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.Pistol;
-import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Door;
@@ -97,13 +96,13 @@ class GameSimulationTest {
         input.fire = true;
 
         simulation.update(FRAME, input);
-        assertEquals(50f - Pistol.DAMAGE, canister.getHealth(), 1e-4f);
+        assertEquals(50f - TestTuning.WEAPONS.pistolDamage, canister.getHealth(), 1e-4f);
         assertEquals(1, count(simulation, Effect.Type.SPARK));
         assertTrue(simulation.pistol.isFlashVisible());
 
         // The trigger stays held. The second shot leaves 0.3 seconds, 18 frames, after the first.
         for (int i = 0; i < 20; i++) simulation.update(FRAME, input);
-        assertEquals(50f - 2f * Pistol.DAMAGE, canister.getHealth(), 1e-4f);
+        assertEquals(50f - 2f * TestTuning.WEAPONS.pistolDamage, canister.getHealth(), 1e-4f);
         assertFalse(canister.isDestroyed(), "two shots are not enough");
         assertEquals(1, simulation.getTargetsRemaining());
 
@@ -144,7 +143,7 @@ class GameSimulationTest {
         input.charge = false;
         simulation.update(FRAME, input);
         assertEquals(1, simulation.projectiles.size());
-        assertEquals(100f - BlastCharger.MAX_COST, simulation.energy.getEnergy(), 0.5f);
+        assertEquals(100f - TestTuning.WEAPONS.blastMaxCost, simulation.energy.getEnergy(), 0.5f);
         assertFalse(canister.isDestroyed(), "the blast is slow: it has not arrived yet");
 
         for (int i = 0; i < 60; i++) simulation.update(FRAME, input);
@@ -440,7 +439,7 @@ class GameSimulationTest {
 
     @Test
     void pistolShotWallImpactAndTargetDestroyEmitExpectedSoundEvents() {
-        // Long range beyond Pistol.RANGE hits nothing: only PISTOL_SHOT.
+        // Long range beyond the pistol's range hits nothing: only PISTOL_SHOT.
         String wallRow = "#".repeat(70);
         String openRow = "#>" + ".".repeat(67) + "#";
         GameSimulation longSim = new GameSimulation(GameMap.parse(wallRow, openRow, wallRow));
@@ -745,7 +744,7 @@ class GameSimulationTest {
         for (int i = 0; i < 20; i++) sim.update(FRAME, input);
         input.moveForward = 0f;
         assertTrue(sim.hasScattergun());
-        assertEquals(Scattergun.PICKUP_WEAPON_SHELLS, sim.getShells());
+        assertEquals(TestTuning.WEAPONS.scattergunWeaponPickupShells, sim.getShells());
         assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
         assertTrue(sim.pickups.get(0).isCollected());
         assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.PICKUP_WEAPON));
@@ -753,7 +752,7 @@ class GameSimulationTest {
         // Walk across five shell boxes (+6 each = 8 + 30 capped at 24). Last pickup stays uncollected once full.
         input.moveForward = 1f;
         for (int i = 0; i < 90; i++) sim.update(FRAME, input);
-        assertEquals(Scattergun.MAX_SHELLS, sim.getShells());
+        assertEquals(TestTuning.WEAPONS.scattergunMaxShells, sim.getShells());
         assertFalse(sim.pickups.get(5).isCollected(), "shell box stays on floor at full 24/24 shells");
         assertTrue(countSound(sim.drainSoundEvents(), SoundEvent.Type.PICKUP_SHELLS) >= 2);
     }
@@ -986,7 +985,7 @@ class GameSimulationTest {
         input.moveForward = 0f;
         assertTrue(sim.hasScattergun());
         assertTrue(sim.hasRailLance());
-        assertEquals(RailLance.MAX_SLUGS, sim.getSlugs());
+        assertEquals(TestTuning.WEAPONS.railMaxSlugs, sim.getSlugs());
         assertEquals(WeaponSlot.RAIL_LANCE, sim.getTargetWeapon());
         for (int i = 0; i < 12; i++) sim.update(FRAME, input);
         assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
@@ -1074,7 +1073,7 @@ class GameSimulationTest {
 
         // The Warden's hide reduces 120 base Rail Lance damage to 90 (75%).
         EnemyTuning.KindStats wardenStats = TestTuning.ENEMIES.of(Enemy.Kind.WARDEN);
-        assertEquals(90f, RailLance.DAMAGE * wardenStats.railDamageScale, 0f);
+        assertEquals(90f, TestTuning.WEAPONS.railDamage * wardenStats.railDamageScale, 0f);
         GameSimulation bossSim = new GameSimulation(
             GameMap.parse(
                 "###########",
@@ -1086,7 +1085,7 @@ class GameSimulationTest {
         PlayerInput fire = new PlayerInput();
         fire.fire = true;
         bossSim.update(FRAME, fire);
-        assertEquals(wardenStats.maxHealth - RailLance.DAMAGE * wardenStats.railDamageScale,
+        assertEquals(wardenStats.maxHealth - TestTuning.WEAPONS.railDamage * wardenStats.railDamageScale,
             bossSim.enemies.get(0).getHealth(), 1e-3f);
     }
 
@@ -1116,7 +1115,7 @@ class GameSimulationTest {
         sim.update(FRAME, input);
         input.yawDelta = 0f;
         float delta = (sim.player.getYaw() - yawBefore + 540f) % 360f - 180f;
-        assertEquals(18f / RailLance.ZOOM_FACTOR, delta, 1e-3f);
+        assertEquals(18f / TestTuning.WEAPONS.railZoomFactor, delta, 1e-3f);
 
         // Energy Dash immediately cancels optic zoom and suppresses re-zoom while RMB remains held.
         input.dash = true;
@@ -1717,7 +1716,7 @@ class GameSimulationTest {
         PlayerInput input = new PlayerInput();
 
         sim.update(FRAME, input);
-        assertEquals(Player.MAX_HEALTH - GameSimulation.HAZARD_DAMAGE, sim.player.getHealth(), 1e-4f);
+        assertEquals(Player.MAX_HEALTH - TestTuning.WORLD.grateDamage, sim.player.getHealth(), 1e-4f);
 
         sim.drainSoundEvents();
         input.dash = true;
@@ -1731,12 +1730,12 @@ class GameSimulationTest {
 
         // Still inside the 0.35s HAZARD_INTERVAL window (~0.17s elapsed): must not zap a second time yet.
         sim.update(FRAME, input);
-        assertEquals(Player.MAX_HEALTH - GameSimulation.HAZARD_DAMAGE, sim.player.getHealth(), 1e-4f);
+        assertEquals(Player.MAX_HEALTH - TestTuning.WORLD.grateDamage, sim.player.getHealth(), 1e-4f);
         assertEquals(0, countSound(sim.drainSoundEvents(), SoundEvent.Type.HAZARD_ZAP));
 
         // Once the remaining cooldown elapses while still standing on ~, the next zap fires normally.
         for (int i = 0; i < 15; i++) sim.update(FRAME, input);
-        assertEquals(Player.MAX_HEALTH - 2f * GameSimulation.HAZARD_DAMAGE, sim.player.getHealth(), 1e-4f);
+        assertEquals(Player.MAX_HEALTH - 2f * TestTuning.WORLD.grateDamage, sim.player.getHealth(), 1e-4f);
     }
 
     @Test

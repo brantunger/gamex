@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.hud.PixelFont;
+import io.github.brantunger.gamex.weapon.WeaponSlot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -95,20 +98,12 @@ class LevelsTest {
         assertEquals(3, range.briefing.size());
         assertEquals(11, range.map.getTargetSpawns().size());
         assertFalse(range.map.hasExit());
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL), range.startingWeapons);
     }
 
     @Test
-    void campaignManifestMatchesStageAccessorsAndPreservesMetadata() {
+    void campaignStagesAreFoundByIdAndKeepTheirMetadata() {
         List<Levels.Stage> campaign = Levels.campaign();
-        List<Levels.Stage> direct = Arrays.asList(
-            Levels.outerBreach(),
-            Levels.coolantCore(),
-            Levels.securityHub(),
-            Levels.lockdownWing(),
-            Levels.commandVault(),
-            Levels.wardenCore()
-        );
-        assertEquals(direct.size(), campaign.size());
 
         String[] expectedIds = {
             "01_outer_breach",
@@ -118,23 +113,81 @@ class LevelsTest {
             "05_command_vault",
             "06_warden_core"
         };
+        String[] expectedTitles = {
+            "01: OUTER BREACH",
+            "02: COOLANT CORE",
+            "03: SECURITY HUB",
+            "04: LOCKDOWN WING",
+            "05: COMMAND VAULT",
+            "06: WARDEN CORE"
+        };
         float[] expectedPars = {50f, 65f, 80f, 85f, 95f, 110f};
+        assertEquals(expectedIds.length, campaign.size());
 
         for (int i = 0; i < campaign.size(); i++) {
             Levels.Stage fromCampaign = campaign.get(i);
-            Levels.Stage fromMethod = direct.get(i);
+            Levels.Stage byId = Levels.stage(expectedIds[i]);
             assertEquals(expectedIds[i], fromCampaign.id);
-            assertEquals(fromMethod.id, fromCampaign.id);
-            assertEquals(fromMethod.title, fromCampaign.title);
+            assertEquals(expectedTitles[i], fromCampaign.title);
+            assertEquals(byId.id, fromCampaign.id);
+            assertEquals(byId.title, fromCampaign.title);
             assertEquals(expectedPars[i], fromCampaign.parSeconds, 1e-5f);
-            assertEquals(fromMethod.parSeconds, fromCampaign.parSeconds, 1e-5f);
+            assertEquals(byId.parSeconds, fromCampaign.parSeconds, 1e-5f);
             assertFalse(fromCampaign.completeOnAllTargets);
-            assertEquals(fromMethod.briefing, fromCampaign.briefing);
+            assertEquals(byId.completeOnAllTargets, fromCampaign.completeOnAllTargets);
+            assertEquals(byId.briefing, fromCampaign.briefing);
             assertEquals(3, fromCampaign.briefing.size());
-            assertEquals(fromMethod.map.getWidth(), fromCampaign.map.getWidth());
-            assertEquals(fromMethod.map.getHeight(), fromCampaign.map.getHeight());
+            assertEquals(byId.map.getWidth(), fromCampaign.map.getWidth());
+            assertEquals(byId.map.getHeight(), fromCampaign.map.getHeight());
+            assertEquals(byId.startingWeapons, fromCampaign.startingWeapons);
             assertTrue(fromCampaign.map.hasExit(), fromCampaign.id + " must have an exit pad");
         }
+    }
+
+    @Test
+    void aStageIdTheCampaignDoesNotListIsReportedWithTheIdsItDoesList() {
+        IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class,
+            () -> Levels.stage("07_no_such_stage"));
+        assertEquals("Unknown stage id '07_no_such_stage': the stages listed in levels/campaign.txt are "
+            + "01_outer_breach, 02_coolant_core, 03_security_hub, 04_lockdown_wing, 05_command_vault, 06_warden_core",
+            unknown.getMessage());
+        // The Training Range has an entry of its own; it is no campaign stage. Nor is a file name an id.
+        assertThrows(IllegalArgumentException.class, () -> Levels.stage(Levels.trainingRange().id));
+        assertThrows(IllegalArgumentException.class, () -> Levels.stage("01-outer-breach.map"));
+        assertThrows(IllegalArgumentException.class, () -> Levels.stage(null));
+    }
+
+    @Test
+    void shippedStagesListTheirStartingWeaponsInALoadoutHeader() {
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL), Levels.stage("01_outer_breach").startingWeapons);
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL, WeaponSlot.SCATTERGUN),
+            Levels.stage("02_coolant_core").startingWeapons);
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL, WeaponSlot.SCATTERGUN),
+            Levels.stage("03_security_hub").startingWeapons);
+        for (String id : new String[] {"04_lockdown_wing", "05_command_vault", "06_warden_core"}) {
+            assertEquals(EnumSet.allOf(WeaponSlot.class), Levels.stage(id).startingWeapons, id);
+        }
+    }
+
+    private static Levels.Stage stageWithHeader(String loadoutHeader) {
+        return Levels.parseStage("levels/custom.map", "id: s1\ntitle: S1\npar: 30\ncomplete_on_all_targets: false\n"
+            + loadoutHeader + "briefing: GO\n\n#####\n#.>.#\n#####\n");
+    }
+
+    @Test
+    void theLoadoutHeaderIsOptionalAndListsWeaponsByNameInAnyOrder() {
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL), stageWithHeader("").startingWeapons, "no header");
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL), stageWithHeader("loadout: pistol\n").startingWeapons);
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL, WeaponSlot.SCATTERGUN),
+            stageWithHeader("loadout: scattergun\n").startingWeapons);
+        assertEquals(EnumSet.of(WeaponSlot.PISTOL, WeaponSlot.RAIL_LANCE),
+            stageWithHeader("loadout: raillance\n").startingWeapons, "the pistol is carried without being listed");
+        assertEquals(EnumSet.allOf(WeaponSlot.class),
+            stageWithHeader("loadout: scattergun, raillance\n").startingWeapons);
+        assertEquals(EnumSet.allOf(WeaponSlot.class),
+            stageWithHeader("loadout:raillance ,pistol,  scattergun\n").startingWeapons);
+        assertThrows(UnsupportedOperationException.class,
+            () -> stageWithHeader("loadout: scattergun\n").startingWeapons.add(WeaponSlot.RAIL_LANCE));
     }
 
     @Test
@@ -171,12 +224,12 @@ class LevelsTest {
             }
         }
 
-        Levels.Stage vault = Levels.commandVault();
+        Levels.Stage vault = Levels.stage("05_command_vault");
         assertEquals(3, vault.briefing.size());
         assertTrue(vault.briefing.get(0).contains("COMMAND VAULT"), vault.briefing.get(0));
         assertTrue(vault.briefing.get(2).contains("WARDEN CORE"), vault.briefing.get(2));
 
-        String allowedChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-:.,%+!?()<>[]'*~";
+        String allowedChars = " " + TestTuning.FONT.supportedCharacters();
         for (String line : vault.briefing) {
             for (int i = 0; i < line.length(); i++) {
                 char c = line.charAt(i);
