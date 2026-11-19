@@ -33,7 +33,8 @@ public class MainGame extends ApplicationAdapter {
     private static final Logger log = LoggerFactory.getLogger(MainGame.class);
 
     /** Short delay after player death before the Death menu overlays the lowered view, in seconds. */
-    private static final float DEATH_MENU_DELAY = 0.45f;
+    static final float DEATH_MENU_DELAY = 0.45f;
+    static final float MAX_BACKDROP_DT = 0.1f;
     private static final int DEFAULT_WINDOW_WIDTH = 1280;
     private static final int DEFAULT_WINDOW_HEIGHT = 720;
     static final int MIN_WINDOW_WIDTH = 160;
@@ -253,7 +254,7 @@ public class MainGame extends ApplicationAdapter {
 
         float rawDt = Gdx.graphics.getDeltaTime();
         float stepDt = smoothStepDt(rawDt);
-        backdropTime += Math.min(0.1f, Math.max(0f, rawDt));
+        advanceBackdropTime(rawDt);
 
         MenuState.Screen beforeScreen = menuState.getScreen();
         MenuState.Command command = controller.poll(input);
@@ -270,8 +271,7 @@ public class MainGame extends ApplicationAdapter {
                 menuState.onStageCleared(simulation.captureCarryOverLoadout(), runStatsOf(simulation));
                 controller.syncCursorCapture();
             } else if (simulation.player.isDead()) {
-                deathTimer += Math.min(GameSimulation.MAX_DT, Math.max(0f, rawDt));
-                if (deathTimer >= DEATH_MENU_DELAY) {
+                if (advanceDeathTimer(rawDt)) {
                     menuState.onPlayerDied();
                     controller.syncCursorCapture();
                 }
@@ -388,13 +388,49 @@ public class MainGame extends ApplicationAdapter {
         }
     }
 
-    private float smoothStepDt(float rawDt) {
-        if (rawDt > 0f && rawDt <= GameSimulation.MAX_DT && Math.abs(rawDt - smoothedDt) <= smoothedDt * 0.25f) {
+    static float clampDelta(float rawDt, float maxDt) {
+        if (!Float.isFinite(rawDt) || rawDt <= 0f || !Float.isFinite(maxDt) || maxDt <= 0f) return 0f;
+        return Math.min(maxDt, rawDt);
+    }
+
+    float smoothStepDt(float rawDt) {
+        if (!Float.isFinite(rawDt) || rawDt <= 0f) {
+            return 0f;
+        }
+        if (!Float.isFinite(smoothedDt) || smoothedDt <= 0f) {
+            smoothedDt = Math.min(GameSimulation.MAX_DT, rawDt);
+            return smoothedDt;
+        }
+        if (rawDt <= GameSimulation.MAX_DT && Math.abs(rawDt - smoothedDt) <= smoothedDt * 0.25f) {
             smoothedDt += (rawDt - smoothedDt) * 0.25f;
         } else {
-            smoothedDt = Math.min(GameSimulation.MAX_DT, Math.max(0f, rawDt));
+            smoothedDt = Math.min(GameSimulation.MAX_DT, rawDt);
         }
         return smoothedDt;
+    }
+
+    float advanceBackdropTime(float rawDt) {
+        if (!Float.isFinite(backdropTime) || backdropTime < 0f) {
+            backdropTime = 0f;
+        }
+        backdropTime += clampDelta(rawDt, MAX_BACKDROP_DT);
+        return backdropTime;
+    }
+
+    boolean advanceDeathTimer(float rawDt) {
+        if (!Float.isFinite(deathTimer) || deathTimer < 0f) {
+            deathTimer = 0f;
+        }
+        deathTimer += clampDelta(rawDt, GameSimulation.MAX_DT);
+        return deathTimer >= DEATH_MENU_DELAY;
+    }
+
+    float getBackdropTime() {
+        return backdropTime;
+    }
+
+    float getDeathTimer() {
+        return deathTimer;
     }
 
     void applyBackBufferViewport() {

@@ -64,6 +64,7 @@ public final class Player {
 
     /** How fast the walk bob cycles, in radians per world unit walked. */
     private static final float BOB_RATE = 5.5f;
+    private static final double TWO_PI = Math.PI * 2.0;
     /** How fast the camera drops to the floor on death, in world units per second. */
     private static final float DEATH_DROP_SPEED = 1.6f;
 
@@ -111,9 +112,11 @@ public final class Player {
      */
     public Player(float x, float z, float yaw, float startingHealth, float startingArmor) {
         position.set(x, z);
-        this.yaw = ((yaw % 360f) + 360f) % 360f;
-        this.health = Math.max(1f, Math.min(MAX_HEALTH, startingHealth));
-        this.armor = Math.max(0f, Math.min(MAX_ARMOR, startingArmor));
+        this.yaw = Float.isFinite(yaw) ? ((yaw % 360f) + 360f) % 360f : 0f;
+        float finiteHealth = Float.isFinite(startingHealth) ? startingHealth : MAX_HEALTH;
+        float finiteArmor = Float.isFinite(startingArmor) ? startingArmor : 0f;
+        this.health = Math.max(1f, Math.min(MAX_HEALTH, finiteHealth));
+        this.armor = Math.max(0f, Math.min(MAX_ARMOR, finiteArmor));
     }
 
     /** @return the yaw in degrees, from 0 up to 360: 0 faces north (negative z) and 90 faces east (positive x). */
@@ -245,7 +248,7 @@ public final class Player {
      * @param dt the time step in seconds
      */
     public void updateTimers(float dt) {
-        if (dt <= 0f) return;
+        if (!Float.isFinite(dt) || dt <= 0f) return;
         hurtFlash = Math.max(0f, hurtFlash - dt);
         dashCooldown = Math.max(0f, dashCooldown - dt);
         dashRefusedTimer = Math.max(0f, dashRefusedTimer - dt);
@@ -256,7 +259,7 @@ public final class Player {
             if (jumpHeight > 0f || verticalVelocity != 0f) {
                 jumpHeight += verticalVelocity * dt - 0.5f * GRAVITY * dt * dt;
                 verticalVelocity -= GRAVITY * dt;
-                if (jumpHeight <= 0f) {
+                if (!(jumpHeight > 0f)) {
                     jumpHeight = 0f;
                     verticalVelocity = 0f;
                 }
@@ -282,24 +285,36 @@ public final class Player {
      * @return total health + armor lost
      */
     public float damage(float amount, float sourceX, float sourceZ) {
-        if (amount <= 0f || isDead()) return 0f;
-        float absorbed = Math.min(armor, amount * ARMOR_ABSORPTION);
-        armor = Math.max(0f, armor - absorbed);
+        if (Float.isNaN(amount) || !(amount > 0f) || isDead()) return 0f;
+        float beforeArmor = armor;
         float beforeHealth = health;
-        health = Math.max(0f, health - (amount - absorbed));
+        if (!Float.isFinite(amount)) {
+            armor = 0f;
+            health = 0f;
+        } else {
+            float absorbed = Math.min(armor, amount * ARMOR_ABSORPTION);
+            armor = Math.max(0f, armor - absorbed);
+            health = Math.max(0f, health - Math.max(0f, amount - absorbed));
+        }
         hurtFlash = HURT_FLASH_TIME;
 
-        float dx = sourceX - position.x;
-        float dz = sourceZ - position.y;
-        if (dx * dx + dz * dz > 1e-4f) {
-            float sourceYaw = (float) Math.toDegrees(Math.atan2(dx, -dz));
-            hurtRelativeYaw = ((sourceYaw - yaw) % 360f + 540f) % 360f - 180f;
-            directionalHurt = true;
+        if (Float.isFinite(sourceX) && Float.isFinite(sourceZ)
+            && Float.isFinite(position.x) && Float.isFinite(position.y)) {
+            double dx = (double) sourceX - position.x;
+            double dz = (double) sourceZ - position.y;
+            if (dx * dx + dz * dz > 1e-4) {
+                float sourceYaw = (float) Math.toDegrees(Math.atan2(dx, -dz));
+                hurtRelativeYaw = ((sourceYaw - yaw) % 360f + 540f) % 360f - 180f;
+                directionalHurt = true;
+            } else {
+                directionalHurt = false;
+                hurtRelativeYaw = 0f;
+            }
         } else {
             directionalHurt = false;
             hurtRelativeYaw = 0f;
         }
-        return absorbed + (beforeHealth - health);
+        return (beforeArmor - armor) + (beforeHealth - health);
     }
 
     /**
@@ -308,7 +323,7 @@ public final class Player {
      * @return health actually restored
      */
     public float heal(float amount) {
-        if (amount <= 0f || isDead() || health >= MAX_HEALTH) return 0f;
+        if (!Float.isFinite(amount) || amount <= 0f || isDead() || health >= MAX_HEALTH) return 0f;
         float before = health;
         health = Math.min(MAX_HEALTH, health + amount);
         return health - before;
@@ -320,7 +335,7 @@ public final class Player {
      * @return armor actually added
      */
     public float addArmor(float amount) {
-        if (amount <= 0f || isDead() || armor >= MAX_ARMOR) return 0f;
+        if (!Float.isFinite(amount) || amount <= 0f || isDead() || armor >= MAX_ARMOR) return 0f;
         float before = armor;
         armor = Math.min(MAX_ARMOR, armor + amount);
         return armor - before;
@@ -348,13 +363,15 @@ public final class Player {
         double yawRad = Math.toRadians(yaw);
         float sin = (float) Math.sin(yawRad);
         float cos = (float) Math.cos(yawRad);
-        float localLen = (float) Math.hypot(forward, strafe);
-        if (localLen < 1e-4f) {
+        float f = Float.isFinite(forward) ? forward : 0f;
+        float s = Float.isFinite(strafe) ? strafe : 0f;
+        double localLen = Math.hypot(f, s);
+        if (localLen < 1e-4) {
             dashDirX = sin;
             dashDirZ = -cos;
         } else {
-            float nf = forward / localLen;
-            float ns = strafe / localLen;
+            float nf = (float) (f / localLen);
+            float ns = (float) (s / localLen);
             dashDirX = sin * nf + cos * ns;
             dashDirZ = -cos * nf + sin * ns;
         }
@@ -394,8 +411,12 @@ public final class Player {
      */
     public void look(float yawDelta, float pitchDelta) {
         if (isDead()) return;
-        yaw = ((yaw + yawDelta) % 360f + 360f) % 360f;
-        pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + pitchDelta));
+        if (Float.isFinite(yawDelta)) {
+            yaw = ((yaw + yawDelta) % 360f + 360f) % 360f;
+        }
+        if (Float.isFinite(pitchDelta)) {
+            pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + pitchDelta));
+        }
     }
 
     /**
@@ -459,7 +480,7 @@ public final class Player {
      */
     public void move(GameMap map, List<? extends Damageable> solids, List<Door> doors, float forward, float strafe,
                      float dt) {
-        if (isDead() || dt <= 0f) return;
+        if (isDead() || !Float.isFinite(dt) || dt <= 0f) return;
         float remainingDt = dt;
         float dashDt = 0f;
         if (dashRemaining > 0f) {
@@ -471,21 +492,39 @@ public final class Player {
         }
         advanceVertical(dt, dashDt);
         if (remainingDt <= 0f) return;
-        float length = (float) Math.sqrt(forward * forward + strafe * strafe);
+        float f = Float.isFinite(forward) ? forward : 0f;
+        float s = Float.isFinite(strafe) ? strafe : 0f;
+        float lenSq = f * f + s * s;
+        if (!Float.isFinite(lenSq)) {
+            double inv = 1.0 / Math.hypot(f, s);
+            f = (float) (f * inv);
+            s = (float) (s * inv);
+            lenSq = 1f;
+        }
+        float length = (float) Math.sqrt(lenSq);
         if (length < 1e-4f) return;
         // Diagonal movement is no faster than straight movement.
         float scale = MOVE_SPEED * remainingDt / Math.max(1f, length);
+        if (!Float.isFinite(scale)) scale = Float.MAX_VALUE;
         double yawRad = Math.toRadians(yaw);
         float sin = (float) Math.sin(yawRad);
         float cos = (float) Math.cos(yawRad);
-        float dx = (sin * forward + cos * strafe) * scale;
-        float dz = (-cos * forward + sin * strafe) * scale;
+        float dx = (sin * f + cos * s) * scale;
+        float dz = (-cos * f + sin * s) * scale;
         float beforeX = position.x;
         float beforeZ = position.y;
         Collision.move(map, solids, doors, position, dx, dz, RADIUS);
         if (!isAirborne()) {
-            bobPhase += Vector2.dst(beforeX, beforeZ, position.x, position.y) * BOB_RATE;
+            double bobDelta = (double) Vector2.dst(beforeX, beforeZ, position.x, position.y) * BOB_RATE;
+            bobPhase = wrapTwoPi(bobPhase, bobDelta);
         }
+    }
+
+    private static float wrapTwoPi(float phase, double delta) {
+        if (!Float.isFinite(phase) || !Double.isFinite(delta)) return 0f;
+        double wrapped = ((phase + delta) % TWO_PI + TWO_PI) % TWO_PI;
+        float result = (float) wrapped;
+        return (result < 0f || result >= TWO_PI) ? 0f : result;
     }
 
     private void advanceVertical(float dt, float dashDt) {
@@ -519,7 +558,7 @@ public final class Player {
                 jumpHeight = MAX_JUMP_HEIGHT;
                 if (verticalVelocity > 0f) verticalVelocity = 0f;
             }
-            if (jumpHeight <= 0f) {
+            if (!(jumpHeight > 0f)) {
                 jumpHeight = 0f;
                 verticalVelocity = 0f;
                 landedTriggered = true;

@@ -49,6 +49,7 @@ public final class RailLance {
      * @param dt time step in seconds
      */
     public void updateIdle(float dt) {
+        if (!Float.isFinite(dt) || dt < 0f) return;
         cooldown = Math.max(0f, cooldown - dt);
         sinceShot += dt;
         zoom = Math.max(0f, zoom - ZOOM_SPEED * 2f * dt);
@@ -63,6 +64,7 @@ public final class RailLance {
      * @param zoomHeld whether tactical optic zoom (RMB) is held
      */
     public void updateIdle(float dt, boolean zoomHeld) {
+        if (!Float.isFinite(dt) || dt < 0f) return;
         updateIdle(dt);
         lastZoomHeld = zoomHeld;
         if (!zoomHeld) {
@@ -92,6 +94,7 @@ public final class RailLance {
      * @return {@code true} if a rail beam fired on this step
      */
     public boolean update(float dt, boolean fireTrigger, boolean zoomHeld, boolean zoomBlocked, int availableSlugs) {
+        if (!Float.isFinite(dt) || dt < 0f) return false;
         boolean wasReady = cooldown <= 0f;
         cooldown -= dt;
         sinceShot += dt;

@@ -14,6 +14,7 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix3;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
@@ -120,28 +121,29 @@ public final class ViewmodelRenderer implements Disposable {
             + "    gl_FragColor = vec4(v_colour, 1.0);\n"
             + "}\n";
 
-    private final PerspectiveCamera camera;
-    private final ShaderProgram shader;
-    private final Mesh body;
-    private final Mesh slide;
-    private final Mesh scatterBody;
-    private final Mesh scatterPump;
-    private final Mesh railBody;
-    private final Mesh railBolt;
+    private PerspectiveCamera camera;
+    private ShaderProgram shader;
+    private Mesh body;
+    private Mesh slide;
+    private Mesh scatterBody;
+    private Mesh scatterPump;
+    private Mesh railBody;
+    private Mesh railBolt;
     /** The sculpted hand and forearm, which move with the body of the active weapon. */
-    private final Mesh hand;
-    private final CameraGroupStrategy groupStrategy;
-    private final DecalBatch decalBatch;
-    private final Decal flash;
-    private final Decal glow;
+    private Mesh hand;
+    private CameraGroupStrategy groupStrategy;
+    private DecalBatch decalBatch;
+    private Decal flash;
+    private Decal glow;
+    private final Array<Disposable> resourceHandles = new Array<>(10);
 
     private final Matrix4 gunTransform = new Matrix4();
     private final Matrix4 slideTransform = new Matrix4();
     private final Matrix4 viewToWorld = new Matrix4();
     private final Matrix3 normalMatrix = new Matrix3();
-    private final ObjModel.SocketSpec muzzleSocket;
-    private final ObjModel.SocketSpec scatterMuzzleSocket;
-    private final ObjModel.SocketSpec railMuzzleSocket;
+    private ObjModel.SocketSpec muzzleSocket;
+    private ObjModel.SocketSpec scatterMuzzleSocket;
+    private ObjModel.SocketSpec railMuzzleSocket;
     private final float[] railAccentScratch = new float[4];
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
@@ -150,43 +152,150 @@ public final class ViewmodelRenderer implements Disposable {
     /** The rest x offset for the current window shape. */
     private float restX = REST_X;
 
+    interface ResourceBackend {
+        Disposable createShader(String vertexShader, String fragmentShader);
+
+        boolean isShaderCompiled(Disposable shaderHandle);
+
+        String getShaderLog(Disposable shaderHandle);
+
+        ObjModel loadModel(String assetPath, String label);
+
+        Disposable buildMesh(ModelVertices.IndexedMesh data, String assetPath, String label);
+
+        Disposable createGroupStrategy(PerspectiveCamera camera);
+
+        Disposable createDecalBatch(Disposable groupStrategyHandle);
+
+        void initDecals(ProceduralTextures textures);
+    }
+
     /** @param textures the textures of the muzzle flash and the charge glow; the caller keeps ownership of them */
     public ViewmodelRenderer(ProceduralTextures textures) {
-        // The camera never moves: it sits at the origin of view space, looking down negative z.
-        int initialWidth = initialViewportWidth(Gdx.graphics);
-        int initialHeight = initialViewportHeight(Gdx.graphics);
-        camera = createViewmodelCamera(Gdx.graphics);
-        resize(initialWidth, initialHeight);
+        this(Gdx.graphics, textures, null);
+    }
 
-        shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
-        if (!shader.isCompiled()) {
-            throw new GdxRuntimeException("The viewmodel shader did not compile: " + shader.getLog());
+    ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, ResourceBackend backend) {
+        ResourceBackend active = backend != null ? backend : createGlBackend();
+        try {
+            // The camera never moves: it sits at the origin of view space, looking down negative z.
+            int initialWidth = initialViewportWidth(graphics);
+            int initialHeight = initialViewportHeight(graphics);
+            camera = createViewmodelCamera(graphics);
+            resize(initialWidth, initialHeight);
+
+            Disposable shaderHandle = active.createShader(VERTEX_SHADER, FRAGMENT_SHADER);
+            shader = trackResource(shaderHandle, ShaderProgram.class);
+            if (!active.isShaderCompiled(shaderHandle)) {
+                throw new GdxRuntimeException(
+                    "The viewmodel shader did not compile: " + active.getShaderLog(shaderHandle));
+            }
+            int modelsBefore = ModelMesh.getLoadedCount();
+            ObjModel pistolObj = active.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");
+            PistolModel pistol = unpackPistol(pistolObj);
+            muzzleSocket = pistolObj.getSocket("muzzle");
+            body = trackResource(
+                active.buildMesh(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body"), Mesh.class);
+            slide = trackResource(
+                active.buildMesh(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide"), Mesh.class);
+            ObjModel scatterObj = active.loadModel(ScattergunModel.ASSET_PATH, "viewmodel scattergun");
+            ScattergunModel scatter = unpackScattergun(scatterObj);
+            scatterMuzzleSocket = scatterObj.getSocket("muzzle");
+            scatterBody = trackResource(
+                active.buildMesh(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body"),
+                Mesh.class);
+            scatterPump = trackResource(
+                active.buildMesh(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump"),
+                Mesh.class);
+            ObjModel railObj = active.loadModel(RailLanceModel.ASSET_PATH, "viewmodel rail lance");
+            RailLanceModel rail = unpackRailLance(railObj);
+            railMuzzleSocket = railObj.getSocket("muzzle");
+            railBody = trackResource(
+                active.buildMesh(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body"), Mesh.class);
+            railBolt = trackResource(
+                active.buildMesh(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt"), Mesh.class);
+            // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
+            ObjModel handObj = active.loadModel(HandModel.ASSET_PATH, "viewmodel hand");
+            hand = trackResource(
+                active.buildMesh(unpackHand(handObj), HandModel.ASSET_PATH, "viewmodel hand"), Mesh.class);
+            log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
+
+            Disposable strategyHandle = active.createGroupStrategy(camera);
+            trackResource(strategyHandle, CameraGroupStrategy.class);
+            decalBatch = trackResource(active.createDecalBatch(strategyHandle), DecalBatch.class);
+            active.initDecals(textures);
+        } catch (Throwable t) {
+            try {
+                dispose();
+            } catch (Throwable suppressed) {
+                t.addSuppressed(suppressed);
+            }
+            throw t;
         }
-        int modelsBefore = ModelMesh.getLoadedCount();
-        ObjModel pistolObj = ModelMesh.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");
-        PistolModel pistol = unpackPistol(pistolObj);
-        muzzleSocket = pistolObj.getSocket("muzzle");
-        body = ModelMesh.buildIndexed(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body");
-        slide = ModelMesh.buildIndexed(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide");
-        ObjModel scatterObj = ModelMesh.loadModel(ScattergunModel.ASSET_PATH, "viewmodel scattergun");
-        ScattergunModel scatter = unpackScattergun(scatterObj);
-        scatterMuzzleSocket = scatterObj.getSocket("muzzle");
-        scatterBody = ModelMesh.buildIndexed(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body");
-        scatterPump = ModelMesh.buildIndexed(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump");
-        ObjModel railObj = ModelMesh.loadModel(RailLanceModel.ASSET_PATH, "viewmodel rail lance");
-        RailLanceModel rail = unpackRailLance(railObj);
-        railMuzzleSocket = railObj.getSocket("muzzle");
-        railBody = ModelMesh.buildIndexed(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body");
-        railBolt = ModelMesh.buildIndexed(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt");
-        // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
-        ObjModel handObj = ModelMesh.loadModel(HandModel.ASSET_PATH, "viewmodel hand");
-        hand = ModelMesh.buildIndexed(unpackHand(handObj), HandModel.ASSET_PATH, "viewmodel hand");
-        log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
+    }
 
-        groupStrategy = new CameraGroupStrategy(camera);
-        decalBatch = new DecalBatch(groupStrategy);
-        flash = Decal.newDecal(1f, 1f, new TextureRegion(textures.muzzleFlash), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
-        glow = Decal.newDecal(1f, 1f, new TextureRegion(textures.orb), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+    private ResourceBackend createGlBackend() {
+        return new ResourceBackend() {
+            @Override
+            public Disposable createShader(String vertexShader, String fragmentShader) {
+                ShaderProgram compiled = new ShaderProgram(vertexShader, fragmentShader);
+                shader = compiled;
+                return compiled;
+            }
+
+            @Override
+            public boolean isShaderCompiled(Disposable shaderHandle) {
+                return shader != null && shader.isCompiled();
+            }
+
+            @Override
+            public String getShaderLog(Disposable shaderHandle) {
+                return shader != null ? shader.getLog() : "";
+            }
+
+            @Override
+            public ObjModel loadModel(String assetPath, String label) {
+                return ModelMesh.loadModel(assetPath, label);
+            }
+
+            @Override
+            public Disposable buildMesh(ModelVertices.IndexedMesh data, String assetPath, String label) {
+                return ModelMesh.buildIndexed(data, assetPath, label);
+            }
+
+            @Override
+            public Disposable createGroupStrategy(PerspectiveCamera cam) {
+                groupStrategy = new CameraGroupStrategy(cam);
+                return null;
+            }
+
+            @Override
+            public Disposable createDecalBatch(Disposable groupStrategyHandle) {
+                DecalBatch batch = new DecalBatch(groupStrategy);
+                decalBatch = batch;
+                return batch;
+            }
+
+            @Override
+            public void initDecals(ProceduralTextures textures) {
+                if (textures == null) {
+                    throw new IllegalArgumentException("textures must not be null");
+                }
+                flash = Decal.newDecal(
+                    1f, 1f, new TextureRegion(textures.muzzleFlash), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+                glow = Decal.newDecal(1f, 1f, new TextureRegion(textures.orb), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+            }
+        };
+    }
+
+    private <T> T trackResource(Disposable handle, Class<T> type) {
+        if (type.isInstance(handle)) {
+            return type.cast(handle);
+        }
+        if (handle != null) {
+            resourceHandles.add(handle);
+        }
+        return null;
     }
 
     static PistolModel unpackPistol(ObjModel pistolObj) {
@@ -263,7 +372,9 @@ public final class ViewmodelRenderer implements Disposable {
      */
     public void resize(int width, int height) {
         if (width <= 0 || height <= 0) return;
-        applyViewportResize(camera, width, height);
+        if (camera != null) {
+            applyViewportResize(camera, width, height);
+        }
         // The rest offset is tuned for a 16:9 window; a narrower window pulls the gun in so it stays in view.
         restX = computeRestX(width, height, restX);
     }
@@ -486,15 +597,41 @@ public final class ViewmodelRenderer implements Disposable {
 
     @Override
     public void dispose() {
-        body.dispose();
-        slide.dispose();
-        scatterBody.dispose();
-        scatterPump.dispose();
-        railBody.dispose();
-        railBolt.dispose();
-        hand.dispose();
-        shader.dispose();
-        decalBatch.dispose();
-        groupStrategy.dispose();
+        body = disposeQuietly(body);
+        slide = disposeQuietly(slide);
+        scatterBody = disposeQuietly(scatterBody);
+        scatterPump = disposeQuietly(scatterPump);
+        railBody = disposeQuietly(railBody);
+        railBolt = disposeQuietly(railBolt);
+        hand = disposeQuietly(hand);
+        shader = disposeQuietly(shader);
+        decalBatch = disposeQuietly(decalBatch);
+        groupStrategy = disposeGroupStrategy(groupStrategy);
+        for (int i = resourceHandles.size - 1; i >= 0; i--) {
+            disposeQuietly(resourceHandles.get(i));
+        }
+        resourceHandles.clear();
+    }
+
+    static <D extends Disposable> D disposeQuietly(D resource) {
+        if (resource != null) {
+            try {
+                resource.dispose();
+            } catch (RuntimeException ignored) {
+                // Isolate cleanup so one failing resource never skips disposing the rest.
+            }
+        }
+        return null;
+    }
+
+    private static CameraGroupStrategy disposeGroupStrategy(CameraGroupStrategy strategy) {
+        if (strategy != null) {
+            try {
+                strategy.dispose();
+            } catch (RuntimeException ignored) {
+                // Isolate cleanup so one failing resource never skips disposing the rest.
+            }
+        }
+        return null;
     }
 }

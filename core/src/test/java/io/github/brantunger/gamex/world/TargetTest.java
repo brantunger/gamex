@@ -70,4 +70,51 @@ class TargetTest {
         target.update(1f);
         assertEquals(0f, target.getHitFlash(), EPSILON);
     }
+
+    @Test
+    void ignoresNaNAndNonPositiveDamageWhilePositiveInfinityDestroysCleanly() {
+        for (Target.Kind kind : Target.Kind.values()) {
+            Target target = new Target(kind, 1f, 2f);
+            for (float ignored : new float[] {Float.NaN, 0f, -0f, -30f, Float.NEGATIVE_INFINITY}) {
+                target.damage(ignored);
+                assertEquals(kind.maxHealth, target.getHealth(), EPSILON);
+                assertFalse(Float.isNaN(target.getHealth()));
+                assertFalse(target.isDestroyed());
+                assertEquals(0f, target.getHitFlash(), EPSILON);
+            }
+
+            // Target remains normally damageable and destructible after NaN / negative damage attempts.
+            target.damage(15f);
+            assertEquals(kind.maxHealth - 15f, target.getHealth(), EPSILON);
+            assertFalse(target.isDestroyed());
+            assertEquals(1f, target.getHitFlash(), EPSILON);
+
+            for (float badDt : new float[] {Float.NaN, 0f, -0.5f, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY}) {
+                target.update(badDt);
+                assertEquals(1f, target.getHitFlash(), EPSILON);
+            }
+
+            target.damage(Float.NaN);
+            target.damage(Float.NEGATIVE_INFINITY);
+            assertEquals(kind.maxHealth - 15f, target.getHealth(), EPSILON);
+            assertFalse(target.isDestroyed());
+
+            target.damage(kind.maxHealth);
+            assertEquals(0f, target.getHealth(), EPSILON);
+            assertTrue(target.isDestroyed());
+
+            // Positive infinity deals lethal damage cleanly without setting health to NaN or negative.
+            Target infTarget = new Target(kind, 1f, 2f);
+            infTarget.damage(Float.POSITIVE_INFINITY);
+            assertEquals(0f, infTarget.getHealth(), EPSILON);
+            assertTrue(infTarget.isDestroyed());
+            assertEquals(1f, infTarget.getHitFlash(), EPSILON);
+
+            infTarget.damage(Float.NaN);
+            infTarget.damage(10f);
+            infTarget.damage(Float.POSITIVE_INFINITY);
+            assertEquals(0f, infTarget.getHealth(), EPSILON);
+            assertTrue(infTarget.isDestroyed());
+        }
+    }
 }

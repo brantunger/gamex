@@ -5,6 +5,11 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
 
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
 /**
  * Every texture of the game, painted in code at load time. Nothing is read from a file. The textures are small and
  * use nearest-neighbour filtering, which gives the chunky look of the genre.
@@ -42,21 +47,27 @@ public final class ProceduralTextures implements Disposable {
 
     /** Paints every texture. Needs a GL context. */
     public ProceduralTextures() {
-        brick = upload(paintBrick());
-        panel = upload(paintPanel());
-        stone = upload(paintStone());
-        floor = upload(paintFloor());
-        ceiling = upload(paintCeiling());
-        muzzleFlash = upload(paintMuzzleFlash());
-        scorch = upload(paintScorch());
-        spark = upload(paintSpark());
-        orb = upload(paintOrb());
-        orb.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        explosion = upload(paintExplosion());
-        exitPad = upload(paintExitPad());
-        Pixmap pixel = blank(1, 1);
-        pixel.drawPixel(0, 0, 0xFFFFFFFF);
-        white = upload(pixel);
+        try {
+            brick = upload(paintBrick());
+            panel = upload(paintPanel());
+            stone = upload(paintStone());
+            floor = upload(paintFloor());
+            ceiling = upload(paintCeiling());
+            muzzleFlash = upload(paintMuzzleFlash());
+            scorch = upload(paintScorch());
+            spark = upload(paintSpark());
+            orb = upload(paintOrb(), Texture.TextureFilter.Linear);
+            explosion = upload(paintExplosion());
+            exitPad = upload(paintExitPad());
+            white = upload(paintWhite());
+        } catch (Throwable t) {
+            try {
+                dispose();
+            } catch (Throwable suppressed) {
+                t.addSuppressed(suppressed);
+            }
+            throw t;
+        }
     }
 
     /**
@@ -76,17 +87,111 @@ public final class ProceduralTextures implements Disposable {
 
     @Override
     public void dispose() {
-        for (Texture texture : all) texture.dispose();
-        all.clear();
+        disposeAll(all);
+    }
+
+    static void disposeAll(Array<? extends Disposable> resources) {
+        if (resources == null) return;
+        for (int i = 0; i < resources.size; i++) {
+            Disposable resource = resources.get(i);
+            if (resource != null) {
+                try {
+                    resource.dispose();
+                } catch (RuntimeException ignored) {
+                    // Isolate cleanup so one failing texture disposal never skips the remaining textures.
+                }
+            }
+        }
+        resources.clear();
     }
 
     /** Turns a pixmap into a nearest-filtered texture and disposes of the pixmap. */
     private Texture upload(Pixmap pixmap) {
-        Texture texture = new Texture(pixmap);
-        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        pixmap.dispose();
-        all.add(texture);
-        return texture;
+        return upload(pixmap, Texture.TextureFilter.Nearest);
+    }
+
+    private Texture upload(Pixmap pixmap, Texture.TextureFilter filter) {
+        return uploadPixmap(pixmap, all, Texture::new, texture -> texture.setFilter(filter, filter));
+    }
+
+    static <P extends Disposable, T extends Disposable> T uploadPixmap(
+        P pixmap,
+        Array<T> tracked,
+        Function<P, T> textureFactory,
+        Consumer<T> configure) {
+        if (pixmap == null) {
+            throw new IllegalArgumentException("pixmap must not be null");
+        }
+        Throwable primary = null;
+        try {
+            T texture = textureFactory.apply(pixmap);
+            if (texture != null) {
+                if (configure != null) {
+                    try {
+                        configure.accept(texture);
+                    } catch (Throwable t) {
+                        disposeSuppressing(texture, t);
+                        throw t;
+                    }
+                }
+                if (tracked != null) {
+                    tracked.add(texture);
+                }
+            }
+            return texture;
+        } catch (Throwable t) {
+            primary = t;
+            throw t;
+        } finally {
+            if (primary != null) {
+                disposeSuppressing(pixmap, primary);
+            } else {
+                pixmap.dispose();
+            }
+        }
+    }
+
+    static <P extends Disposable, T extends Disposable> Array<T> uploadAll(
+        Iterable<? extends Supplier<P>> painters,
+        Function<P, T> textureFactory,
+        BiConsumer<Integer, T> configure) {
+        Array<T> tracked = new Array<>();
+        try {
+            int index = 0;
+            for (Supplier<P> painter : painters) {
+                final int current = index++;
+                uploadPixmap(painter.get(), tracked, textureFactory,
+                    configure != null ? texture -> configure.accept(current, texture) : null);
+            }
+            return tracked;
+        } catch (Throwable t) {
+            try {
+                disposeAll(tracked);
+            } catch (Throwable suppressed) {
+                t.addSuppressed(suppressed);
+            }
+            throw t;
+        }
+    }
+
+    private static void disposeSuppressing(Disposable resource, Throwable primary) {
+        if (resource == null) return;
+        try {
+            resource.dispose();
+        } catch (Throwable suppressed) {
+            primary.addSuppressed(suppressed);
+        }
+    }
+
+    private static Pixmap paintWhite() {
+        Pixmap pixel = blank(1, 1);
+        try {
+            pixel.drawPixel(0, 0, 0xFFFFFFFF);
+            return pixel;
+        } catch (Throwable t) {
+            pixel.dispose();
+            throw t;
+        }
     }
 
     private static Pixmap blank(int width, int height) {

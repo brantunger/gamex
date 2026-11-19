@@ -14,6 +14,7 @@ import java.util.Set;
 public final class GdxPreferencesStore implements KeyValueStore {
 
     private static final Logger log = LoggerFactory.getLogger(GdxPreferencesStore.class);
+    private static final String MISSING = "\u0000gamex.missing\u0000";
 
     private final Preferences prefs;
     /** Keys already warned about; the menus read some keys on every frame. */
@@ -26,8 +27,10 @@ public final class GdxPreferencesStore implements KeyValueStore {
 
     @Override
     public float getFloat(String key, float defaultValue) {
+        String raw = prefs.getString(key, MISSING);
         try {
-            return prefs.getFloat(key, defaultValue);
+            if (raw == null || MISSING.equals(raw)) return prefs.getFloat(key, defaultValue);
+            return Float.parseFloat(raw.trim());
         } catch (NumberFormatException e) {
             warnUnreadable(key, defaultValue);
             return defaultValue;
@@ -36,8 +39,10 @@ public final class GdxPreferencesStore implements KeyValueStore {
 
     @Override
     public int getInteger(String key, int defaultValue) {
+        String raw = prefs.getString(key, MISSING);
         try {
-            return prefs.getInteger(key, defaultValue);
+            if (raw == null || MISSING.equals(raw)) return prefs.getInteger(key, defaultValue);
+            return Integer.parseInt(raw.trim());
         } catch (NumberFormatException e) {
             warnUnreadable(key, defaultValue);
             return defaultValue;
@@ -51,7 +56,12 @@ public final class GdxPreferencesStore implements KeyValueStore {
 
     @Override
     public boolean getBoolean(String key, boolean defaultValue) {
-        return prefs.getBoolean(key, defaultValue);
+        String raw = prefs.getString(key, MISSING);
+        if (raw == null || MISSING.equals(raw)) return prefs.getBoolean(key, defaultValue);
+        String trimmed = raw.trim();
+        if ("true".equalsIgnoreCase(trimmed)) return true;
+        if ("false".equalsIgnoreCase(trimmed)) return false;
+        return defaultValue;
     }
 
     @Override

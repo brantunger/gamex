@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -79,6 +81,8 @@ public final class SaveData {
     }
 
     private final KeyValueStore store;
+    /** Keys already warned about; the menus read some keys on every frame. */
+    private final Set<String> warnedKeys = new HashSet<>();
 
     /** @param store backing key-value store */
     public SaveData(KeyValueStore store) {
@@ -114,7 +118,8 @@ public final class SaveData {
         String diffName = store.getString(KEY_RUN_DIFFICULTY, Difficulty.NORMAL.name());
         Difficulty diff;
         try {
-            diff = Difficulty.valueOf(diffName);
+            if (diffName == null) throw new IllegalArgumentException("null difficulty");
+            diff = Difficulty.valueOf(diffName.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             log.warn("The saved run has an unknown difficulty '{}'; using {}", diffName, Difficulty.NORMAL);
             diff = Difficulty.NORMAL;
@@ -123,7 +128,8 @@ public final class SaveData {
         int shells = store.getInteger(KEY_RUN_SHELLS, 0);
         boolean hasRailLance = store.getBoolean(KEY_RUN_HAS_RAIL_LANCE, false);
         int slugs = store.getInteger(KEY_RUN_SLUGS, 0);
-        WeaponSlot weapon = WeaponSlot.fromName(store.getString(KEY_RUN_WEAPON, WeaponSlot.PISTOL.name()));
+        String weaponName = store.getString(KEY_RUN_WEAPON, WeaponSlot.PISTOL.name());
+        WeaponSlot weapon = WeaponSlot.fromName(weaponName == null ? null : weaponName.trim().toUpperCase(Locale.ROOT));
         log.info("Read the saved run: stage index {}, {}, health {}, armor {}, weapon {}", getSavedStageIndex(), diff,
             health, armor, weapon);
         return new PlayerLoadout(health, armor, diff, hasScattergun, shells, hasRailLance, slugs, weapon);
@@ -193,15 +199,16 @@ public final class SaveData {
                                               RunStats stats, boolean recordMedals) {
         String prefix = "best." + stageId + "." + difficulty.name() + ".";
         float prevBestTime = getBestTime(stageId, difficulty);
-        boolean newBestTime = stats.clearTime < prevBestTime;
+        boolean newBestTime = Float.isFinite(stats.clearTime) && stats.clearTime > 0f && stats.clearTime < prevBestTime;
         float bestTime = newBestTime ? stats.clearTime : prevBestTime;
         if (newBestTime) store.putFloat(prefix + "time", bestTime);
 
         char rank = rankFor(stats.clearTime, parSeconds, stats.destroyed, stats.totalTargets);
-        String prevRankText = store.getString(prefix + "rank", "");
-        char prevRank = prevRankText.isEmpty() ? 'Z' : prevRankText.charAt(0);
+        char prevRank = getBestRank(stageId, difficulty);
         char bestRank = rankOrder(rank) < rankOrder(prevRank) ? rank : prevRank;
-        store.putString(prefix + "rank", String.valueOf(bestRank));
+        String rankKey = prefix + "rank";
+        store.putString(rankKey, String.valueOf(bestRank));
+        warnedKeys.remove(rankKey);
 
         Set<Medal> medals = Collections.emptySet();
         Set<Medal> newMedals = Collections.emptySet();
@@ -233,8 +240,18 @@ public final class SaveData {
 
     /** @return stored best rank ('S', 'A', 'B', 'C') for {@code stageId} on {@code difficulty}, or '-' if unplayed. */
     public char getBestRank(String stageId, Difficulty difficulty) {
-        String text = store.getString("best." + stageId + "." + difficulty.name() + ".rank", "");
-        return text.isEmpty() ? '-' : text.charAt(0);
+        String key = "best." + stageId + "." + difficulty.name() + ".rank";
+        String raw = store.getString(key, "");
+        if (raw == null || raw.isEmpty()) return '-';
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() == 1) {
+            char rank = normalized.charAt(0);
+            if (rankOrder(rank) < 99) return rank;
+        }
+        if (warnedKeys.add(key)) {
+            log.warn("The stored rank of '{}' is not S, A, B or C: '{}'; using -", key, raw);
+        }
+        return '-';
     }
 
     /**

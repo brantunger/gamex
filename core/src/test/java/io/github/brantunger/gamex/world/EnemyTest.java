@@ -795,6 +795,83 @@ class EnemyTest {
             "door-hugging Guard bolt should clear closed door slab and hit player");
     }
 
+    @Test
+    void damageAndUpdateIgnoreNonPositiveAndNaNWhilePositiveInfinityKillsCleanly() {
+        for (Enemy.Kind kind : Enemy.Kind.values()) {
+            Enemy enemy = new Enemy(kind, 2.5f, 3.5f, 90f);
+            for (float ignored : new float[] {Float.NaN, 0f, -0f, -25f, Float.NEGATIVE_INFINITY}) {
+                enemy.damage(ignored);
+                assertEquals(kind.maxHealth, enemy.getHealth(), 1e-6f);
+                assertFalse(Float.isNaN(enemy.getHealth()));
+                assertFalse(enemy.isDestroyed());
+                assertEquals(0f, enemy.getHitFlash(), 1e-6f);
+                assertEquals(Enemy.State.DORMANT, enemy.getState());
+                assertFalse(enemy.isOverdrive());
+                assertFalse(enemy.consumeOverdriveTriggered());
+            }
+
+            // Finite damage after NaN/non-positive calls still applies, alerts, and leaves entity destructible.
+            enemy.damage(10f);
+            assertEquals(kind.maxHealth - 10f, enemy.getHealth(), 1e-6f);
+            assertFalse(enemy.isDestroyed());
+            assertEquals(1f, enemy.getHitFlash(), 1e-6f);
+            assertEquals(Enemy.State.PURSUING, enemy.getState());
+
+            // Non-positive and NaN damage on a partially damaged enemy leave remaining health intact.
+            enemy.damage(Float.NaN);
+            enemy.damage(-15f);
+            enemy.damage(Float.NEGATIVE_INFINITY);
+            assertEquals(kind.maxHealth - 10f, enemy.getHealth(), 1e-6f);
+            assertFalse(enemy.isDestroyed());
+
+            enemy.damage(kind.maxHealth);
+            assertEquals(0f, enemy.getHealth(), 1e-6f);
+            assertTrue(enemy.isDestroyed());
+
+            // Positive infinity deals lethal damage cleanly without producing NaN or negative health.
+            Enemy infTarget = new Enemy(kind, 2.5f, 3.5f, 90f);
+            infTarget.damage(Float.POSITIVE_INFINITY);
+            assertEquals(0f, infTarget.getHealth(), 1e-6f);
+            assertTrue(infTarget.isDestroyed());
+            assertEquals(1f, infTarget.getHitFlash(), 1e-6f);
+            assertEquals(Enemy.State.DORMANT, infTarget.getState());
+            assertFalse(infTarget.isOverdrive());
+            assertFalse(infTarget.consumeOverdriveTriggered());
+
+            // Further damage (finite, NaN, or +Infinity) on a destroyed enemy is ignored.
+            infTarget.damage(Float.NaN);
+            infTarget.damage(25f);
+            infTarget.damage(Float.POSITIVE_INFINITY);
+            assertEquals(0f, infTarget.getHealth(), 1e-6f);
+            assertTrue(infTarget.isDestroyed());
+        }
+
+        // Non-finite and non-positive dt values in update and initial yaw never corrupt enemy state.
+        GameMap room = GameMap.parse(
+            "#######",
+            "#>....#",
+            "#######");
+        Pathfinder pf = new Pathfinder();
+        Player player = new Player(1.5f, 1.5f, 90f);
+        Enemy nanYaw = new Enemy(Enemy.Kind.GUARD, 4.5f, 1.5f, Float.NaN);
+        assertEquals(0f, nanYaw.getYaw(), 1e-6f);
+
+        Enemy guard = new Enemy(Enemy.Kind.GUARD, 4.5f, 1.5f, 270f);
+        guard.damage(10f);
+        float expectedHealth = guard.getHealth();
+        List<EnemyProjectile> bolts = new ArrayList<>();
+        for (float badDt : new float[] {Float.NaN, 0f, -0.1f, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY}) {
+            guard.update(badDt, room, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            assertEquals(4.5f, guard.getX(), 1e-6f);
+            assertEquals(1.5f, guard.getZ(), 1e-6f);
+            assertEquals(270f, guard.getYaw(), 1e-6f);
+            assertEquals(expectedHealth, guard.getHealth(), 1e-6f);
+            assertEquals(1f, guard.getHitFlash(), 1e-6f);
+            assertEquals(Enemy.State.PURSUING, guard.getState());
+            assertTrue(bolts.isEmpty());
+        }
+    }
+
     private static Vector3 measureBoltDirection(EnemyProjectile bolt, GameMap map) {
         EnemyProjectile probe = bolt;
         float x0 = probe.position.x;

@@ -190,4 +190,87 @@ class ViewmodelAnimationTest {
         animation.update(0.03f, false, 0f, 0f, 0f);
         assertTrue(animation.getRecoil() <= 1f, "recoilScale reset to 1f: " + animation.getRecoil());
     }
+
+    @Test
+    void nonFiniteAndNegativeInputsNeverCorruptRecoilSlideBobOrSway() {
+        ViewmodelAnimation animation = new ViewmodelAnimation();
+        animation.update(Float.NaN, Float.NaN, Float.NaN, Float.NaN, Float.NaN);
+        animation.update(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY,
+            Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
+        animation.update(-0.25f, 0f, 1f, 20f, -20f);
+        assertAtRest(animation);
+
+        // Start a valid shot + walk + sway, then bombard with negative and non-finite dt values.
+        animation.update(FRAME, 1.5f, 0.8f, 8f, -6f);
+        animation.update(0.03f, 0f, 0.8f, 8f, -6f);
+        float recoilBefore = animation.getRecoil();
+        float slideBefore = animation.getSlide();
+        float bobXBefore = animation.getBobX();
+        float bobYBefore = animation.getBobY();
+        float swayYawBefore = animation.getSwayYaw();
+        float swayPitchBefore = animation.getSwayPitch();
+        assertTrue(recoilBefore > 1.2f);
+        assertTrue(slideBefore > 0.7f);
+
+        for (float badDt : new float[] {-0.5f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            animation.update(badDt, 0f, 1f, 30f, -30f);
+            animation.update(badDt, Float.NaN, 1f, 30f, -30f);
+            animation.update(badDt, Float.POSITIVE_INFINITY, 1f, 30f, -30f);
+            assertEquals(recoilBefore, animation.getRecoil(), 0f);
+            assertEquals(slideBefore, animation.getSlide(), 0f);
+            assertEquals(bobXBefore, animation.getBobX(), 0f);
+            assertEquals(bobYBefore, animation.getBobY(), 0f);
+            assertEquals(swayYawBefore, animation.getSwayYaw(), 0f);
+            assertEquals(swayPitchBefore, animation.getSwayPitch(), 0f);
+        }
+
+        // Valid positive dt with non-finite shotKickScale, walkSpeed, yawDelta, pitchDelta sanitizes them cleanly.
+        animation.update(FRAME, Float.POSITIVE_INFINITY, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY);
+        assertTrue(Float.isFinite(animation.getRecoil()) && animation.getRecoil() <= 1.5f);
+        assertTrue(Float.isFinite(animation.getSlide()));
+        assertTrue(Float.isFinite(animation.getBobX()));
+        assertTrue(Float.isFinite(animation.getBobY()));
+        assertTrue(Float.isFinite(animation.getSwayYaw())
+            && Math.abs(animation.getSwayYaw()) <= ViewmodelAnimation.MAX_SWAY);
+        assertTrue(Float.isFinite(animation.getSwayPitch())
+            && Math.abs(animation.getSwayPitch()) <= ViewmodelAnimation.MAX_SWAY);
+    }
+
+    @Test
+    void bobPhaseWrapsModuloTwoPiKeepingFigureEightSmoothAfterMultiHourElapsedTime() {
+        ViewmodelAnimation animation = new ViewmodelAnimation();
+        // Warm up bobAmount to 1 and advance bobPhase across ~9,000,000 radians (millions of cycles, where raw float
+        // phase would have ULP >= 1.0 rad and completely freeze 60 fps updates).
+        animation.update(1_000_000f, false, 1f, 0f, 0f);
+
+        float prevX = animation.getBobX();
+        float prevY = animation.getBobY();
+        float minX = prevX;
+        float maxX = prevX;
+        float minY = prevY;
+        float maxY = prevY;
+        float maxStepX = ViewmodelAnimation.BOB_WIDTH * (FRAME * 9f + 0.02f);
+        float maxStepY = ViewmodelAnimation.BOB_HEIGHT * (FRAME * 18f + 0.02f);
+
+        for (int i = 0; i < 180; i++) {
+            animation.update(FRAME, false, 1f, 0f, 0f);
+            float x = animation.getBobX();
+            float y = animation.getBobY();
+            assertTrue(Float.isFinite(x) && Math.abs(x) <= ViewmodelAnimation.BOB_WIDTH + 1e-6f);
+            assertTrue(Float.isFinite(y) && Math.abs(y) <= ViewmodelAnimation.BOB_HEIGHT + 1e-6f);
+            assertTrue(Math.abs(x - prevX) <= maxStepX, "discontinuity in bobX across 2pi wrap: " + (x - prevX));
+            assertTrue(Math.abs(y - prevY) <= maxStepY, "discontinuity in bobY across 2pi wrap: " + (y - prevY));
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+            prevX = x;
+            prevY = y;
+        }
+
+        assertTrue(minX < -ViewmodelAnimation.BOB_WIDTH * 0.95f && maxX > ViewmodelAnimation.BOB_WIDTH * 0.95f,
+            "sideways bob still sweeps full range after 1,000,000s: [" + minX + ", " + maxX + "]");
+        assertTrue(minY < -ViewmodelAnimation.BOB_HEIGHT * 0.95f && maxY > ViewmodelAnimation.BOB_HEIGHT * 0.95f,
+            "vertical bob still sweeps full range after 1,000,000s: [" + minY + ", " + maxY + "]");
+    }
 }

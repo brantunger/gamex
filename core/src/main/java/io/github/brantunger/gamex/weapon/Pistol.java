@@ -23,6 +23,7 @@ public final class Pistol {
      * @return whether a shot was fired during this step
      */
     public boolean update(float dt, boolean trigger) {
+        if (!Float.isFinite(dt) || dt < 0f) return false;
         boolean wasReady = cooldown <= 0f;
         cooldown -= dt;
         sinceShot += dt;

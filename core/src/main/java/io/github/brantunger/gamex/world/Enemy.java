@@ -374,7 +374,7 @@ public final class Enemy implements Damageable {
 
     @Override
     public void damage(float amount) {
-        if (amount <= 0f || isDestroyed()) return;
+        if (!(amount > 0f) || Float.isNaN(amount) || isDestroyed()) return;
         boolean wasOverdrive = isOverdrive();
         health = Math.max(0f, health - amount);
         hitFlash = HIT_FLASH_TIME;
@@ -402,7 +402,7 @@ public final class Enemy implements Damageable {
     public void update(float dt, GameMap map, Pathfinder pathfinder, Player player, Difficulty difficulty,
                        List<? extends Damageable> worldBlockers, List<Door> doors,
                        List<EnemyProjectile> outProjectiles) {
-        if (dt <= 0f) return;
+        if (!Float.isFinite(dt) || dt <= 0f) return;
         hitFlash = Math.max(0f, hitFlash - dt);
         groundSpeed = 0f;
         if (isDestroyed() || player == null || player.isDead()) {
@@ -1434,6 +1434,7 @@ public final class Enemy implements Damageable {
     }
 
     private static float normalizeYaw(float yaw) {
+        if (!Float.isFinite(yaw)) return 0f;
         return ((yaw % 360f) + 360f) % 360f;
     }
 }

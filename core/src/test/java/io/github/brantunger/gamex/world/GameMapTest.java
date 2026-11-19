@@ -91,6 +91,24 @@ class GameMapTest {
     }
 
     @Test
+    void rejectsNullArrayEmptyRowsAndNullRowsWithIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse((String[]) null));
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse(new String[0]));
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse(""));
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse("", "#>#"));
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse((String) null));
+        assertThrows(IllegalArgumentException.class, () -> GameMap.parse(null, "#>#", "###"));
+
+        IllegalArgumentException middleNull = assertThrows(IllegalArgumentException.class,
+            () -> GameMap.parse("###", null, "#>#"));
+        assertEquals("Row 1 is null", middleNull.getMessage());
+
+        IllegalArgumentException lastNull = assertThrows(IllegalArgumentException.class,
+            () -> GameMap.parse("###", "#>#", null));
+        assertEquals("Row 2 is null", lastNull.getMessage());
+    }
+
+    @Test
     void firstLevelSpawnsThePlayerClearOfWalls() {
         GameMap map = Levels.first();
 

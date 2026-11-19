@@ -171,11 +171,11 @@ public final class GameMap {
      * Parses a layout.
      * @param rows the rows from north to south, all of the same length
      * @return the parsed map
-     * @throws IllegalArgumentException if the layout is empty or ragged, holds an unknown character, holds more than
-     *     one exit, or does not hold exactly one player spawn
+     * @throws IllegalArgumentException if the layout is empty or ragged, any row is {@code null}, the layout holds
+     *     an unknown character, holds more than one exit, or does not hold exactly one player spawn
      */
     public static GameMap parse(String... rows) {
-        if (rows == null || rows.length == 0 || rows[0].isEmpty()) {
+        if (rows == null || rows.length == 0 || rows[0] == null || rows[0].isEmpty()) {
             throw new IllegalArgumentException("The layout is empty");
         }
         int width = rows[0].length();
@@ -195,6 +195,9 @@ public final class GameMap {
         float exitX = 0f;
         float exitZ = 0f;
         for (int row = 0; row < rows.length; row++) {
+            if (rows[row] == null) {
+                throw new IllegalArgumentException("Row " + row + " is null");
+            }
             if (rows[row].length() != width) {
                 throw new IllegalArgumentException("Row " + row + " is " + rows[row].length()
                     + " cells wide, expected " + width);

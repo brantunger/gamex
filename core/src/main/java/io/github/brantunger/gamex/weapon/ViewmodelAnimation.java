@@ -25,6 +25,7 @@ public final class ViewmodelAnimation {
     private static final float ATTACK = 0.15f;
     /** The bob's speed at a full walk, in radians per second. */
     private static final float BOB_RATE = 9f;
+    private static final double TWO_PI = Math.PI * 2.0;
     /** How fast the bob fades in and out, per second. */
     private static final float BOB_FADE = 7f;
     /** The lag, in degrees, per degree-per-second of turn rate. */
@@ -60,21 +61,27 @@ public final class ViewmodelAnimation {
      * @param pitchDelta the tilt of the view during this step in degrees, positive upwards
      */
     public void update(float dt, float shotKickScale, float walkSpeed, float yawDelta, float pitchDelta) {
-        if (shotKickScale > 0f) {
+        boolean fired = Float.isFinite(shotKickScale) && shotKickScale > 0f;
+        if (fired) {
             sinceShot = 0f;
             recoilScale = shotKickScale;
-        } else {
+        }
+        if (!Float.isFinite(dt) || dt <= 0f) return;
+        if (!fired) {
             sinceShot += dt;
         }
-        if (dt <= 0f) return;
 
-        float speed = Math.max(0f, Math.min(1f, walkSpeed));
+        float safeWalkSpeed = Float.isFinite(walkSpeed) ? walkSpeed : 0f;
+        float safeYawDelta = Float.isFinite(yawDelta) ? yawDelta : 0f;
+        float safePitchDelta = Float.isFinite(pitchDelta) ? pitchDelta : 0f;
+
+        float speed = Math.max(0f, Math.min(1f, safeWalkSpeed));
         bobAmount += (speed - bobAmount) * Math.min(1f, dt * BOB_FADE);
-        bobPhase += dt * BOB_RATE * speed;
+        bobPhase = wrapTwoPi(bobPhase, (double) dt * BOB_RATE * speed);
 
         float follow = Math.min(1f, dt * SWAY_FOLLOW);
-        swayYaw += (clampSway(-yawDelta / dt * SWAY_PER_RATE) - swayYaw) * follow;
-        swayPitch += (clampSway(-pitchDelta / dt * SWAY_PER_RATE) - swayPitch) * follow;
+        swayYaw += (clampSway(-safeYawDelta / dt * SWAY_PER_RATE) - swayYaw) * follow;
+        swayPitch += (clampSway(-safePitchDelta / dt * SWAY_PER_RATE) - swayPitch) * follow;
     }
 
     /** Clears any active shot recoil and slide travel so weapon switches start cleanly at rest. */
@@ -83,14 +90,22 @@ public final class ViewmodelAnimation {
         recoilScale = 1f;
     }
 
+    private static float wrapTwoPi(float phase, double delta) {
+        if (!Float.isFinite(phase) || !Double.isFinite(delta)) return 0f;
+        double wrapped = ((phase + delta) % TWO_PI + TWO_PI) % TWO_PI;
+        float result = (float) wrapped;
+        return (result < 0f || result >= TWO_PI) ? 0f : result;
+    }
+
     private static float clampSway(float degrees) {
+        if (Float.isNaN(degrees)) return 0f;
         return Math.max(-MAX_SWAY, Math.min(MAX_SWAY, degrees));
     }
 
     /** A pulse that rises quickly from 0 to 1 and eases back to 0 by the end of its duration. */
     private static float pulse(float time, float duration) {
         float progress = time / duration;
-        if (progress >= 1f) return 0f;
+        if (!(progress >= 0f) || progress >= 1f) return 0f;
         if (progress < ATTACK) return progress / ATTACK;
         float back = 1f - (progress - ATTACK) / (1f - ATTACK);
         return back * back;

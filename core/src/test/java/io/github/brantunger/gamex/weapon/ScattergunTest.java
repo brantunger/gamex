@@ -107,4 +107,37 @@ class ScattergunTest {
         gun.updateIdle(1f / 60f);
         assertTrue(gun.isReady());
     }
+
+    @Test
+    void nonFiniteAndNegativeDeltaTimesDoNotMutateCooldownFlashOrPumpWhileZeroDeltaFiresWhenReady() {
+        Scattergun gun = new Scattergun();
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.2f}) {
+            assertEquals(Scattergun.Shot.NONE, gun.update(badDt, true, true, 4));
+            gun.updateIdle(badDt);
+            assertTrue(gun.isReady());
+            assertFalse(gun.isFlashVisible());
+            assertEquals(0f, gun.getPump(), 1e-6f);
+        }
+
+        assertEquals(Scattergun.Shot.PRIMARY, gun.update(0f, true, false, 2));
+        assertFalse(gun.isReady());
+        assertTrue(gun.isFlashVisible());
+        assertEquals(Scattergun.Shot.NONE, gun.update(0f, true, false, 2));
+
+        gun.updateIdle(0.20f);
+        float pumpBefore = gun.getPump();
+        assertTrue(pumpBefore > 0.5f);
+        for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.5f}) {
+            assertEquals(Scattergun.Shot.NONE, gun.update(badDt, true, true, 4));
+            gun.updateIdle(badDt);
+            assertFalse(gun.isReady());
+            assertFalse(gun.isReadyAfter(badDt));
+            assertEquals(pumpBefore, gun.getPump(), 1e-6f);
+        }
+
+        assertEquals(Scattergun.PELLET_DAMAGE, Scattergun.damageAtDistance(Float.NaN), 1e-5f);
+        List<Vector3> fallbackDirs = Scattergun.pelletDirections(new Vector3(Float.NaN, 0f, -1f), false);
+        assertEquals(Scattergun.PRIMARY_PELLETS, fallbackDirs.size());
+        for (Vector3 dir : fallbackDirs) assertEquals(1f, dir.len(), 1e-5f);
+    }
 }

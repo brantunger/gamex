@@ -152,4 +152,79 @@ class GdxPreferencesStoreTest {
                 capture.messages(Level.ERROR));
         }
     }
+
+    @Test
+    void trimsSurroundingWhitespaceInHandEditedXmlPreferencesForFloatsIntegersAndBooleans() {
+        PreferencesStub stub = new PreferencesStub();
+        stub.raw.put("fov", "  95.5 \n");
+        stub.raw.put("stage", "\t 3 \r\n");
+        stub.raw.put("fullscreen", " true ");
+        stub.raw.put("invertY", "\nTRUE\t");
+        stub.raw.put("viewBob", " FALSE ");
+        stub.raw.put("active", " false\n");
+        stub.raw.put("blankFloat", "   ");
+        stub.raw.put("blankInt", " \t ");
+        stub.raw.put("blankBoolDefaultTrue", "   ");
+        stub.raw.put("badBoolDefaultTrue", "yes");
+        stub.raw.put("badBoolDefaultFalse", "1");
+        GdxPreferencesStore store = new GdxPreferencesStore(stub.prefs);
+
+        try (LogCapture capture = LogCapture.of(GdxPreferencesStore.class, Level.WARN)) {
+            assertEquals(95.5f, store.getFloat("fov", 70f), 1e-6f);
+            assertEquals(3, store.getInteger("stage", 0));
+            assertTrue(store.getBoolean("fullscreen", false));
+            assertTrue(store.getBoolean("invertY", false));
+            assertFalse(store.getBoolean("viewBob", true));
+            assertFalse(store.getBoolean("active", true));
+            assertTrue(store.getBoolean("blankBoolDefaultTrue", true));
+            assertTrue(store.getBoolean("badBoolDefaultTrue", true));
+            assertFalse(store.getBoolean("badBoolDefaultFalse", false));
+            assertEquals(List.of(), capture.messages(Level.WARN), "padded valid entries must not log warnings");
+
+            assertEquals(70f, store.getFloat("blankFloat", 70f), 1e-6f);
+            assertEquals(70f, store.getFloat("blankFloat", 70f), 1e-6f);
+            assertEquals(5, store.getInteger("blankInt", 5));
+            assertEquals(5, store.getInteger("blankInt", 5));
+            assertEquals(List.of(
+                "The stored value of 'blankFloat' is not a number; using 70.0",
+                "The stored value of 'blankInt' is not a number; using 5"),
+                capture.messages(Level.WARN));
+        }
+    }
+
+    @Test
+    void typedOnlyPreferencesStubWithoutGetStringStillDelegatesToTypedGetters() {
+        Preferences typedOnly = (Preferences) Proxy.newProxyInstance(
+            Preferences.class.getClassLoader(),
+            new Class<?>[] {Preferences.class},
+            (proxy, method, args) -> {
+                String key = args != null && args.length > 0 && args[0] instanceof String ? (String) args[0] : "";
+                switch (method.getName()) {
+                    case "getFloat":
+                        if ("badFloat".equals(key)) throw new NumberFormatException("bad float");
+                        return "fov".equals(key) ? 88f : (Float) args[1];
+                    case "getInteger":
+                        if ("badInt".equals(key)) throw new NumberFormatException("bad int");
+                        return "stage".equals(key) ? 4 : (Integer) args[1];
+                    case "getBoolean":
+                        return "fullscreen".equals(key) ? Boolean.TRUE : (Boolean) args[1];
+                    default:
+                        return defaultValue(method.getReturnType());
+                }
+            });
+        GdxPreferencesStore store = new GdxPreferencesStore(typedOnly);
+
+        try (LogCapture capture = LogCapture.of(GdxPreferencesStore.class, Level.WARN)) {
+            assertEquals(88f, store.getFloat("fov", 70f), 1e-6f);
+            assertEquals(4, store.getInteger("stage", 0));
+            assertTrue(store.getBoolean("fullscreen", false));
+            assertEquals(70f, store.getFloat("badFloat", 70f), 1e-6f);
+            assertEquals(70f, store.getFloat("badFloat", 70f), 1e-6f);
+            assertEquals(2, store.getInteger("badInt", 2));
+            assertEquals(List.of(
+                "The stored value of 'badFloat' is not a number; using 70.0",
+                "The stored value of 'badInt' is not a number; using 2"),
+                capture.messages(Level.WARN));
+        }
+    }
 }

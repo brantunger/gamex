@@ -48,7 +48,7 @@ public final class EnergyMeter {
      * @return whether the meter holds at least that much
      */
     public boolean canSpend(float amount) {
-        return energy >= amount;
+        return Float.isFinite(amount) && amount >= 0f && amount <= energy;
     }
 
     /**
@@ -58,7 +58,7 @@ public final class EnergyMeter {
      */
     public boolean spend(float amount) {
         if (!canSpend(amount)) return false;
-        energy -= amount;
+        energy = Math.max(0f, Math.min(capacity, energy - amount));
         return true;
     }
 
@@ -67,7 +67,9 @@ public final class EnergyMeter {
      * @param dt the time step in seconds
      */
     public void regenerate(float dt) {
-        energy = Math.min(capacity, energy + regenPerSecond * dt);
+        if (!Float.isFinite(dt) || dt <= 0f) return;
+        if (!Float.isFinite(regenPerSecond) || regenPerSecond <= 0f) return;
+        energy = Math.max(0f, Math.min(capacity, energy + regenPerSecond * dt));
     }
 
     /**
@@ -76,7 +78,7 @@ public final class EnergyMeter {
      * @return the energy actually added
      */
     public float add(float amount) {
-        if (amount <= 0f || energy >= capacity) return 0f;
+        if (!Float.isFinite(amount) || amount <= 0f || energy >= capacity) return 0f;
         float before = energy;
         energy = Math.min(capacity, energy + amount);
         return energy - before;
@@ -87,6 +89,7 @@ public final class EnergyMeter {
      * @param value the desired energy
      */
     public void setEnergy(float value) {
+        if (Float.isNaN(value)) return;
         energy = Math.max(0f, Math.min(capacity, value));
     }
 }

@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -345,6 +346,127 @@ class ModelPreviewAppTest {
         assertEquals(1, writes.get());
     }
 
+    @Test
+    void blankAndWhitespacePreviewArgumentsNormalizeToNullWithoutFreezingAnimationOrCapturing(@TempDir Path modelsDir)
+        throws IOException {
+        // Direct helper coverage for both primary constructor args and GAMEX_PREVIEW_* env fallbacks.
+        assertNull(ModelPreviewApp.normalizeOptionalValue(null));
+        assertNull(ModelPreviewApp.normalizeOptionalValue(""));
+        assertNull(ModelPreviewApp.normalizeOptionalValue("   "));
+        assertNull(ModelPreviewApp.normalizeOptionalValue(" \t\r\n "));
+        assertEquals("warden", ModelPreviewApp.normalizeOptionalValue("  warden  "));
+
+        assertNull(ModelPreviewApp.normalizeOptionalArg(null, null));
+        assertNull(ModelPreviewApp.normalizeOptionalArg("", ""));
+        assertNull(ModelPreviewApp.normalizeOptionalArg("   ", "\t  \n"));
+        assertNull(ModelPreviewApp.normalizeOptionalArg(null, "   "));
+        assertNull(ModelPreviewApp.normalizeOptionalArg("   ", null));
+        assertEquals("drone", ModelPreviewApp.normalizeOptionalArg("   ", "  drone  "));
+        assertEquals("turret", ModelPreviewApp.normalizeOptionalArg(" turret ", "drone"));
+
+        // Explicit constructor args with empty or whitespace-only values normalize to null.
+        RecordingMeshFactory factory = new RecordingMeshFactory();
+        for (String blank : new String[] {null, "", " ", "   ", "\t\r\n"}) {
+            ModelPreviewApp app = new ModelPreviewApp(blank, blank, modelsDir, factory);
+            assertNull(app.getRequestedModel());
+            assertNull(app.getScreenshotPath());
+        }
+
+        // Public 2-arg constructor also normalizes whitespace-only args (falling back to trimmed env only if non-blank).
+        ModelPreviewApp publicCtorBlank = new ModelPreviewApp("   ", " \t ");
+        assertEquals(
+            ModelPreviewApp.normalizeOptionalValue(System.getenv("GAMEX_PREVIEW_MODEL")),
+            publicCtorBlank.getRequestedModel());
+        assertEquals(
+            ModelPreviewApp.normalizeOptionalValue(System.getenv("GAMEX_PREVIEW_SCREENSHOT")),
+            publicCtorBlank.getScreenshotPath());
+
+        // Blank screenshotPath lets render() advance animation time each frame and never triggers frame-2 capture.
+        Gdx.graphics = graphicsStub(1280, 800, 1280, 800, 0.02f);
+        Gdx.gl = null;
+        Gdx.gl20 = null;
+        ModelPreviewApp blankScreenshotApp = new ModelPreviewApp("   ", "   ", modelsDir, factory);
+        for (int frame = 1; frame <= 4; frame++) {
+            assertDoesNotThrow(blankScreenshotApp::render);
+            assertEquals(frame * 0.02f, blankScreenshotApp.getTime(), 1e-6f);
+        }
+        assertFalse(blankScreenshotApp.maybeCaptureAutomatedScreenshot(
+            1280, 800, FakePixmap::new, p -> p.pixels, p -> {}, () -> {}));
+
+        // Contrast: a real non-blank screenshot path trims whitespace and pins animation pose at 0.65f on frame 1.
+        Path targetShot = modelsDir.resolve("shot.png");
+        ModelPreviewApp realScreenshotApp = new ModelPreviewApp(
+            "  guard  ", "  " + targetShot + "  ", modelsDir, factory);
+        assertEquals("guard", realScreenshotApp.getRequestedModel());
+        assertEquals(targetShot.toString(), realScreenshotApp.getScreenshotPath());
+        realScreenshotApp.render();
+        assertEquals(0.65f, realScreenshotApp.getTime(), 1e-6f);
+
+        // Trimmed requestedModel selects the matching model entry on initial load.
+        GenerateAllModels.generateAll(modelsDir);
+        realScreenshotApp.loadAllEntries();
+        assertEquals("enemy-guard.obj", realScreenshotApp.getEntryLabel(realScreenshotApp.getCurrentIndex()));
+
+        // Static saveScreenshot rejects null, empty, and whitespace-only paths safely.
+        assertFalse(ModelPreviewApp.saveScreenshot(null));
+        assertFalse(ModelPreviewApp.saveScreenshot(""));
+        assertFalse(ModelPreviewApp.saveScreenshot("   "));
+    }
+
+    @Test
+    void disposeNullGuardsUninitializedFieldsIsolatesThrowingDisposablesAndStaysIdempotent(@TempDir Path modelsDir)
+        throws IOException {
+        RecordingMeshFactory factory = new RecordingMeshFactory();
+        ModelPreviewApp uninitialized = new ModelPreviewApp(null, null, modelsDir, factory);
+        // Partial/failed create() where shader, shapes, batch, and white are all null must never NPE, even repeatedly.
+        assertDoesNotThrow(uninitialized::dispose);
+        assertDoesNotThrow(uninitialized::dispose);
+
+        // Load all 22 models, inject disposal failures into both solid and wireframe meshes, and verify full cleanup.
+        GenerateAllModels.generateAll(modelsDir);
+        ModelPreviewApp loadedApp = new ModelPreviewApp(null, null, modelsDir, factory);
+        loadedApp.loadAllEntries();
+        assertEquals(22, loadedApp.getEntryCount());
+        assertTrue(factory.solidMeshes.size() >= 22);
+        factory.solidMeshes.get(0).throwOnDispose = true;
+        factory.wireMeshes.get(5).throwOnDispose = true;
+        factory.solidMeshes.get(factory.solidMeshes.size() - 2).throwOnDispose = true;
+
+        assertDoesNotThrow(loadedApp::dispose);
+        assertEquals(0, loadedApp.getEntryCount());
+        for (RecordedMesh solid : factory.solidMeshes) {
+            assertEquals(1, solid.disposeCount, "every solid mesh must be disposed despite earlier failure");
+        }
+        for (RecordedMesh wire : factory.wireMeshes) {
+            assertEquals(1, wire.disposeCount, "every wireframe mesh must be disposed despite earlier failure");
+        }
+
+        // Second dispose() after teardown must not double-dispose any mesh or throw.
+        assertDoesNotThrow(loadedApp::dispose);
+        for (RecordedMesh solid : factory.solidMeshes) assertEquals(1, solid.disposeCount);
+        for (RecordedMesh wire : factory.wireMeshes) assertEquals(1, wire.disposeCount);
+
+        // Direct verification of disposeAllQuietly / disposeQuietly used for (shader, shapes, batch, white).
+        assertNull(ModelPreviewApp.disposeQuietly(null));
+        assertDoesNotThrow(() -> ModelPreviewApp.disposeAllQuietly((Disposable[]) null));
+        AtomicInteger d1Count = new AtomicInteger();
+        AtomicInteger throwingCount = new AtomicInteger();
+        AtomicInteger d2Count = new AtomicInteger();
+        AtomicInteger d3Count = new AtomicInteger();
+        Disposable d1 = d1Count::incrementAndGet;
+        Disposable throwing = () -> {
+            throwingCount.incrementAndGet();
+            throw new GdxRuntimeException("simulated shader/batch dispose error");
+        };
+        Disposable d2 = d2Count::incrementAndGet;
+        Disposable d3 = d3Count::incrementAndGet;
+        assertDoesNotThrow(() -> ModelPreviewApp.disposeAllQuietly(d1, null, throwing, d2, null, d3));
+        assertEquals(1, d1Count.get());
+        assertEquals(1, throwingCount.get());
+        assertEquals(1, d2Count.get());
+        assertEquals(1, d3Count.get());
+    }
+
     private static boolean containsUndirectedEdge(short[] wireIndices, int a, int b) {
         int lo = Math.min(a, b);
         int hi = Math.max(a, b);
@@ -385,6 +507,11 @@ class ModelPreviewAppTest {
     }
 
     private static Graphics graphicsStub(int width, int height, int backBufferWidth, int backBufferHeight) {
+        return graphicsStub(width, height, backBufferWidth, backBufferHeight, 0f);
+    }
+
+    private static Graphics graphicsStub(int width, int height, int backBufferWidth, int backBufferHeight,
+                                         float deltaTime) {
         return (Graphics) Proxy.newProxyInstance(
             Graphics.class.getClassLoader(),
             new Class<?>[] {Graphics.class},
@@ -398,6 +525,8 @@ class ModelPreviewAppTest {
                         return backBufferWidth;
                     case "getBackBufferHeight":
                         return backBufferHeight;
+                    case "getDeltaTime":
+                        return deltaTime;
                     default:
                         return defaultPrimitive(method.getReturnType());
                 }
@@ -437,6 +566,7 @@ class ModelPreviewAppTest {
         final ModelVertices.IndexedMesh data;
         final short[] wireIndices;
         int disposeCount;
+        boolean throwOnDispose;
 
         RecordedMesh(ModelVertices.IndexedMesh data, short[] wireIndices) {
             this.data = data;
@@ -449,6 +579,9 @@ class ModelPreviewAppTest {
         @Override
         public void dispose() {
             disposeCount++;
+            if (throwOnDispose) {
+                throw new GdxRuntimeException("simulated mesh dispose error");
+            }
         }
     }
 
