@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import com.badlogic.gdx.math.Vector3;
 import org.junit.jupiter.api.Test;
 
@@ -11,25 +12,30 @@ import java.util.List;
 
 class ScattergunTest {
 
+    /** The shipped weapon balance. */
+    private static final WeaponTuning W = TestTuning.WEAPONS;
+    /** A scattergun that is only asked for its pellet pattern and damage, never fired. */
+    private static final Scattergun GUN = new Scattergun(W);
+
     @Test
     void primaryAndDoubleBlastGenerateDeterministicUnitPelletPatterns() {
         Vector3 forward = new Vector3(0.4f, -0.15f, -0.9f).nor();
-        List<Vector3> primary = Scattergun.pelletDirections(forward, false);
-        List<Vector3> alt = Scattergun.pelletDirections(forward, true);
+        List<Vector3> primary = GUN.pelletDirections(forward, false);
+        List<Vector3> alt = GUN.pelletDirections(forward, true);
 
-        assertEquals(Scattergun.PRIMARY_PELLETS, primary.size());
-        assertEquals(Scattergun.ALT_PELLETS, alt.size());
+        assertEquals(W.scattergunPrimaryPellets, primary.size());
+        assertEquals(W.scattergunAltPellets, alt.size());
         assertEquals(1f, primary.get(0).dot(forward), 1e-6f);
         assertEquals(1f, alt.get(0).dot(forward), 1e-6f);
 
-        float primaryRingCos = (float) Math.cos(Math.toRadians(Scattergun.PRIMARY_CONE_DEGREES));
+        float primaryRingCos = (float) Math.cos(Math.toRadians(W.scattergunPrimaryRings().get(0).coneDegrees));
         for (int i = 1; i < primary.size(); i++) {
             assertEquals(1f, primary.get(i).len(), 1e-5f);
             assertEquals(primaryRingCos, primary.get(i).dot(forward), 1e-4f);
         }
 
-        float innerCos = (float) Math.cos(Math.toRadians(Scattergun.ALT_INNER_CONE_DEGREES));
-        float outerCos = (float) Math.cos(Math.toRadians(Scattergun.ALT_CONE_DEGREES));
+        float innerCos = (float) Math.cos(Math.toRadians(W.scattergunAltRings().get(0).coneDegrees));
+        float outerCos = (float) Math.cos(Math.toRadians(W.scattergunAltRings().get(1).coneDegrees));
         for (int i = 1; i <= 5; i++) {
             assertEquals(innerCos, alt.get(i).dot(forward), 1e-4f);
         }
@@ -38,27 +44,27 @@ class ScattergunTest {
         }
 
         // Degenerate vertical look falls back cleanly without NaNs.
-        List<Vector3> upPellets = Scattergun.pelletDirections(Vector3.Y, false);
-        assertEquals(Scattergun.PRIMARY_PELLETS, upPellets.size());
+        List<Vector3> upPellets = GUN.pelletDirections(Vector3.Y, false);
+        assertEquals(W.scattergunPrimaryPellets, upPellets.size());
         for (Vector3 dir : upPellets) assertEquals(1f, dir.len(), 1e-5f);
     }
 
     @Test
     void linearDistanceFalloffClampsAtStartAndMaxRange() {
-        assertEquals(Scattergun.PELLET_DAMAGE, Scattergun.damageAtDistance(0f), 1e-5f);
-        assertEquals(Scattergun.PELLET_DAMAGE, Scattergun.damageAtDistance(Scattergun.FALLOFF_START), 1e-5f);
-        float midDist = (Scattergun.FALLOFF_START + Scattergun.RANGE) * 0.5f;
-        float expectedMid = Scattergun.PELLET_DAMAGE * (1f + Scattergun.MIN_FALLOFF_SCALE) * 0.5f;
-        assertEquals(expectedMid, Scattergun.damageAtDistance(midDist), 1e-5f);
-        assertEquals(Scattergun.PELLET_DAMAGE * Scattergun.MIN_FALLOFF_SCALE,
-            Scattergun.damageAtDistance(Scattergun.RANGE), 1e-5f);
-        assertEquals(Scattergun.PELLET_DAMAGE * Scattergun.MIN_FALLOFF_SCALE,
-            Scattergun.damageAtDistance(100f), 1e-5f);
+        assertEquals(W.scattergunPelletDamage, GUN.damageAtDistance(0f), 1e-5f);
+        assertEquals(W.scattergunPelletDamage, GUN.damageAtDistance(W.scattergunFalloffStart), 1e-5f);
+        float midDist = (W.scattergunFalloffStart + W.scattergunRange) * 0.5f;
+        float expectedMid = W.scattergunPelletDamage * (1f + W.scattergunMinFalloffScale) * 0.5f;
+        assertEquals(expectedMid, GUN.damageAtDistance(midDist), 1e-5f);
+        assertEquals(W.scattergunPelletDamage * W.scattergunMinFalloffScale,
+            GUN.damageAtDistance(W.scattergunRange), 1e-5f);
+        assertEquals(W.scattergunPelletDamage * W.scattergunMinFalloffScale,
+            GUN.damageAtDistance(100f), 1e-5f);
     }
 
     @Test
     void primaryDoubleBlastAndOneShellFallbackAndPumpCurveWorkCleanly() {
-        Scattergun gun = new Scattergun();
+        Scattergun gun = new Scattergun(W);
         assertTrue(gun.isReady());
         assertFalse(gun.isFlashVisible());
         assertEquals(0f, gun.getPump(), 1e-6f);
@@ -96,9 +102,9 @@ class ScattergunTest {
 
     @Test
     void isReadyAfterMatchesExactCooldownCompletionStep() {
-        Scattergun gun = new Scattergun();
+        Scattergun gun = new Scattergun(W);
         assertEquals(Scattergun.Shot.PRIMARY, gun.update(1f / 60f, true, false, 1));
-        gun.updateIdle(Scattergun.PRIMARY_INTERVAL - 0.01f);
+        gun.updateIdle(W.scattergunPrimaryInterval - 0.01f);
 
         assertFalse(gun.isReady());
         assertFalse(gun.isReadyAfter(0.005f));
@@ -110,7 +116,7 @@ class ScattergunTest {
 
     @Test
     void nonFiniteAndNegativeDeltaTimesDoNotMutateCooldownFlashOrPumpWhileZeroDeltaFiresWhenReady() {
-        Scattergun gun = new Scattergun();
+        Scattergun gun = new Scattergun(W);
         for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.2f}) {
             assertEquals(Scattergun.Shot.NONE, gun.update(badDt, true, true, 4));
             gun.updateIdle(badDt);
@@ -135,9 +141,9 @@ class ScattergunTest {
             assertEquals(pumpBefore, gun.getPump(), 1e-6f);
         }
 
-        assertEquals(Scattergun.PELLET_DAMAGE, Scattergun.damageAtDistance(Float.NaN), 1e-5f);
-        List<Vector3> fallbackDirs = Scattergun.pelletDirections(new Vector3(Float.NaN, 0f, -1f), false);
-        assertEquals(Scattergun.PRIMARY_PELLETS, fallbackDirs.size());
+        assertEquals(W.scattergunPelletDamage, GUN.damageAtDistance(Float.NaN), 1e-5f);
+        List<Vector3> fallbackDirs = GUN.pelletDirections(new Vector3(Float.NaN, 0f, -1f), false);
+        assertEquals(W.scattergunPrimaryPellets, fallbackDirs.size());
         for (Vector3 dir : fallbackDirs) assertEquals(1f, dir.len(), 1e-5f);
     }
 }

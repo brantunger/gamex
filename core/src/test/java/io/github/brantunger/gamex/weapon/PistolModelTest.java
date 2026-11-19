@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ObjModel;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +27,9 @@ import java.util.Set;
 /** Checks the shipped pistol model file and how it is turned into body and slide meshes. */
 class PistolModelTest {
 
-    private static final PistolModel MODEL = PistolModel.from(load(PistolModel.ASSET_PATH));
+    private static final ModelPalette PALETTE = TestTuning.PALETTES.pistol;
+
+    private static final PistolModel MODEL = PistolModel.from(load(PistolModel.ASSET_PATH), PALETTE);
 
     private static ObjModel load(String assetPath) {
         List<Path> candidates = new ArrayList<>();
@@ -259,12 +263,12 @@ class PistolModelTest {
     void modelWithAnUnknownMaterialOrMissingGroupIsRejected() {
         ObjModel unknownMaterial = ObjModel.parse("v 0 0 0\nv 1 0 0\nv 0 1 0\ng part\nusemtl chrome\nf 1 2 3\n");
         IllegalArgumentException materialError = assertThrows(IllegalArgumentException.class,
-            () -> PistolModel.from(unknownMaterial));
+            () -> PistolModel.from(unknownMaterial, PALETTE));
         assertTrue(materialError.getMessage().contains("chrome"), materialError.getMessage());
 
         ObjModel missingGroup = ObjModel.parse("v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl gunmetal\nf 1 2 3\n");
         IllegalArgumentException groupError = assertThrows(IllegalArgumentException.class,
-            () -> PistolModel.from(missingGroup));
+            () -> PistolModel.from(missingGroup, PALETTE));
         assertTrue(groupError.getMessage().contains("group"), groupError.getMessage());
     }
 

@@ -1,41 +1,13 @@
 package io.github.brantunger.gamex.weapon;
 
 /**
- * The Slot 3 electromagnetic Rail Lance: fires a 60-unit piercing hitscan beam consuming 1 slug on primary trigger,
- * with a zero-cost 1.8x tactical zoom optic on alternate trigger.
+ * The Slot 3 electromagnetic Rail Lance: fires a piercing hitscan beam consuming 1 slug on primary trigger, with a
+ * zero-cost tactical zoom optic on alternate trigger. Its numbers are the {@code rail} values of
+ * {@link WeaponTuning}.
  */
 public final class RailLance {
 
-    /** Maximum slugs carried in the player's slug pool. */
-    public static final int MAX_SLUGS = 15;
-    /** Baseline slugs granted on Normal difficulty when picking up the Rail Lance itself. */
-    public static final int PICKUP_WEAPON_SLUGS = 5;
-    /** Baseline slugs granted on Normal difficulty when picking up a Slug Pack. */
-    public static final int PICKUP_PACK_SLUGS = 3;
-
-    /**
-     * Piercing beam damage dealt to targets, and to enemies before the {@code rail_damage_scale} of their kind
-     * (one-shots Drones, Turrets, Guards, Ring Boards; the Warden's heavy hide takes less).
-     */
-    public static final float DAMAGE = 120f;
-    /** Maximum rail beam range in world units. */
-    public static final float RANGE = 60f;
-    /** Capacitor recharge cycle duration between consecutive rail shots, in seconds. */
-    public static final float FIRE_INTERVAL = 1.10f;
-
-    /** How long the muzzle flash decal remains visible after firing, in seconds. */
-    public static final float FLASH_TIME = 0.10f;
-    /** Delay after shot trigger before the magnetic breech bolt cycles back, in seconds. */
-    public static final float BOLT_DELAY = 0.04f;
-    /** Duration of the breech bolt recoil/return cycle, in seconds. */
-    public static final float BOLT_TIME = 0.68f;
-    /** Magnification factor applied to world FOV and inverted onto look sensitivity at full optic zoom. */
-    public static final float ZOOM_FACTOR = 1.8f;
-    /** Zoom interpolation speed per second (reaches full zoom in ~0.133s). */
-    public static final float ZOOM_SPEED = 7.5f;
-
-    private static final float BOLT_PULL_SHARE = 0.25f;
-
+    private final WeaponTuning tuning;
     private float cooldown;
     private float sinceShot = Float.POSITIVE_INFINITY;
     private float zoom;
@@ -45,6 +17,12 @@ public final class RailLance {
     private boolean zoomInTriggered;
     private boolean zoomOutTriggered;
 
+    /** @param tuning the weapon balance; its rail values set the fire rate, the bolt cycle and the optic */
+    public RailLance(WeaponTuning tuning) {
+        if (tuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
+        this.tuning = tuning;
+    }
+
     /**
      * Advances capacitor recharge and settles optic zoom when another weapon is equipped.
      * @param dt time step in seconds
@@ -53,7 +31,7 @@ public final class RailLance {
         if (!Float.isFinite(dt) || dt < 0f) return;
         cooldown = Math.max(0f, cooldown - dt);
         sinceShot += dt;
-        zoom = Math.max(0f, zoom - ZOOM_SPEED * 2f * dt);
+        zoom = Math.max(0f, zoom - tuning.railZoomSpeed * 2f * dt);
         zoomEngaged = false;
         lastZoomHeld = false;
     }
@@ -115,9 +93,9 @@ public final class RailLance {
             }
         }
         if (zooming) {
-            zoom = Math.min(1f, zoom + ZOOM_SPEED * dt);
+            zoom = Math.min(1f, zoom + tuning.railZoomSpeed * dt);
         } else {
-            zoom = Math.max(0f, zoom - ZOOM_SPEED * dt);
+            zoom = Math.max(0f, zoom - tuning.railZoomSpeed * dt);
         }
 
         if (!fireTrigger || availableSlugs <= 0 || cooldown > 0f) {
@@ -125,7 +103,7 @@ public final class RailLance {
             return false;
         }
 
-        cooldown = wasReady ? FIRE_INTERVAL : cooldown + FIRE_INTERVAL;
+        cooldown = wasReady ? tuning.railFireInterval : cooldown + tuning.railFireInterval;
         sinceShot = 0f;
         return true;
     }
@@ -159,7 +137,7 @@ public final class RailLance {
 
     /** @return whether the muzzle flash decal should currently be drawn. */
     public boolean isFlashVisible() {
-        return sinceShot < FLASH_TIME;
+        return sinceShot < tuning.railFlashTime;
     }
 
     /** @return normalized optic zoom in [0, 1]. */
@@ -169,25 +147,26 @@ public final class RailLance {
 
     /** @return world FOV and mouse-sensitivity multiplier for the current {@link #getZoom()}. */
     public float getZoomFovScale() {
-        return 1f / (1f + (ZOOM_FACTOR - 1f) * zoom);
+        return 1f / (1f + (tuning.railZoomFactor - 1f) * zoom);
     }
 
     /** @return normalized capacitor recharge progress from 0 (just fired) to 1 (ready). */
     public float getChargeProgress() {
         if (cooldown <= 0f) return 1f;
-        return Math.max(0f, Math.min(1f, 1f - cooldown / FIRE_INTERVAL));
+        return Math.max(0f, Math.min(1f, 1f - cooldown / tuning.railFireInterval));
     }
 
     /** @return normalized breech bolt recoil travel in [0, 1]. */
     public float getBolt() {
-        float elapsed = sinceShot - BOLT_DELAY;
-        if (elapsed <= 0f || elapsed >= BOLT_TIME) return 0f;
-        float progress = elapsed / BOLT_TIME;
-        if (progress < BOLT_PULL_SHARE) {
-            float u = progress / BOLT_PULL_SHARE;
+        float elapsed = sinceShot - tuning.railBoltDelay;
+        if (elapsed <= 0f || elapsed >= tuning.railBoltTime) return 0f;
+        float progress = elapsed / tuning.railBoltTime;
+        float pullShare = tuning.railBoltPullShare;
+        if (progress < pullShare) {
+            float u = progress / pullShare;
             return u * (2f - u);
         }
-        float back = 1f - (progress - BOLT_PULL_SHARE) / (1f - BOLT_PULL_SHARE);
+        float back = 1f - (progress - pullShare) / (1f - pullShare);
         return back * back;
     }
 

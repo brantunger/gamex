@@ -2,6 +2,7 @@ id: 06_warden_core
 title: 06: WARDEN CORE
 par: 110
 complete_on_all_targets: false
+loadout: scattergun, raillance
 briefing: CORE THREAT: THE WARDEN (B) SEALS EXTRACTION (M).
 briefing: JUMP, THEN DASH IN MID-AIR, TO CROSS SHOCK GRATES (~).
 briefing: DESTROY THE WARDEN TO UNLOCK THE EXTRACTION BULKHEAD.

@@ -34,19 +34,23 @@ public final class BlastProjectile {
     public final Vector3 position = new Vector3();
     private final Vector3 direction = new Vector3();
     private final float charge;
+    private final WeaponTuning tuning;
     private boolean exploded;
 
     /**
      * @param origin the starting position, copied
      * @param direction the flight direction, normalised and copied (defaulting to {@code (0, 0, -1)} if degenerate)
-     * @param charge the charge it was fired with, from {@link BlastCharger#MIN_CHARGE} to 1
+     * @param charge the charge it was fired with, from {@link WeaponTuning#blastMinCharge} to 1
+     * @param tuning the weapon balance; its blast values size the explosion
      */
-    public BlastProjectile(Vector3 origin, Vector3 direction, float charge) {
+    public BlastProjectile(Vector3 origin, Vector3 direction, float charge, WeaponTuning tuning) {
+        if (tuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
         if (origin != null) {
             this.position.set(origin);
         }
         setNormalizedDirection(direction, this.direction);
         this.charge = charge;
+        this.tuning = tuning;
     }
 
     private static void setNormalizedDirection(Vector3 in, Vector3 out) {
@@ -58,22 +62,6 @@ public final class BlastProjectile {
             }
         }
         out.set(0f, 0f, -1f);
-    }
-
-    /**
-     * @param charge the charge a blast was fired with
-     * @return the radius of its explosion in world units
-     */
-    public static float blastRadius(float charge) {
-        return 1f + 2f * charge;
-    }
-
-    /**
-     * @param charge the charge a blast was fired with
-     * @return the damage at the centre of its explosion
-     */
-    public static float blastDamage(float charge) {
-        return 30f + 100f * charge;
     }
 
     /** @return the charge this ball was fired with. */
@@ -172,8 +160,8 @@ public final class BlastProjectile {
     private boolean detonate(GameMap map, List<? extends Damageable> targets, List<Door> doors,
                              Player player, float playerDamageScale) {
         exploded = true;
-        Explosion.apply(map, doors, position.x, position.y, position.z, blastRadius(charge), blastDamage(charge),
-            targets, player, playerDamageScale);
+        Explosion.apply(map, doors, position.x, position.y, position.z, tuning.blastRadius(charge),
+            tuning.blastDamage(charge), targets, player, playerDamageScale);
         return true;
     }
 

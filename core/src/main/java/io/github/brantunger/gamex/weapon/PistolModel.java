@@ -1,5 +1,6 @@
 package io.github.brantunger.gamex.weapon;
 
+import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 
@@ -23,6 +24,8 @@ public final class PistolModel {
 
     /** The path of the model file inside the assets folder. */
     public static final String ASSET_PATH = "models/viewmodel-pistol.obj";
+    /** The path of the file inside the assets folder that gives each {@link Material} its colour and gloss. */
+    public static final String PALETTE_PATH = "data/palette-pistol.txt";
     /** The number of floats per vertex. */
     public static final int VERTEX_SIZE = ModelVertices.VERTEX_SIZE;
     /** The x of the muzzle's centre in gun space. */
@@ -63,27 +66,24 @@ public final class PistolModel {
         SLIDE
     }
 
-    /** The materials the model file may use. */
+    /** The materials the model file may use. {@link #PALETTE_PATH} holds the colour and gloss of each. */
     public enum Material {
-        GUNMETAL("gunmetal", 0.23f, 0.25f, 0.30f, 0.6f),
-        GUNMETAL_TOP("gunmetal_top", 0.28f, 0.30f, 0.36f, 1f),
-        DARK_METAL("dark_metal", 0.08f, 0.09f, 0.11f, 0.4f),
-        STEEL("steel", 0.60f, 0.62f, 0.68f, 1f),
-        BORE("bore", 0.02f, 0.02f, 0.03f, 0f),
-        BRASS("brass", 0.95f, 0.66f, 0.20f, 0.6f),
-        SIGHT_DOT("sight_dot", 0.88f, 0.90f, 0.86f, 0f),
-        POLYMER("polymer", 0.34f, 0.29f, 0.21f, 0f),
-        POLYMER_DARK("polymer_dark", 0.24f, 0.205f, 0.15f, 0f),
-        STIPPLE("stipple", 0.41f, 0.355f, 0.26f, 0f);
+        GUNMETAL("gunmetal"),
+        GUNMETAL_TOP("gunmetal_top"),
+        DARK_METAL("dark_metal"),
+        STEEL("steel"),
+        BORE("bore"),
+        BRASS("brass"),
+        SIGHT_DOT("sight_dot"),
+        POLYMER("polymer"),
+        POLYMER_DARK("polymer_dark"),
+        STIPPLE("stipple");
 
         /** The name the model file uses for this material in its {@code usemtl} lines. */
         public final String name;
-        /** The red, green and blue of the material, and its gloss from 0 (matt) to 1 (polished). */
-        final float[] colour;
 
-        Material(String name, float red, float green, float blue, float gloss) {
+        Material(String name) {
             this.name = name;
-            this.colour = new float[] {red, green, blue, gloss};
         }
 
         /**
@@ -130,6 +130,8 @@ public final class PistolModel {
     /** Every solid of the model, in file order. */
     public final List<Solid> solids;
 
+    private static final String PALETTE_LABEL = "pistol";
+
     private PistolModel(float[] body, float[] slide, ModelVertices.IndexedMesh bodyMesh,
                         ModelVertices.IndexedMesh slideMesh, List<Solid> solids) {
         this.body = body;
@@ -142,10 +144,11 @@ public final class PistolModel {
     /**
      * Turns a parsed pistol model into separated {@link Group#BODY} and {@link Group#SLIDE} vertex and indexed arrays.
      * @param model the parsed OBJ model
+     * @param palette the colours of the pistol's materials
      * @return the pistol model
      * @throws IllegalArgumentException if a face has no group or uses a material that {@link Material} does not list
      */
-    public static PistolModel from(ObjModel model) {
+    public static PistolModel from(ObjModel model, ModelPalette palette) {
         int triangleCount = model.getTriangleCount();
         int bodyTriangles = 0;
         int slideTriangles = 0;
@@ -173,7 +176,7 @@ public final class PistolModel {
         for (int triangle = 0; triangle < triangleCount; triangle++) {
             String groupName = model.getGroup(triangle);
             Group group = isSlide(model, triangle, groupName) ? Group.SLIDE : Group.BODY;
-            float[] colour = Material.named(model.getMaterial(triangle)).colour;
+            float[] colour = colour(palette, model.getMaterial(triangle));
 
             if (!groupName.equals(currentName)) {
                 if (currentName != null) {
@@ -199,13 +202,48 @@ public final class PistolModel {
         }
         ModelVertices.IndexedMesh bodyIndexed = bodyTriangles > 0
             ? ModelVertices.packIndexed(model, t -> !isSlide(model, t, model.getGroup(t)),
-                0f, 0f, 0f, name -> Material.named(name).colour)
+                0f, 0f, 0f, name -> colour(palette, name))
             : null;
         ModelVertices.IndexedMesh slideIndexed = slideTriangles > 0
             ? ModelVertices.packIndexed(model, t -> isSlide(model, t, model.getGroup(t)),
-                0f, 0f, 0f, name -> Material.named(name).colour)
+                0f, 0f, 0f, name -> colour(palette, name))
             : null;
         return new PistolModel(body, slide, bodyIndexed, slideIndexed, solids);
+    }
+
+    /**
+     * Reads the colours of the pistol from {@link #PALETTE_PATH}.
+     * @return the loaded palette
+     * @throws IllegalArgumentException if the file breaks the format, lacks a material, holds a name
+     *     this class does not list, or holds a value that is not four numbers from 0 to 1
+     */
+    public static ModelPalette loadPalette() {
+        return ModelPalette.load(PALETTE_LABEL, PALETTE_PATH, materialNames(), accentNames());
+    }
+
+    /**
+     * Parses the text of a palette file of the pistol.
+     * @param assetPath path label included in error messages
+     * @param text raw file contents
+     * @return the parsed palette
+     * @throws IllegalArgumentException as {@link #loadPalette} does
+     */
+    public static ModelPalette parsePalette(String assetPath, String text) {
+        return ModelPalette.parse(PALETTE_LABEL, assetPath, text, materialNames(), accentNames());
+    }
+
+    private static List<String> materialNames() {
+        List<String> names = new ArrayList<>();
+        for (Material material : Material.values()) names.add(material.name);
+        return names;
+    }
+
+    private static List<String> accentNames() {
+        return new ArrayList<>();
+    }
+
+    private static float[] colour(ModelPalette palette, String material) {
+        return palette.colour(Material.named(material).name);
     }
 
     private static boolean isSlide(ObjModel model, int triangle, String groupName) {

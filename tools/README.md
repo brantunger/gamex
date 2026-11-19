@@ -41,8 +41,10 @@ Launch the interactive 3D previewer window:
 - **`C`**: cycle accent colors (`door-bulkhead`, `pickup-keycard`, `security-console`, and the rail lance viewmodel's ready/recharging glow)
 - **`G`**: toggle collision cylinder & `# @socket` gizmos
 - **`W`**: toggle wireframe mode
-- **`R`**: regenerate all `.obj` models via `GenerateAllModels` and hot-reload GPU meshes in place
+- **`R`**: regenerate all `.obj` models via `GenerateAllModels`, read the palette files and the font file again and hot-reload GPU meshes in place; a reload that fails keeps the models, colours and font it had
 - **`Esc`**: quit the previewer
+
+The previewer colours the models from the game's palette files (`assets/data/palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt` and `palette-hand.txt`) and draws its overlay text with the game's font file (`assets/data/pixel-font.txt`). To try a colour, edit a palette file and press `R`: no rebuild is needed.
 
 ## Adding a Sound
 

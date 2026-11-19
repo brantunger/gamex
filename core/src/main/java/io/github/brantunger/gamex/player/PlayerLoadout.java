@@ -1,12 +1,14 @@
 package io.github.brantunger.gamex.player;
 
-import io.github.brantunger.gamex.weapon.RailLance;
-import io.github.brantunger.gamex.weapon.Scattergun;
+import io.github.brantunger.gamex.weapon.WeaponTuning;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
+import io.github.brantunger.gamex.world.Levels;
 
 /**
  * Immutable snapshot of the player's carried-over state on entering a level. Retrying after death restores this exact
- * state rather than resetting to a blank slate.
+ * state rather than resetting to a blank slate. The constructors do not cap the ammunition counts (a damaged save
+ * may hold more): the level caps them at the most the player carries ({@link WeaponTuning#scattergunMaxShells},
+ * {@link WeaponTuning#railMaxSlugs}) when it starts. {@link #forStage} caps its starter ammunition itself.
  */
 public final class PlayerLoadout {
 
@@ -18,11 +20,11 @@ public final class PlayerLoadout {
     public final Difficulty difficulty;
     /** Whether the player starts the stage holding the Combat Scattergun. */
     public final boolean hasScattergun;
-    /** Starting shotgun shells carried in the shell pool, within [0, {@link Scattergun#MAX_SHELLS}]. */
+    /** Starting shotgun shells carried in the shell pool, never negative. */
     public final int shells;
     /** Whether the player starts the stage holding the Slot 3 Rail Lance. */
     public final boolean hasRailLance;
-    /** Starting rail slugs carried in the slug pool, within [0, {@link RailLance#MAX_SLUGS}]. */
+    /** Starting rail slugs carried in the slug pool, never negative. */
     public final int slugs;
     /** Weapon equipped when entering the stage. */
     public final WeaponSlot activeWeapon;
@@ -69,9 +71,9 @@ public final class PlayerLoadout {
         this.armor = Math.max(0f, Math.min(Player.MAX_ARMOR, finiteArmor));
         this.difficulty = difficulty == null ? Difficulty.NORMAL : difficulty;
         this.hasScattergun = hasScattergun;
-        this.shells = Math.max(0, Math.min(Scattergun.MAX_SHELLS, shells));
+        this.shells = Math.max(0, shells);
         this.hasRailLance = hasRailLance;
-        this.slugs = Math.max(0, Math.min(RailLance.MAX_SLUGS, slugs));
+        this.slugs = Math.max(0, slugs);
         WeaponSlot slot = activeWeapon == null ? WeaponSlot.PISTOL : activeWeapon;
         if (slot == WeaponSlot.SCATTERGUN && (!this.hasScattergun || this.shells <= 0)) {
             slot = (this.hasRailLance && this.slugs > 0) ? WeaponSlot.RAIL_LANCE : WeaponSlot.PISTOL;
@@ -95,28 +97,31 @@ public final class PlayerLoadout {
     }
 
     /**
-     * Builds the default entry loadout when selecting a campaign stage directly from {@code SELECT STAGE}. Stage 01
-     * begins with the Pistol only; Stages 02-03 start with the Scattergun; Stages 04+ unlock both the Scattergun and
-     * the Rail Lance (with the Scattergun equipped in hand by default).
-     * @param stageIndex zero-based campaign stage index
+     * Builds the default entry loadout when selecting a campaign stage directly from {@code SELECT STAGE}: full
+     * health, no armor and the weapons the stage's file lists ({@link Levels.Stage#startingWeapons}), wherever the
+     * campaign puts the stage. A weapon other than the Pistol comes with the ammunition of one of its pickups. The
+     * Scattergun is in hand when the stage grants it, otherwise the Rail Lance when the stage grants that, and
+     * otherwise the Pistol.
+     * @param stage the stage deployed to
      * @param difficulty difficulty tier
      * @param tuning what each difficulty multiplies; its pickup scale sizes the starter ammunition
-     * @return starter loadout for direct deployment to {@code stageIndex}
+     * @param weapons the weapon balance; a starter weapon comes with the ammunition of its pickup
+     * @return starter loadout for direct deployment to {@code stage}
      */
-    public static PlayerLoadout forStage(int stageIndex, Difficulty difficulty, DifficultyTuning tuning) {
+    public static PlayerLoadout forStage(Levels.Stage stage, Difficulty difficulty, DifficultyTuning tuning,
+                                         WeaponTuning weapons) {
         Difficulty safe = difficulty == null ? Difficulty.NORMAL : difficulty;
         float pickupScale = tuning.of(safe).pickupScale;
-        if (stageIndex <= 0) return fresh(safe);
-        int starterShells = Math.min(Scattergun.MAX_SHELLS,
-            Math.max(1, Math.round(Scattergun.PICKUP_WEAPON_SHELLS * pickupScale)));
-        if (stageIndex < 3) {
-            return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells,
-                false, 0, WeaponSlot.SCATTERGUN);
-        }
-        int starterSlugs = Math.min(RailLance.MAX_SLUGS,
-            Math.max(1, Math.round(RailLance.PICKUP_WEAPON_SLUGS * pickupScale)));
-        return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, true, starterShells,
-            true, starterSlugs, WeaponSlot.SCATTERGUN);
+        boolean scattergun = stage.startingWeapons.contains(WeaponSlot.SCATTERGUN);
+        boolean railLance = stage.startingWeapons.contains(WeaponSlot.RAIL_LANCE);
+        int starterShells = scattergun ? Math.min(weapons.scattergunMaxShells,
+            Math.max(1, Math.round(weapons.scattergunWeaponPickupShells * pickupScale))) : 0;
+        int starterSlugs = railLance ? Math.min(weapons.railMaxSlugs,
+            Math.max(1, Math.round(weapons.railWeaponPickupSlugs * pickupScale))) : 0;
+        WeaponSlot inHand = scattergun ? WeaponSlot.SCATTERGUN
+            : railLance ? WeaponSlot.RAIL_LANCE : WeaponSlot.PISTOL;
+        return new PlayerLoadout(Player.MAX_HEALTH, 0f, safe, scattergun, starterShells,
+            railLance, starterSlugs, inHand);
     }
 
     /**

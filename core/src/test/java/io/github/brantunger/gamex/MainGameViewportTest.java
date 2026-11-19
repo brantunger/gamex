@@ -340,12 +340,13 @@ class MainGameViewportTest {
 
         GameSimulation cleanPreview = new GameSimulation(outerBreach.map);
         assertSame(cleanPreview,
-            MainGame.backdropSimulation(cleanPreview, menu, false, TestTuning.ENEMIES, TestTuning.DIFFICULTY),
+            MainGame.backdropSimulation(cleanPreview, menu, false, TestTuning.ENEMIES, TestTuning.DIFFICULTY,
+                TestTuning.WEAPONS, TestTuning.WORLD),
             "clean unplayed preview of active stage is reused without reallocating");
 
         // Even if map matches, a simulation flagged as played replaces the instance.
         GameSimulation afterFlaggedPlay = MainGame.backdropSimulation(cleanPreview, menu, true, TestTuning.ENEMIES,
-            TestTuning.DIFFICULTY);
+            TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
         assertNotSame(cleanPreview, afterFlaggedPlay);
         assertEquals(0f, afterFlaggedPlay.getTime(), 1e-6f);
 
@@ -358,7 +359,7 @@ class MainGameViewportTest {
         assertTrue(mutated.getShotsFired() > 0);
 
         GameSimulation rebuilt = MainGame.backdropSimulation(mutated, menu, false, TestTuning.ENEMIES,
-            TestTuning.DIFFICULTY);
+            TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
         assertNotSame(mutated, rebuilt, "mutated gameplay simulation must not leak into menu backdrop");
         assertSame(outerBreach.map, rebuilt.map);
         assertEquals(0f, rebuilt.getTime(), 1e-6f);

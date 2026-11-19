@@ -9,6 +9,7 @@ import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.weapon.WeaponTuning;
 import io.github.brantunger.gamex.world.Levels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,17 +80,18 @@ public final class MenuState {
     /** Seconds left in which a second press of the quit key quits; 0 when no quit is pending. */
     private float quitConfirmTimer;
     private final DifficultyTuning difficultyTuning;
+    private final WeaponTuning weaponTuning;
 
     /**
-     * Builds the menus with the difficulty tuning file read here and now. This is for tests only: the game
-     * loads its tuning once at start-up and uses
-     * {@link #MenuState(GameSettings, SaveData, Screen, DifficultyTuning)}.
+     * Builds the menus with the difficulty and weapon tuning files read here and now. This is for tests only:
+     * the game loads its tuning once at start-up and uses
+     * {@link #MenuState(GameSettings, SaveData, Screen, DifficultyTuning, WeaponTuning)}.
      * @param settings live settings model
      * @param saveData campaign & record persistence
      * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
      */
     public MenuState(GameSettings settings, SaveData saveData, Screen startScreen) {
-        this(settings, saveData, startScreen, DifficultyTuning.load());
+        this(settings, saveData, startScreen, DifficultyTuning.load(), WeaponTuning.load());
     }
 
     /**
@@ -97,13 +99,16 @@ public final class MenuState {
      * @param saveData campaign & record persistence
      * @param startScreen initial screen ({@link Screen#TITLE} in normal play, {@link Screen#PLAYING} in demo runs)
      * @param difficultyTuning what each difficulty multiplies, as loaded at start-up
+     * @param weaponTuning the weapon balance, as loaded at start-up
      */
     public MenuState(GameSettings settings, SaveData saveData, Screen startScreen,
-                     DifficultyTuning difficultyTuning) {
+                     DifficultyTuning difficultyTuning, WeaponTuning weaponTuning) {
         if (difficultyTuning == null) throw new IllegalArgumentException("Difficulty tuning must not be null");
+        if (weaponTuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
         this.settings = settings;
         this.saveData = saveData;
         this.difficultyTuning = difficultyTuning;
+        this.weaponTuning = weaponTuning;
         this.activeStage = campaign.get(0);
         this.activeLoadout = PlayerLoadout.fresh(Difficulty.NORMAL);
         this.entryLoadout = activeLoadout;
@@ -458,7 +463,7 @@ public final class MenuState {
                 campaignCompleted = false;
                 stageIndex = Math.min(pendingStageIndex, campaign.size() - 1);
                 activeStage = campaign.get(stageIndex);
-                activeLoadout = PlayerLoadout.forStage(stageIndex, diff, difficultyTuning);
+                activeLoadout = PlayerLoadout.forStage(activeStage, diff, difficultyTuning, weaponTuning);
                 entryLoadout = activeLoadout;
                 // The run is saved on DEPLOY, so backing out of the briefing keeps the old CONTINUE save.
                 setScreen(Screen.BRIEFING);
@@ -631,10 +636,11 @@ public final class MenuState {
             stats, !inTrainingRange);
         campaignCompleted = !inTrainingRange && (stageIndex + 1 >= campaign.size());
         if (!inTrainingRange) {
-            PlayerLoadout nextLoadout = carryOver == null
-                ? PlayerLoadout.forStage(stageIndex + 1, activeLoadout.difficulty, difficultyTuning)
-                : carryOver;
             if (stageIndex + 1 < campaign.size()) {
+                PlayerLoadout nextLoadout = carryOver == null
+                    ? PlayerLoadout.forStage(campaign.get(stageIndex + 1), activeLoadout.difficulty,
+                        difficultyTuning, weaponTuning)
+                    : carryOver;
                 saveData.unlockStage(stageIndex + 1);
                 saveData.saveCampaignRun(stageIndex + 1, nextLoadout);
                 activeLoadout = nextLoadout;

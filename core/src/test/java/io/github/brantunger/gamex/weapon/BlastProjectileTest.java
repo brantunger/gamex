@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.GameMap;
@@ -18,6 +19,9 @@ import java.util.List;
 
 class BlastProjectileTest {
 
+    /** The shipped weapon balance. */
+    private static final WeaponTuning W = TestTuning.WEAPONS;
+
     private static final float EPSILON = 1e-3f;
 
     /** A corridor one cell wide whose open floor spans x from 1 to 9 at z from 1 to 2. */
@@ -28,7 +32,8 @@ class BlastProjectileTest {
     private static final List<Target> NO_TARGETS = Collections.emptyList();
 
     private static BlastProjectile eastwards(float charge) {
-        return new BlastProjectile(new Vector3(1.5f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f), charge);
+        return new BlastProjectile(new Vector3(1.5f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f), charge,
+            W);
     }
 
     @Test
@@ -59,7 +64,7 @@ class BlastProjectileTest {
     @Test
     void explodesOnTheFloorWhenFiredDownwards() {
         BlastProjectile projectile = new BlastProjectile(new Vector3(1.5f, 0.5f, 1.5f),
-            new Vector3(1f, -1f, 0f).nor(), 1f);
+            new Vector3(1f, -1f, 0f).nor(), 1f, W);
 
         assertTrue(projectile.update(1f, CORRIDOR, NO_TARGETS));
 
@@ -98,7 +103,7 @@ class BlastProjectileTest {
     void explodesOnlyOnce() {
         Target board = new Target(Target.Kind.RING_BOARD, 8.5f, 1.5f);
         List<Target> targets = Collections.singletonList(board);
-        BlastProjectile projectile = eastwards(BlastCharger.MIN_CHARGE);
+        BlastProjectile projectile = eastwards(W.blastMinCharge);
 
         assertTrue(projectile.update(100f, CORRIDOR, targets));
         float healthAfterBlast = board.getHealth();
@@ -150,10 +155,10 @@ class BlastProjectileTest {
 
     @Test
     void radiusAndDamageGrowWithTheCharge() {
-        assertEquals(1.5f, BlastProjectile.blastRadius(0.25f), EPSILON);
-        assertEquals(3f, BlastProjectile.blastRadius(1f), EPSILON);
-        assertEquals(55f, BlastProjectile.blastDamage(0.25f), EPSILON);
-        assertEquals(130f, BlastProjectile.blastDamage(1f), EPSILON);
+        assertEquals(1.5f, W.blastRadius(0.25f), EPSILON);
+        assertEquals(3f, W.blastRadius(1f), EPSILON);
+        assertEquals(55f, W.blastDamage(0.25f), EPSILON);
+        assertEquals(130f, W.blastDamage(1f), EPSILON);
     }
 
     @Test
@@ -161,9 +166,10 @@ class BlastProjectileTest {
         // Both explode against the end wall at x = 9; the board stands 2.2 from there, edge 1.96 away.
         Target reachedByFull = new Target(Target.Kind.RING_BOARD, 6.7f, 1.5f);
         Target missedByMinimum = new Target(Target.Kind.RING_BOARD, 6.7f, 1.5f);
-        BlastProjectile full = new BlastProjectile(new Vector3(7.5f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f), 1f);
+        BlastProjectile full = new BlastProjectile(new Vector3(7.5f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f), 1f,
+            W);
         BlastProjectile minimum = new BlastProjectile(new Vector3(7.5f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f),
-            BlastCharger.MIN_CHARGE);
+            W.blastMinCharge, W);
 
         assertTrue(full.update(1f, CORRIDOR, Collections.singletonList(reachedByFull)));
         assertTrue(minimum.update(1f, CORRIDOR, Collections.singletonList(missedByMinimum)));
@@ -219,7 +225,7 @@ class BlastProjectileTest {
 
         // Unnormalized direction of length 5 would previously step 0.40u > 0.18u door slab thickness and tunnel.
         BlastProjectile scaled = new BlastProjectile(
-            new Vector3(1.5f, 0.5f, 1.5f), new Vector3(5f, 0f, 0f), 1f);
+            new Vector3(1.5f, 0.5f, 1.5f), new Vector3(5f, 0f, 0f), 1f, W);
         assertFalse(scaled.update(0.25f, CORRIDOR, NO_TARGETS, doors, null, 0f));
         assertEquals(1.5f + BlastProjectile.SPEED * 0.25f, scaled.position.x, EPSILON);
 
@@ -239,7 +245,8 @@ class BlastProjectileTest {
             new Vector3(1e-8f, 0f, 0f),
             new Vector3(Float.NaN, 0f, 0f),
             new Vector3(Float.POSITIVE_INFINITY, 0f, 0f))) {
-            BlastProjectile fallback = new BlastProjectile(new Vector3(1.5f, 0.5f, 3.5f), badDir, 0.5f);
+            BlastProjectile fallback = new BlastProjectile(new Vector3(1.5f, 0.5f, 3.5f), badDir, 0.5f,
+                W);
             assertFalse(fallback.update(0.25f, northHall, NO_TARGETS));
             assertEquals(1.5f, fallback.position.x, EPSILON);
             assertEquals(0.5f, fallback.position.y, EPSILON);
@@ -274,7 +281,7 @@ class BlastProjectileTest {
         assertTrue(retracting.overlapsSphere(spawnX, spawnY, 1.5f, BlastProjectile.RADIUS));
 
         BlastProjectile doorSpawn = new BlastProjectile(
-            new Vector3(spawnX, spawnY, 1.5f), new Vector3(1f, 0f, 0f), 1f);
+            new Vector3(spawnX, spawnY, 1.5f), new Vector3(1f, 0f, 0f), 1f, W);
         assertTrue(doorSpawn.update(1f / 60f, CORRIDOR, NO_TARGETS,
             Collections.singletonList(retracting), null, 0f));
         assertTrue(doorSpawn.isExploded());
@@ -283,7 +290,7 @@ class BlastProjectileTest {
         Target canister = new Target(Target.Kind.CANISTER, 4.0f, 1.5f);
         float targetSpawnX = 4.0f + canister.getRadius() + 0.05f;
         BlastProjectile targetSpawn = new BlastProjectile(
-            new Vector3(targetSpawnX, 0.4f, 1.5f), new Vector3(1f, 0f, 0f), 1f);
+            new Vector3(targetSpawnX, 0.4f, 1.5f), new Vector3(1f, 0f, 0f), 1f, W);
         assertTrue(targetSpawn.update(1f / 60f, CORRIDOR, Collections.singletonList(canister)));
         assertEquals(targetSpawnX, targetSpawn.position.x, 1e-6f);
         assertTrue(canister.isDestroyed());
@@ -293,13 +300,14 @@ class BlastProjectileTest {
     void ceilingAndFloorImpactsApplyThreeDimensionalVerticalSplashFalloff() {
         Player grounded = new Player(2.5f, 1.5f, 0f);
         BlastProjectile ceilingBlast = new BlastProjectile(
-            new Vector3(2.5f, 0.80f, 1.5f), new Vector3(0f, 1f, 0f), BlastCharger.MIN_CHARGE);
+            new Vector3(2.5f, 0.80f, 1.5f), new Vector3(0f, 1f, 0f), W.blastMinCharge,
+            W);
 
         assertTrue(ceilingBlast.update(1f, CORRIDOR, NO_TARGETS, grounded, BlastProjectile.SELF_DAMAGE_SCALE));
         assertEquals(GameMap.WALL_HEIGHT - BlastProjectile.RADIUS, ceilingBlast.position.y, 0.002f);
 
-        float radius = BlastProjectile.blastRadius(BlastCharger.MIN_CHARGE);
-        float maxDamage = BlastProjectile.blastDamage(BlastCharger.MIN_CHARGE);
+        float radius = W.blastRadius(W.blastMinCharge);
+        float maxDamage = W.blastDamage(W.blastMinCharge);
         float vertGap = ceilingBlast.position.y - grounded.getTopY();
         assertTrue(vertGap > 0.2f);
         float expectedLoss = Explosion.damageAt(vertGap, radius, maxDamage) * BlastProjectile.SELF_DAMAGE_SCALE;

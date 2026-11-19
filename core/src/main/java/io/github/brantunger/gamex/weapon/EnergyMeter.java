@@ -3,18 +3,21 @@ package io.github.brantunger.gamex.weapon;
 /** The energy that the charged blast draws from. It refills over time. */
 public final class EnergyMeter {
 
-    /** The capacity of the player's meter. */
-    public static final float DEFAULT_CAPACITY = 100f;
-    /** The refill rate of the player's meter, in energy per second. */
-    public static final float DEFAULT_REGEN = 14f;
-
     private final float capacity;
     private final float regenPerSecond;
     private float energy;
 
-    /** Creates a full meter with the default capacity and refill rate. */
-    public EnergyMeter() {
-        this(DEFAULT_CAPACITY, DEFAULT_REGEN);
+    /**
+     * Creates the player's meter, full.
+     * @param tuning the weapon balance; its energy values set the capacity and the refill rate
+     */
+    public EnergyMeter(WeaponTuning tuning) {
+        this(required(tuning).energyCapacity, tuning.energyRegen);
+    }
+
+    private static WeaponTuning required(WeaponTuning tuning) {
+        if (tuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
+        return tuning;
     }
 
     /**

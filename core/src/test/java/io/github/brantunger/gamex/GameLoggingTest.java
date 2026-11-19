@@ -55,7 +55,8 @@ class GameLoggingTest {
     @Test
     void framesWithNoEventLogNothing() {
         // A stage with an exit, hostiles, a keycard bulkhead and a console, so the objective is worked out.
-        GameSimulation simulation = new GameSimulation(Levels.lockdownWing().map, PlayerLoadout.fresh(), false);
+        GameSimulation simulation = new GameSimulation(Levels.stage("04_lockdown_wing").map, PlayerLoadout.fresh(),
+            false);
         PlayerInput input = new PlayerInput();
         assertNotNull(simulation.getObjectiveText(), "the stage has an objective");
         try (LogCapture capture = LogCapture.of(GameSimulation.class, Level.TRACE)) {

@@ -4,15 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import org.junit.jupiter.api.Test;
 
 class BlastChargerTest {
+
+    /** The shipped weapon balance. */
+    private static final WeaponTuning W = TestTuning.WEAPONS;
 
     private static final float EPSILON = 1e-3f;
     private static final float REGEN = 10f;
 
     private final EnergyMeter energy = new EnergyMeter(100f, REGEN);
-    private final BlastCharger charger = new BlastCharger(energy);
+    private final BlastCharger charger = new BlastCharger(energy, W);
 
     /** Holds the button for a time in small steps, as frames would. */
     private void hold(float seconds) {
@@ -22,7 +26,7 @@ class BlastChargerTest {
 
     @Test
     void chargeBuildsWhileTheButtonIsHeld() {
-        hold(BlastCharger.FULL_CHARGE_TIME / 2f);
+        hold(W.blastFullChargeTime / 2f);
 
         assertTrue(charger.isCharging());
         assertEquals(0.5f, charger.getCharge(), EPSILON);
@@ -30,14 +34,14 @@ class BlastChargerTest {
 
     @Test
     void chargeStopsAtFull() {
-        hold(BlastCharger.FULL_CHARGE_TIME * 3f);
+        hold(W.blastFullChargeTime * 3f);
 
         assertEquals(1f, charger.getCharge(), EPSILON);
     }
 
     @Test
     void releaseFiresTheChargeAndSpendsItsCost() {
-        hold(BlastCharger.FULL_CHARGE_TIME / 2f);
+        hold(W.blastFullChargeTime / 2f);
 
         float fired = charger.update(0.01f, false);
 
@@ -50,15 +54,15 @@ class BlastChargerTest {
 
     @Test
     void fullChargeCostsTheMaximum() {
-        hold(BlastCharger.FULL_CHARGE_TIME * 2f);
+        hold(W.blastFullChargeTime * 2f);
 
         assertEquals(1f, charger.update(0.01f, false), EPSILON);
-        assertEquals(100f - BlastCharger.MAX_COST, energy.getEnergy(), EPSILON);
+        assertEquals(100f - W.blastMaxCost, energy.getEnergy(), EPSILON);
     }
 
     @Test
     void releaseBelowTheMinimumChargeFizzlesAndCostsNothing() {
-        hold(BlastCharger.FULL_CHARGE_TIME * BlastCharger.MIN_CHARGE * 0.8f);
+        hold(W.blastFullChargeTime * W.blastMinCharge * 0.8f);
         assertFalse(charger.isReadyToFire());
 
         assertEquals(0f, charger.update(0.01f, false));
@@ -68,19 +72,19 @@ class BlastChargerTest {
     @Test
     void releaseJustAtTheMinimumChargeFiresAtTheMinimumCost() {
         // One step that carries the charge a hair past the minimum.
-        charger.update(BlastCharger.FULL_CHARGE_TIME * BlastCharger.MIN_CHARGE + 1e-4f, true);
+        charger.update(W.blastFullChargeTime * W.blastMinCharge + 1e-4f, true);
         assertTrue(charger.isReadyToFire());
 
         float fired = charger.update(0.01f, false);
 
-        assertEquals(BlastCharger.MIN_CHARGE, fired, 2e-4f);
-        assertEquals(100f - BlastCharger.MIN_COST, energy.getEnergy(), 0.01f);
-        assertEquals(BlastCharger.MIN_COST, BlastCharger.costFor(BlastCharger.MIN_CHARGE), 0f);
+        assertEquals(W.blastMinCharge, fired, 2e-4f);
+        assertEquals(100f - W.blastMinCost, energy.getEnergy(), 0.01f);
+        assertEquals(W.blastMinCost, W.blastCost(W.blastMinCharge), 0f);
     }
 
     @Test
     void releaseJustBelowTheMinimumChargeFizzles() {
-        charger.update(BlastCharger.FULL_CHARGE_TIME * BlastCharger.MIN_CHARGE - 1e-4f, true);
+        charger.update(W.blastFullChargeTime * W.blastMinCharge - 1e-4f, true);
         assertFalse(charger.isReadyToFire());
 
         assertEquals(0f, charger.update(0.01f, false));
@@ -89,7 +93,7 @@ class BlastChargerTest {
 
     @Test
     void cancelDropsTheChargeWithoutFiringOrSpending() {
-        hold(BlastCharger.FULL_CHARGE_TIME);
+        hold(W.blastFullChargeTime);
         assertTrue(charger.isReadyToFire());
 
         charger.cancel();
@@ -102,7 +106,7 @@ class BlastChargerTest {
 
     @Test
     void chargeStartsFromZeroAgainAfterACancelWithTheButtonStillHeld() {
-        hold(BlastCharger.FULL_CHARGE_TIME);
+        hold(W.blastFullChargeTime);
         charger.cancel();
 
         charger.update(0.12f, true);
@@ -113,7 +117,7 @@ class BlastChargerTest {
 
     @Test
     void cannotStartChargingWithoutEnergyForTheSmallestBlast() {
-        energy.spend(100f - BlastCharger.MIN_COST + 5f);
+        energy.spend(100f - W.blastMinCost + 5f);
 
         float fired = charger.update(0.01f, true);
 
@@ -129,7 +133,7 @@ class BlastChargerTest {
         // 40 energy pays for a blast halfway between the minimum (20) and the maximum (60) cost.
         energy.spend(60f);
 
-        hold(BlastCharger.FULL_CHARGE_TIME * 2f);
+        hold(W.blastFullChargeTime * 2f);
         float fired = charger.update(0.01f, false);
 
         assertEquals(0.625f, fired, EPSILON);
@@ -152,7 +156,7 @@ class BlastChargerTest {
 
     @Test
     void firesOnlyOncePerRelease() {
-        hold(BlastCharger.FULL_CHARGE_TIME);
+        hold(W.blastFullChargeTime);
 
         assertTrue(charger.update(0.01f, false) > 0f);
         assertEquals(0f, charger.update(0.01f, false));
@@ -166,16 +170,16 @@ class BlastChargerTest {
         energy.setEnergy(10f);
         assertEquals(0f, charger.affordableCharge(), 0f);
 
-        energy.setEnergy(BlastCharger.MIN_COST - 0.01f);
+        energy.setEnergy(W.blastMinCost - 0.01f);
         assertEquals(0f, charger.affordableCharge(), 0f);
 
-        energy.setEnergy(BlastCharger.MIN_COST);
-        assertEquals(BlastCharger.MIN_CHARGE, charger.affordableCharge(), EPSILON);
+        energy.setEnergy(W.blastMinCost);
+        assertEquals(W.blastMinCharge, charger.affordableCharge(), EPSILON);
 
         energy.setEnergy(40f);
         assertEquals(0.625f, charger.affordableCharge(), EPSILON);
 
-        energy.setEnergy(BlastCharger.MAX_COST);
+        energy.setEnergy(W.blastMaxCost);
         assertEquals(1f, charger.affordableCharge(), EPSILON);
 
         energy.setEnergy(100f);
@@ -185,7 +189,7 @@ class BlastChargerTest {
     @Test
     void energyDroppingBelowMinimumCostMidChargeFizzlesPreventsZeroCostBlastAndSuppressesUntilRelease() {
         energy.setEnergy(50f);
-        hold(BlastCharger.FULL_CHARGE_TIME / 2f);
+        hold(W.blastFullChargeTime / 2f);
         assertTrue(charger.isCharging());
         assertTrue(charger.isReadyToFire());
         assertEquals(0.5f, charger.getCharge(), EPSILON);
@@ -215,14 +219,14 @@ class BlastChargerTest {
         assertTrue(energy.getEnergy() >= energyBeforeRelease);
 
         // Fresh press after release charges normally again.
-        charger.update(BlastCharger.FULL_CHARGE_TIME * BlastCharger.MIN_CHARGE + 0.02f, true);
+        charger.update(W.blastFullChargeTime * W.blastMinCharge + 0.02f, true);
         assertTrue(charger.isCharging());
         assertTrue(charger.isReadyToFire());
     }
 
     @Test
     void energyDroppingBelowMinimumCostOnExactReleaseFrameDoesNotFireFreeBlast() {
-        hold(BlastCharger.FULL_CHARGE_TIME);
+        hold(W.blastFullChargeTime);
         assertTrue(charger.isReadyToFire());
 
         energy.setEnergy(0f);
@@ -232,21 +236,21 @@ class BlastChargerTest {
         assertEquals(0f, energy.getEnergy(), 0f);
 
         energy.setEnergy(100f);
-        hold(BlastCharger.FULL_CHARGE_TIME);
-        energy.setEnergy(BlastCharger.MIN_COST - 0.1f);
+        hold(W.blastFullChargeTime);
+        energy.setEnergy(W.blastMinCost - 0.1f);
         assertEquals(0f, charger.update(0.01f, false), "must not fire when just under MIN_COST on release");
-        assertEquals(BlastCharger.MIN_COST - 0.1f, energy.getEnergy(), 1e-4f);
+        assertEquals(W.blastMinCost - 0.1f, energy.getEnergy(), 1e-4f);
     }
 
     @Test
     void energyReducedAboveMinimumCostBeforeReleaseClampsBlastToRemainingEnergy() {
-        hold(BlastCharger.FULL_CHARGE_TIME);
+        hold(W.blastFullChargeTime);
         assertEquals(1f, charger.getCharge(), EPSILON);
 
-        energy.setEnergy(BlastCharger.MIN_COST);
+        energy.setEnergy(W.blastMinCost);
         float fired = charger.update(0.01f, false);
 
-        assertEquals(BlastCharger.MIN_CHARGE, fired, EPSILON);
+        assertEquals(W.blastMinCharge, fired, EPSILON);
         assertEquals(0f, energy.getEnergy(), EPSILON);
     }
 }

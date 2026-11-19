@@ -8,8 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
-import io.github.brantunger.gamex.weapon.RailLance;
-import io.github.brantunger.gamex.weapon.Scattergun;
+import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
 /** Checks the difficulty tuning file: what it ships with, what a changed value does, and its errors. */
@@ -46,18 +45,21 @@ class DifficultyTuningTest {
 
     @Test
     void aChangedPickupScaleSizesTheStarterAmmunition() {
-        PlayerLoadout shipped = PlayerLoadout.forStage(3, Difficulty.EASY, TestTuning.DIFFICULTY);
-        assertEquals(Math.round(Scattergun.PICKUP_WEAPON_SHELLS * 1.25f), shipped.shells);
-        assertEquals(Math.round(RailLance.PICKUP_WEAPON_SLUGS * 1.25f), shipped.slugs);
+        Levels.Stage lockdownWing = Levels.stage("04_lockdown_wing");
+        PlayerLoadout shipped = PlayerLoadout.forStage(lockdownWing, Difficulty.EASY, TestTuning.DIFFICULTY,
+            TestTuning.WEAPONS);
+        assertEquals(Math.round(TestTuning.WEAPONS.scattergunWeaponPickupShells * 1.25f), shipped.shells);
+        assertEquals(Math.round(TestTuning.WEAPONS.railWeaponPickupSlugs * 1.25f), shipped.slugs);
 
         DifficultyTuning halved = TestTuning.difficultyWith("easy.pickup", "0.5");
-        PlayerLoadout tuned = PlayerLoadout.forStage(3, Difficulty.EASY, halved);
-        assertEquals(Math.round(Scattergun.PICKUP_WEAPON_SHELLS * 0.5f), tuned.shells);
-        assertEquals(Math.round(RailLance.PICKUP_WEAPON_SLUGS * 0.5f), tuned.slugs);
+        PlayerLoadout tuned = PlayerLoadout.forStage(lockdownWing, Difficulty.EASY, halved, TestTuning.WEAPONS);
+        assertEquals(Math.round(TestTuning.WEAPONS.scattergunWeaponPickupShells * 0.5f), tuned.shells);
+        assertEquals(Math.round(TestTuning.WEAPONS.railWeaponPickupSlugs * 0.5f), tuned.slugs);
         assertEquals(Difficulty.EASY, tuned.difficulty);
         // The other difficulties are untouched.
-        assertEquals(PlayerLoadout.forStage(3, Difficulty.HARD, TestTuning.DIFFICULTY).shells,
-            PlayerLoadout.forStage(3, Difficulty.HARD, halved).shells);
+        assertEquals(
+            PlayerLoadout.forStage(lockdownWing, Difficulty.HARD, TestTuning.DIFFICULTY, TestTuning.WEAPONS).shells,
+            PlayerLoadout.forStage(lockdownWing, Difficulty.HARD, halved, TestTuning.WEAPONS).shells);
     }
 
     private static String error(String key, String value) {

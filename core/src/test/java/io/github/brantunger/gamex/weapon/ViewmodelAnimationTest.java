@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.weapon;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import org.junit.jupiter.api.Test;
 
 class ViewmodelAnimationTest {
@@ -37,7 +38,7 @@ class ViewmodelAnimationTest {
         float peakTime = 0f;
         float time = 0f;
         float lastAfterPeak = Float.POSITIVE_INFINITY;
-        while (time + FRAME < Pistol.FIRE_INTERVAL) {
+        while (time + FRAME < TestTuning.WEAPONS.pistolFireInterval) {
             animation.update(FRAME, false, 0f, 0f, 0f);
             time += FRAME;
             float recoil = animation.getRecoil();

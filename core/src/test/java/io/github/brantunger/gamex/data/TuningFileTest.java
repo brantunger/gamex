@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import io.github.brantunger.gamex.TestTuning;
+import io.github.brantunger.gamex.hud.PixelFont;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,8 @@ class TuningFileTest {
     private static final List<String> SAMPLE_KEYS = Arrays.asList(
         "pistol.fire_interval", "pistol.pellets", "pistol.auto", "pistol.name", "pistol.falloff");
     private static final List<String> SAMPLE_REPEATED_KEYS = Collections.singletonList("hint");
+    /** The shipped font, which display text is checked against. */
+    private static final PixelFont FONT = TestTuning.FONT;
 
     private Files previousFiles;
     private String previousAssets;
@@ -72,7 +76,7 @@ class TuningFileTest {
         assertTrue(file.getBoolean("enabled"));
         assertFalse(file.getBoolean("muted"));
         assertEquals("Rail Lance", file.getString("name"));
-        assertEquals("Rail Lance", file.getDisplayString("name"));
+        assertEquals("Rail Lance", file.getDisplayString("name", FONT));
         assertArrayEquals(new float[] {0.60f, 1.10f, 1.27f}, file.getFloats("falloff"), 0f);
         assertArrayEquals(new float[] {0.60f, 1.10f, 1.27f}, file.getFloats("falloff", 3), 0f);
         assertArrayEquals(new float[] {4.25f}, file.getFloats("speed"), 0f);
@@ -123,7 +127,7 @@ class TuningFileTest {
             Collections.singletonList("speed"), Collections.singletonList("hint"));
 
         assertEquals(Arrays.asList("FIRST", "SECOND: MORE", "THIRD"), file.getStrings("hint"));
-        assertEquals(Arrays.asList("FIRST", "SECOND: MORE", "THIRD"), file.getDisplayStrings("hint"));
+        assertEquals(Arrays.asList("FIRST", "SECOND: MORE", "THIRD"), file.getDisplayStrings("hint", FONT));
         List<TuningFile.Entry> entries = file.entries("hint");
         assertEquals(3, entries.size());
         assertEquals("hint", entries.get(1).key);
@@ -178,12 +182,12 @@ class TuningFileTest {
             Collections.singletonList("c"));
 
         assertError("Empty 'b' key in " + FILE + " at line 2", () -> file.getString("b"));
-        assertError("Empty 'b' key in " + FILE + " at line 2", () -> file.getDisplayString("b"));
+        assertError("Empty 'b' key in " + FILE + " at line 2", () -> file.getDisplayString("b", FONT));
         assertError("Empty 'b' key in " + FILE + " at line 2", () -> file.getFloat("b"));
         assertError("Empty 'b' key in " + FILE + " at line 2", () -> file.getInt("b"));
         assertError("Empty 'b' key in " + FILE + " at line 2", () -> file.getFloats("b"));
         assertError("Empty 'c' key in " + FILE + " at line 3", () -> file.getStrings("c"));
-        assertError("Empty 'c' key in " + FILE + " at line 3", () -> file.getDisplayStrings("c"));
+        assertError("Empty 'c' key in " + FILE + " at line 3", () -> file.getDisplayStrings("c", FONT));
         assertError("Expected 'true' or 'false' for 'b' in " + FILE + " at line 2, got ''",
             () -> file.getBoolean("b"));
         // The line is there for a caller that accepts an empty value.
@@ -384,9 +388,9 @@ class TuningFileTest {
 
         assertEquals("under_score", file.getString("title"));
         assertError("Unsupported PixelFont character '_' (U+005F) in 'title' in " + FILE + " at line 1",
-            () -> file.getDisplayString("title"));
+            () -> file.getDisplayString("title", FONT));
         assertError("Unsupported PixelFont character '\u00E9' (U+00E9) in 'hint' in " + FILE + " at line 3",
-            () -> file.getDisplayStrings("hint"));
+            () -> file.getDisplayStrings("hint", FONT));
     }
 
     @Test
@@ -456,9 +460,9 @@ class TuningFileTest {
         assertEquals(0.3f, file.getFloat("pistol.fire_interval"), 0f);
         assertEquals(8, file.getInt("pistol.pellets"));
         assertFalse(file.getBoolean("pistol.auto"));
-        assertEquals("SERVICE PISTOL", file.getDisplayString("pistol.name"));
+        assertEquals("SERVICE PISTOL", file.getDisplayString("pistol.name", FONT));
         assertArrayEquals(new float[] {0.60f, 1.10f, 1.27f}, file.getFloats("pistol.falloff", 3), 0f);
-        assertEquals(Arrays.asList("HOLD FIRE TO CHARGE.", "RELEASE TO LAUNCH."), file.getDisplayStrings("hint"));
+        assertEquals(Arrays.asList("HOLD FIRE TO CHARGE.", "RELEASE TO LAUNCH."), file.getDisplayStrings("hint", FONT));
     }
 
     @Test

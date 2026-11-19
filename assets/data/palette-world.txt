@@ -1,0 +1,106 @@
+// Colours of the world models (assets/models/ except the viewmodel-*.obj files and the Warden).
+// material.<name>: red, green, blue, gloss - one line for each material the game knows for these models, by the
+// name the model files use in their usemtl lines. A material the model files do not use still needs its line.
+// accent.<name>: red, green, blue, gloss - the colours the renderer puts on "# @accent" surfaces as they change
+// state. Every number is from 0 to 1; gloss runs from 0 (matt) to 1 (polished). Every material and accent the game
+// knows needs exactly one line, and a name it does not know stops the start.
+// The format has no references, so a colour used twice is written twice; each such line says where its twin is.
+material.canister_body: 0.22, 0.82, 0.71, 0.45
+material.canister_band: 0.16, 0.27, 0.30, 0.3
+material.canister_cap: 0.50, 0.53, 0.55, 0.8
+material.canister_emblem: 0.91, 0.96, 0.81, 0.2
+material.board_foot: 0.36, 0.35, 0.33, 0.2
+material.board_post: 0.47, 0.45, 0.42, 0.3
+material.board_rim: 0.12, 0.10, 0.18, 0.2
+material.board_white: 0.91, 0.90, 0.85, 0.1
+material.board_violet: 0.41, 0.27, 0.77, 0.2
+material.board_bullseye: 0.89, 0.24, 0.56, 0.3
+material.orb_core: 0.95, 0.85, 1.00, 1.0
+material.orb_shell: 0.62, 0.32, 1.00, 0.8
+material.medkit_case: 0.90, 0.92, 0.90, 0.35
+material.medkit_trim: 0.30, 0.35, 0.38, 0.5
+material.medkit_cross: 0.92, 0.20, 0.26, 0.4
+material.armor_plate: 0.18, 0.52, 0.86, 0.65
+material.armor_trim: 0.42, 0.48, 0.56, 0.75
+material.armor_core: 0.45, 0.92, 1.00, 0.9
+material.cell_cap: 0.32, 0.28, 0.42, 0.6
+material.cell_core: 0.76, 0.42, 1.00, 0.95
+material.bot_armor: 0.34, 0.37, 0.43, 0.65
+material.bot_dark: 0.15, 0.17, 0.21, 0.40
+material.bot_trim: 0.52, 0.56, 0.63, 0.80
+material.bot_visor: 1.00, 0.22, 0.28, 0.95
+material.bot_core: 1.00, 0.48, 0.18, 0.90
+material.bolt_core: 1.00, 0.82, 0.78, 1.00
+material.bolt_shell: 1.00, 0.22, 0.26, 0.85
+material.door_armor: 0.36, 0.40, 0.46, 0.55
+// Same colour as material.hazard_frame; separate so that doors and grates can be recoloured apart.
+material.door_trim: 0.22, 0.25, 0.30, 0.65
+material.door_dark: 0.13, 0.15, 0.18, 0.35
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.door_unlocked on purpose.
+material.door_status: 0.62, 0.78, 0.92, 0.85
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.keycard_amber on purpose.
+material.keycard_body: 1.00, 0.72, 0.16, 0.85
+material.keycard_trim: 0.22, 0.25, 0.30, 0.70
+material.keycard_stripe: 0.12, 0.14, 0.18, 0.50
+material.keycard_chip: 0.98, 0.94, 0.68, 0.95
+material.console_dark: 0.16, 0.19, 0.23, 0.45
+material.console_body: 0.30, 0.34, 0.40, 0.60
+material.console_trim: 0.48, 0.52, 0.58, 0.75
+material.console_keypad: 0.20, 0.24, 0.28, 0.40
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.console_locked on purpose.
+material.console_screen: 0.98, 0.28, 0.22, 0.95
+material.shotgun_metal: 0.25, 0.28, 0.33, 0.70
+material.shotgun_dark: 0.11, 0.13, 0.16, 0.45
+material.shotgun_polymer: 0.26, 0.28, 0.32, 0.18
+// Same colour as material.wood in palette-scattergun.txt: the pickup matches the weapon in hand.
+material.shotgun_wood: 0.46, 0.27, 0.14, 0.22
+material.shell_crimson: 0.88, 0.17, 0.20, 0.45
+material.shell_brass: 0.96, 0.72, 0.22, 0.80
+material.shell_crate: 0.20, 0.26, 0.22, 0.30
+// Same colour as material.door_trim; separate so that doors and grates can be recoloured apart.
+material.hazard_frame: 0.22, 0.25, 0.30, 0.65
+material.hazard_dark: 0.08, 0.10, 0.12, 0.30
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.hazard_live on purpose.
+material.hazard_coil: 0.18, 0.86, 1.00, 0.95
+material.rail_metal: 0.24, 0.28, 0.35, 0.72
+material.rail_dark: 0.10, 0.12, 0.16, 0.45
+// Same colour as material.rail_copper in palette-rail-lance.txt: the pickup matches the weapon in hand.
+material.rail_copper: 0.88, 0.54, 0.22, 0.80
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.rail_ready on purpose.
+// Also material.rail_core and accent.ready in palette-rail-lance.txt: the pickup matches the weapon in hand.
+material.rail_core: 0.18, 0.94, 1.00, 0.98
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.rail_beam on purpose.
+material.rail_beam: 0.36, 0.96, 1.00, 1.00
+material.rail_beam_core: 0.88, 0.98, 1.00, 1.00
+
+// Same colour as material.door_status, the surface it is drawn on.
+accent.door_unlocked: 0.62, 0.78, 0.92, 0.85
+// accent.keycard_amber and accent.keycard_cyan have the colours of the next two lines with gloss 0.85.
+accent.door_amber: 1.00, 0.72, 0.16, 0.95
+accent.door_cyan: 0.18, 0.92, 0.98, 0.95
+accent.door_lockdown: 0.98, 0.22, 0.24, 0.95
+accent.door_boss: 0.84, 0.24, 0.96, 0.95
+// Same colour as accent.console_active: green means open or switched on.
+accent.door_open: 0.24, 0.96, 0.48, 0.95
+// Same colour as material.keycard_body, the surface it is drawn on.
+accent.keycard_amber: 1.00, 0.72, 0.16, 0.85
+accent.keycard_cyan: 0.18, 0.92, 0.98, 0.85
+// Same colour as material.console_screen, the surface it is drawn on.
+accent.console_locked: 0.98, 0.28, 0.22, 0.95
+// Same colour as accent.door_open: green means open or switched on.
+accent.console_active: 0.24, 0.96, 0.48, 0.95
+accent.warden_phase1: 1.00, 0.30, 0.14, 0.96
+accent.warden_overdrive: 0.42, 0.54, 1.00, 0.98
+// Same colour as material.hazard_coil, the surface it is drawn on.
+accent.hazard_live: 0.18, 0.86, 1.00, 0.95
+// Same colour as material.rail_core, and as accent.ready in palette-rail-lance.txt.
+accent.rail_ready: 0.18, 0.94, 1.00, 0.98
+// Same colour as material.rail_beam, the surface it is drawn on. Only the model previewer draws
+// this accent: in the game the beam's colour is worked out in code as the beam fades.
+accent.rail_beam: 0.36, 0.96, 1.00, 1.00

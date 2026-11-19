@@ -3,8 +3,7 @@ package io.github.brantunger.gamex.world;
 import com.badlogic.gdx.math.Vector2;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
-import io.github.brantunger.gamex.weapon.RailLance;
-import io.github.brantunger.gamex.weapon.Scattergun;
+import io.github.brantunger.gamex.weapon.WeaponTuning;
 import java.util.Set;
 
 /**
@@ -35,31 +34,28 @@ public final class Pickup {
     /** The kinds of floor pickup. */
     public enum Kind {
         /** Restores player health. */
-        MEDKIT(25f, "HEALTH"),
+        MEDKIT("HEALTH"),
         /** Adds damage-absorbing armor. */
-        ARMOR(25f, "ARMOR"),
+        ARMOR("ARMOR"),
         /** Immediately refills blast/dash energy. */
-        ENERGY_CELL(35f, "ENERGY"),
+        ENERGY_CELL("ENERGY"),
         /** Grants access to amber-locked bulkheads in the current stage. */
-        AMBER_KEYCARD(0f, "AMBER KEYCARD"),
+        AMBER_KEYCARD("AMBER KEYCARD"),
         /** Grants access to cyan-locked bulkheads in the current stage. */
-        CYAN_KEYCARD(0f, "CYAN KEYCARD"),
+        CYAN_KEYCARD("CYAN KEYCARD"),
         /** Grants the Combat Scattergun plus starter shells. */
-        SCATTERGUN(Scattergun.PICKUP_WEAPON_SHELLS, "SCATTERGUN"),
+        SCATTERGUN("SCATTERGUN"),
         /** Restores shells for the Combat Scattergun. */
-        SHELLS(Scattergun.PICKUP_BOX_SHELLS, "SHELLS"),
+        SHELLS("SHELLS"),
         /** Grants the Slot 3 Rail Lance plus starter slugs. */
-        RAIL_LANCE(RailLance.PICKUP_WEAPON_SLUGS, "RAIL LANCE"),
+        RAIL_LANCE("RAIL LANCE"),
         /** Restores slugs for the Rail Lance. */
-        RAIL_SLUGS(RailLance.PICKUP_PACK_SLUGS, "SLUGS");
+        RAIL_SLUGS("SLUGS");
 
-        /** Baseline restoration amount on Normal difficulty. */
-        public final float baseAmount;
         /** Short HUD noun shown in pickup notifications. */
         public final String label;
 
-        Kind(float baseAmount, String label) {
-            this.baseAmount = baseAmount;
+        Kind(String label) {
             this.label = label;
         }
 
@@ -77,17 +73,59 @@ public final class Pickup {
     private final Kind kind;
     private final float x;
     private final float z;
+    /** What this pickup gives on Normal difficulty; 0 for a keycard. */
+    private final float baseAmount;
+    /** The most shells or slugs the player carries, for a pickup that gives them; 0 for the others. */
+    private final int ammoCapacity;
     private boolean collected;
 
     /**
      * @param kind the kind of pickup
      * @param x world x coordinate
      * @param z world z coordinate
+     * @param world the level's balance; it holds what a medkit, an armor pickup and an energy cell give
+     * @param weapons the weapon balance; it holds what the weapon and ammunition pickups give and the most
+     *     ammunition the player carries
      */
-    public Pickup(Kind kind, float x, float z) {
+    public Pickup(Kind kind, float x, float z, WorldTuning world, WeaponTuning weapons) {
         this.kind = kind;
         this.x = x;
         this.z = z;
+        this.baseAmount = baseAmount(kind, world, weapons);
+        if (kind == Kind.SCATTERGUN || kind == Kind.SHELLS) {
+            this.ammoCapacity = weapons.scattergunMaxShells;
+        } else if (kind == Kind.RAIL_LANCE || kind == Kind.RAIL_SLUGS) {
+            this.ammoCapacity = weapons.railMaxSlugs;
+        } else {
+            this.ammoCapacity = 0;
+        }
+    }
+
+    /**
+     * @param kind a kind of pickup
+     * @param world the level's balance
+     * @param weapons the weapon balance
+     * @return what a pickup of that kind gives on Normal difficulty; 0 for a keycard
+     */
+    public static float baseAmount(Kind kind, WorldTuning world, WeaponTuning weapons) {
+        switch (kind) {
+            case MEDKIT:
+                return world.pickupMedkit;
+            case ARMOR:
+                return world.pickupArmor;
+            case ENERGY_CELL:
+                return world.pickupEnergyCell;
+            case SCATTERGUN:
+                return weapons.scattergunWeaponPickupShells;
+            case SHELLS:
+                return weapons.scattergunBoxPickupShells;
+            case RAIL_LANCE:
+                return weapons.railWeaponPickupSlugs;
+            case RAIL_SLUGS:
+                return weapons.railPackPickupSlugs;
+            default:
+                return 0f;
+        }
     }
 
     /** @return the kind of this pickup. */
@@ -114,7 +152,7 @@ public final class Pickup {
      * Collects the pickup if the player overlaps it and can benefit from it.
      * @param player the player
      * @param energy the player's energy meter
-     * @param pickupScale difficulty multiplier applied to {@link Kind#baseAmount}
+     * @param pickupScale difficulty multiplier applied to what the pickup gives on Normal
      * @return a HUD toast string such as {@code "+25 HEALTH"} when collected, or null if untouched
      */
     public String tryCollect(Player player, EnergyMeter energy, float pickupScale) {
@@ -125,7 +163,7 @@ public final class Pickup {
      * Collects the pickup if the player overlaps it and can benefit from it (or does not yet hold this keycard).
      * @param player the player
      * @param energy the player's energy meter
-     * @param pickupScale difficulty multiplier applied to {@link Kind#baseAmount}
+     * @param pickupScale difficulty multiplier applied to what the pickup gives on Normal
      * @param heldKeycards optional set updated when collecting a keycard
      * @return a HUD toast string such as {@code "+25 HEALTH"} or {@code "+ AMBER KEYCARD"}, or null if untouched
      */
@@ -138,7 +176,7 @@ public final class Pickup {
      * Scattergun unlock, or finite shell pool replenishment).
      * @param player the player
      * @param energy the player's energy meter
-     * @param pickupScale difficulty multiplier applied to {@link Kind#baseAmount}
+     * @param pickupScale difficulty multiplier applied to what the pickup gives on Normal
      * @param heldKeycards optional set updated when collecting a keycard
      * @param arsenal optional mutable weapon/shell holder updated when collecting weapons or ammo
      * @return a HUD toast string such as {@code "+25 HEALTH"}, {@code "+ AMBER KEYCARD"}, {@code "+ SCATTERGUN"} or
@@ -157,7 +195,7 @@ public final class Pickup {
         if (kind.isArsenal()) {
             return tryCollectArsenal(pickupScale, arsenal);
         }
-        float amount = Math.max(1f, Math.round(kind.baseAmount * pickupScale));
+        float amount = Math.max(1f, Math.round(baseAmount * pickupScale));
         float applied;
         switch (kind) {
             case MEDKIT:
@@ -178,9 +216,9 @@ public final class Pickup {
 
     private String tryCollectArsenal(float pickupScale, Arsenal arsenal) {
         if (arsenal == null) return null;
-        int scaled = Math.max(1, Math.round(kind.baseAmount * pickupScale));
+        int scaled = Math.max(1, Math.round(baseAmount * pickupScale));
         if (kind == Kind.SCATTERGUN || kind == Kind.SHELLS) {
-            int space = Math.max(0, Scattergun.MAX_SHELLS - arsenal.getShells());
+            int space = Math.max(0, ammoCapacity - arsenal.getShells());
             int gain = Math.min(space, scaled);
             if (kind == Kind.SCATTERGUN) {
                 boolean hadWeapon = arsenal.hasScattergun();
@@ -194,7 +232,7 @@ public final class Pickup {
             collected = true;
             return "+" + gain + " SHELLS";
         }
-        int space = Math.max(0, RailLance.MAX_SLUGS - arsenal.getSlugs());
+        int space = Math.max(0, ammoCapacity - arsenal.getSlugs());
         int gain = Math.min(space, scaled);
         if (kind == Kind.RAIL_LANCE) {
             boolean hadWeapon = arsenal.hasRailLance();

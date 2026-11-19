@@ -157,7 +157,7 @@ class EnemyMovementTest {
 
     @Test
     void stage04DroneBehindTheDoorwayCornerReachesThePlayerAtTheSpawn() {
-        GameSimulation sim = soloSim(Levels.lockdownWing().map, Enemy.Kind.DRONE, 21.5f, 2.5f);
+        GameSimulation sim = soloSim(Levels.stage("04_lockdown_wing").map, Enemy.Kind.DRONE, 21.5f, 2.5f);
         Enemy drone = subject(sim);
 
         float firstHit = runUntilPlayerDamaged(sim, drone, 20f);
@@ -282,7 +282,7 @@ class EnemyMovementTest {
 
     @Test
     void stage03GuardGoesRoundTheCanisterOnItsPathToThePlayer() {
-        GameSimulation sim = soloSim(Levels.securityHub().map, Enemy.Kind.GUARD, 28.5f, 4.5f);
+        GameSimulation sim = soloSim(Levels.stage("03_security_hub").map, Enemy.Kind.GUARD, 28.5f, 4.5f);
         Enemy guard = subject(sim);
 
         float firstHit = runUntilPlayerDamaged(sim, guard, 40f);
@@ -292,7 +292,7 @@ class EnemyMovementTest {
 
     @Test
     void stage05DroneGoesRoundTheCanisterDiagonallyOnItsPathToThePlayer() {
-        GameSimulation sim = soloSim(Levels.commandVault().map, Enemy.Kind.DRONE, 7.5f, 20.5f);
+        GameSimulation sim = soloSim(Levels.stage("05_command_vault").map, Enemy.Kind.DRONE, 7.5f, 20.5f);
         Enemy drone = subject(sim);
 
         float firstHit = runUntilPlayerDamaged(sim, drone, 40f);

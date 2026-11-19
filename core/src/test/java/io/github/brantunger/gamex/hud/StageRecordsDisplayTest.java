@@ -197,7 +197,7 @@ class StageRecordsDisplayTest {
             "#####"), new PlayerLoadout(100f, 30f, Difficulty.EASY), false);
         PlayerInput input = new PlayerInput();
         input.moveForward = 1f;
-        float fiveHits = 5 * GameSimulation.HAZARD_DAMAGE * TestTuning.EASY.damageTakenScale;
+        float fiveHits = 5 * TestTuning.WORLD.grateDamage * TestTuning.EASY.damageTakenScale;
         for (int i = 0; i < 600 && sim.getDamageTaken() < fiveHits - 0.5f; i++) sim.update(1f / 60f, input);
         assertEquals(fiveHits, sim.getDamageTaken(), 1e-3f, "five hits of 5.6");
 

@@ -4,15 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import org.junit.jupiter.api.Test;
 
 class RailLanceTest {
+
+    /** The shipped weapon balance. */
+    private static final WeaponTuning W = TestTuning.WEAPONS;
 
     private static final float DT = 1f / 60f;
 
     @Test
     void cooldownSlugsAndBoltRecoilCycleWorkCleanly() {
-        RailLance rail = new RailLance();
+        RailLance rail = new RailLance(W);
         assertTrue(rail.isReady());
         assertFalse(rail.isFlashVisible());
         assertEquals(0f, rail.getBolt(), 1e-6f);
@@ -44,7 +48,7 @@ class RailLanceTest {
 
     @Test
     void tacticalZoomInterpolatesSmoothlyScalesFovAndLatchesOnCancelUntilRelease() {
-        RailLance rail = new RailLance();
+        RailLance rail = new RailLance(W);
         assertEquals(0f, rail.getZoom(), 1e-6f);
         assertEquals(1f, rail.getZoomFovScale(), 1e-6f);
 
@@ -56,7 +60,7 @@ class RailLanceTest {
             rail.update(DT, false, true, 5);
         }
         assertEquals(1f, rail.getZoom(), 1e-5f);
-        assertEquals(1f / RailLance.ZOOM_FACTOR, rail.getZoomFovScale(), 1e-5f);
+        assertEquals(1f / W.railZoomFactor, rail.getZoomFovScale(), 1e-5f);
 
         // Cancelling zoom (dash/pause/swap) snaps zoom to 0 and keeps it suppressed while RMB stays held.
         rail.cancelZoom();
@@ -76,7 +80,7 @@ class RailLanceTest {
 
     @Test
     void cancelZoomWhenUnzoomedAllowsPreHeldZoomDuringSwapWhilePreservingDashSuppression() {
-        RailLance rail = new RailLance();
+        RailLance rail = new RailLance(W);
 
         // Weapon-switch cancelZoom while RMB is up must not suppress a fresh RMB hold initiated during draw.
         rail.updateIdle(DT, false);
@@ -105,9 +109,9 @@ class RailLanceTest {
 
     @Test
     void isReadyAfterMatchesExactCapacitorCompletionStep() {
-        RailLance rail = new RailLance();
+        RailLance rail = new RailLance(W);
         assertTrue(rail.update(DT, true, false, 1));
-        rail.updateIdle(RailLance.FIRE_INTERVAL - 0.01f);
+        rail.updateIdle(W.railFireInterval - 0.01f);
 
         assertFalse(rail.isReady());
         assertFalse(rail.isReadyAfter(0.005f));
@@ -119,7 +123,7 @@ class RailLanceTest {
 
     @Test
     void nonFiniteAndNegativeDeltaTimesDoNotMutateCooldownBoltOrZoomWhileZeroDeltaFiresWhenReady() {
-        RailLance rail = new RailLance();
+        RailLance rail = new RailLance(W);
         for (float badDt : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -0.25f}) {
             assertFalse(rail.update(badDt, true, true, 5));
             rail.updateIdle(badDt);

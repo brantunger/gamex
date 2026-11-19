@@ -26,54 +26,20 @@ public final class Scattergun {
         }
     }
 
-    /** Maximum shells carried in the player's shell pool. */
-    public static final int MAX_SHELLS = 24;
-    /** Baseline shells granted on Normal difficulty when picking up the Scattergun itself. */
-    public static final int PICKUP_WEAPON_SHELLS = 8;
-    /** Baseline shells granted on Normal difficulty when picking up a Shell Box. */
-    public static final int PICKUP_BOX_SHELLS = 6;
-
-    /** Number of pellets fired in a standard 1-shell primary blast. */
-    public static final int PRIMARY_PELLETS = 8;
-    /** Half-angle cone of the primary ring pellets around aim forward, in degrees. */
-    public static final float PRIMARY_CONE_DEGREES = 4.2f;
-    /** Minimum time between standard primary shots, in seconds. */
-    public static final float PRIMARY_INTERVAL = 0.75f;
-
-    /** Number of pellets fired in a 2-shell double-blast. */
-    public static final int ALT_PELLETS = 16;
-    /** Half-angle cone of the inner ring in a double-blast, in degrees. */
-    public static final float ALT_INNER_CONE_DEGREES = 3.4f;
-    /** Half-angle cone of the outer ring in a double-blast, in degrees. */
-    public static final float ALT_CONE_DEGREES = 6.8f;
-    /** Minimum recovery interval after a 2-shell double-blast, in seconds. */
-    public static final float ALT_INTERVAL = 1.15f;
-
-    /** Base damage per pellet at or inside {@link #FALLOFF_START}. */
-    public static final float PELLET_DAMAGE = 12f;
-    /** Distance at which pellet damage starts tapering down, in world units. */
-    public static final float FALLOFF_START = 7f;
-    /** Maximum scattergun pellet range, in world units. */
-    public static final float RANGE = 26f;
-    /** Minimum damage multiplier at maximum {@link #RANGE}. */
-    public static final float MIN_FALLOFF_SCALE = 0.35f;
-
-    /** How long the muzzle flash stays visible after a shot, in seconds. */
-    public static final float FLASH_TIME = 0.09f;
-    /** Primary pump-rack duration, starting shortly after recoil kick. */
-    public static final float PRIMARY_PUMP_TIME = 0.48f;
-    /** Double-blast pump-rack duration. */
-    public static final float ALT_PUMP_TIME = 0.68f;
-
-    private static final float PRIMARY_PUMP_DELAY = 0.08f;
-    private static final float ALT_PUMP_DELAY = 0.12f;
-    private static final float PUMP_PULL_SHARE = 0.35f;
-
+    private final WeaponTuning tuning;
     private float cooldown;
     private float sinceShot = Float.POSITIVE_INFINITY;
-    private float pumpDelay = PRIMARY_PUMP_DELAY;
-    private float pumpDuration = PRIMARY_PUMP_TIME;
+    private float pumpDelay;
+    private float pumpDuration;
     private boolean lastDoubleBlast;
+
+    /** @param tuning the weapon balance; its scattergun values set the fire rate, the pellets and the pump */
+    public Scattergun(WeaponTuning tuning) {
+        if (tuning == null) throw new IllegalArgumentException("Weapon tuning must not be null");
+        this.tuning = tuning;
+        this.pumpDelay = tuning.scattergunPrimaryPumpDelay;
+        this.pumpDuration = tuning.scattergunPrimaryPumpTime;
+    }
 
     /**
      * Advances scattergun timers when the player has another weapon active.
@@ -103,18 +69,18 @@ public final class Scattergun {
         if (cooldown > 0f) return Shot.NONE;
 
         if (altTrigger && availableShells >= 2) {
-            cooldown = wasReady ? ALT_INTERVAL : cooldown + ALT_INTERVAL;
+            cooldown = wasReady ? tuning.scattergunAltInterval : cooldown + tuning.scattergunAltInterval;
             sinceShot = 0f;
-            pumpDelay = ALT_PUMP_DELAY;
-            pumpDuration = ALT_PUMP_TIME;
+            pumpDelay = tuning.scattergunAltPumpDelay;
+            pumpDuration = tuning.scattergunAltPumpTime;
             lastDoubleBlast = true;
             return Shot.DOUBLE_BLAST;
         }
 
-        cooldown = wasReady ? PRIMARY_INTERVAL : cooldown + PRIMARY_INTERVAL;
+        cooldown = wasReady ? tuning.scattergunPrimaryInterval : cooldown + tuning.scattergunPrimaryInterval;
         sinceShot = 0f;
-        pumpDelay = PRIMARY_PUMP_DELAY;
-        pumpDuration = PRIMARY_PUMP_TIME;
+        pumpDelay = tuning.scattergunPrimaryPumpDelay;
+        pumpDuration = tuning.scattergunPrimaryPumpTime;
         lastDoubleBlast = false;
         return Shot.PRIMARY;
     }
@@ -135,7 +101,7 @@ public final class Scattergun {
 
     /** @return whether the muzzle flash decal should currently be drawn. */
     public boolean isFlashVisible() {
-        return sinceShot < FLASH_TIME;
+        return sinceShot < tuning.scattergunFlashTime;
     }
 
     /** @return whether the most recent shot was a 2-shell double-blast. */
@@ -148,21 +114,24 @@ public final class Scattergun {
         float elapsed = sinceShot - pumpDelay;
         if (elapsed <= 0f || elapsed >= pumpDuration) return 0f;
         float progress = elapsed / pumpDuration;
-        if (progress < PUMP_PULL_SHARE) {
-            float u = progress / PUMP_PULL_SHARE;
+        float pullShare = tuning.scattergunPumpPullShare;
+        if (progress < pullShare) {
+            float u = progress / pullShare;
             return u * (2f - u);
         }
-        float back = 1f - (progress - PUMP_PULL_SHARE) / (1f - PUMP_PULL_SHARE);
+        float back = 1f - (progress - pullShare) / (1f - pullShare);
         return back * back;
     }
 
     /**
-     * Generates deterministic unit pellet ray directions around {@code forward}.
+     * Generates deterministic unit pellet ray directions around {@code forward}: one down the aim line, then those
+     * of each ring of the pattern, in the order of {@link WeaponTuning#scattergunPrimaryRings()} or
+     * {@link WeaponTuning#scattergunAltRings()}.
      * @param forward centre aim direction (normalized or non-zero)
-     * @param doubleBlast true for 16-pellet alt-fire pattern, false for 8-pellet primary pattern
+     * @param doubleBlast true for the alt-fire pattern, false for the primary pattern
      * @return list of unit direction vectors
      */
-    public static List<Vector3> pelletDirections(Vector3 forward, boolean doubleBlast) {
+    public List<Vector3> pelletDirections(Vector3 forward, boolean doubleBlast) {
         Vector3 centre = new Vector3(forward);
         float len2 = centre.len2();
         if (!Float.isFinite(len2) || len2 < 1e-12f) centre.set(0f, 0f, -1f);
@@ -173,13 +142,13 @@ public final class Scattergun {
         else right.nor();
         Vector3 up = new Vector3(right).crs(centre).nor();
 
-        List<Vector3> dirs = new ArrayList<>(doubleBlast ? ALT_PELLETS : PRIMARY_PELLETS);
+        List<Vector3> dirs = new ArrayList<>(
+            doubleBlast ? tuning.scattergunAltPellets : tuning.scattergunPrimaryPellets);
         dirs.add(new Vector3(centre));
-        if (!doubleBlast) {
-            addConeRing(dirs, centre, right, up, 7, PRIMARY_CONE_DEGREES, 0.0);
-        } else {
-            addConeRing(dirs, centre, right, up, 5, ALT_INNER_CONE_DEGREES, 0.0);
-            addConeRing(dirs, centre, right, up, 10, ALT_CONE_DEGREES, Math.PI / 10.0);
+        List<WeaponTuning.Ring> rings = doubleBlast ? tuning.scattergunAltRings() : tuning.scattergunPrimaryRings();
+        for (int i = 0; i < rings.size(); i++) {
+            WeaponTuning.Ring ring = rings.get(i);
+            addConeRing(dirs, centre, right, up, ring.count, ring.coneDegrees, Math.toRadians(ring.twistDegrees));
         }
         return dirs;
     }
@@ -200,11 +169,15 @@ public final class Scattergun {
      * @param distance hit distance along the ray in world units
      * @return pellet damage after range falloff
      */
-    public static float damageAtDistance(float distance) {
-        if (Float.isNaN(distance) || distance <= FALLOFF_START) return PELLET_DAMAGE;
-        if (distance >= RANGE) return PELLET_DAMAGE * MIN_FALLOFF_SCALE;
-        float t = (distance - FALLOFF_START) / (RANGE - FALLOFF_START);
-        float scale = 1f - t * (1f - MIN_FALLOFF_SCALE);
-        return PELLET_DAMAGE * scale;
+    public float damageAtDistance(float distance) {
+        float pelletDamage = tuning.scattergunPelletDamage;
+        float falloffStart = tuning.scattergunFalloffStart;
+        float range = tuning.scattergunRange;
+        float minScale = tuning.scattergunMinFalloffScale;
+        if (Float.isNaN(distance) || distance <= falloffStart) return pelletDamage;
+        if (distance >= range) return pelletDamage * minScale;
+        float t = (distance - falloffStart) / (range - falloffStart);
+        float scale = 1f - t * (1f - minScale);
+        return pelletDamage * scale;
     }
 }

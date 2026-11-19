@@ -109,6 +109,45 @@ class ModelPreviewAppTest {
             () -> ModelPreviewApp.buildWireframeIndices(new short[] {2, 2, 2}, 4));
     }
 
+    /** {@code R} reads the font file again with the palettes, and a broken file leaves the font in use alone. */
+    @Test
+    void aReloadReadsTheFontFileAgainAndKeepsTheOldFontWhenTheNewOneIsBroken(@TempDir Path modelsDir,
+                                                                             @TempDir Path assetsDir)
+        throws IOException {
+        com.badlogic.gdx.Files previousFiles = Gdx.files;
+        String previousAssets = System.getProperty("gamex.assets");
+        try {
+            Gdx.files = null;
+            GenerateAllModels.generateAll(modelsDir);
+            ModelPreviewApp app = new ModelPreviewApp(null, null, modelsDir, new RecordingMeshFactory());
+            app.loadAllEntries();
+            String shipped = app.getFont().supportedCharacters();
+            assertTrue(shipped.contains("A") && shipped.contains("9"), shipped);
+
+            // Only the font is in this folder: the palettes are still found in the shipped assets.
+            Path file = Files.createDirectories(assetsDir.resolve("data")).resolve("pixel-font.txt");
+            Files.writeString(file, "glyph _\n...\n...\n...\n...\n###\nglyph A\n###\n###\n###\n###\n###\n");
+            System.setProperty("gamex.assets", assetsDir.toString());
+            app.reloadModels(null);
+            assertEquals("REGENERATED ALL MODELS", app.getStatusToast());
+            assertEquals("_A", app.getFont().supportedCharacters(), "the edited font is the one in use after R");
+
+            Files.writeString(file, "glyph A\n###\n###\n");
+            app.reloadModels(null);
+            assertEquals("RELOAD ERROR: Glyph 'A' has 2 rows, needs 5 in data/pixel-font.txt at line 1",
+                app.getStatusToast());
+            assertEquals("_A", app.getFont().supportedCharacters(), "a failed reload keeps the font it had");
+            assertEquals(22, app.getEntryCount(), "and the entries it had");
+        } finally {
+            Gdx.files = previousFiles;
+            if (previousAssets == null) {
+                System.clearProperty("gamex.assets");
+            } else {
+                System.setProperty("gamex.assets", previousAssets);
+            }
+        }
+    }
+
     @Test
     void atomicLiveReloadRollsBackPartialMeshesOnFailureAndSwapsCleanlyOnSuccess(@TempDir Path modelsDir)
         throws IOException {

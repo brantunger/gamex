@@ -1,0 +1,9 @@
+// Colours of the first-person hand and sleeve (assets/models/viewmodel-hand.obj).
+// material.<name>: red, green, blue, gloss - one line for each material the game knows for this model, by the
+// name the model file uses in its usemtl lines. A material the model file does not use still needs its line.
+// Every number is from 0 to 1; gloss runs from 0 (matt) to 1 (polished).
+material.glove: 0.200, 0.202, 0.220, 0
+material.pads: 0.250, 0.252, 0.272, 0
+material.cuff: 0.270, 0.270, 0.295, 0
+material.strap: 0.100, 0.100, 0.115, 0
+material.sleeve: 0.330, 0.370, 0.220, 0
