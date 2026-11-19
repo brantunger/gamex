@@ -335,7 +335,12 @@ public final class Player {
      * @return whether the dash started
      */
     public boolean tryDash(float forward, float strafe, EnergyMeter energy) {
-        if (isDead() || dashRemaining > 0f || dashCooldown > 0f) return false;
+        if (isDead() || dashRemaining > 0f) return false;
+        if (!energy.canSpend(DASH_COST)) {
+            dashRefusedTimer = DASH_REFUSED_TIME;
+            return false;
+        }
+        if (dashCooldown > 0f) return false;
         if (!energy.spend(DASH_COST)) {
             dashRefusedTimer = DASH_REFUSED_TIME;
             return false;
@@ -492,7 +497,8 @@ public final class Player {
 
         if (dashDt > 0f) {
             if (verticalVelocity > 0f) {
-                jumpHeight += verticalVelocity * dashDt - 0.5f * GRAVITY * dashDt * dashDt;
+                float upDt = Math.min(dashDt, verticalVelocity / GRAVITY);
+                jumpHeight += verticalVelocity * upDt - 0.5f * GRAVITY * upDt * upDt;
                 verticalVelocity = Math.max(0f, verticalVelocity - GRAVITY * dashDt);
                 if (jumpHeight >= MAX_JUMP_HEIGHT) {
                     jumpHeight = MAX_JUMP_HEIGHT;

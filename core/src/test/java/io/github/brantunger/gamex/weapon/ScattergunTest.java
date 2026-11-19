@@ -93,4 +93,18 @@ class ScattergunTest {
         assertEquals(1, Scattergun.Shot.PRIMARY.shellsSpent);
         assertEquals(2, Scattergun.Shot.DOUBLE_BLAST.shellsSpent);
     }
+
+    @Test
+    void isReadyAfterMatchesExactCooldownCompletionStep() {
+        Scattergun gun = new Scattergun();
+        assertEquals(Scattergun.Shot.PRIMARY, gun.update(1f / 60f, true, false, 1));
+        gun.updateIdle(Scattergun.PRIMARY_INTERVAL - 0.01f);
+
+        assertFalse(gun.isReady());
+        assertFalse(gun.isReadyAfter(0.005f));
+        assertTrue(gun.isReadyAfter(1f / 60f));
+
+        gun.updateIdle(1f / 60f);
+        assertTrue(gun.isReady());
+    }
 }

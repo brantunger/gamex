@@ -4,15 +4,25 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.utils.Disposable;
+import com.badlogic.gdx.utils.GdxRuntimeException;
+import io.github.brantunger.gamex.audio.SoundManager;
 import io.github.brantunger.gamex.hud.MenuState;
+import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
+import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
+import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,12 +33,14 @@ import java.util.List;
 
 class MainGameViewportTest {
 
+    private Application previousApp;
     private Graphics previousGraphics;
     private GL20 previousGl;
     private GL20 previousGl20;
 
     @BeforeEach
     void saveGdxState() {
+        previousApp = Gdx.app;
         previousGraphics = Gdx.graphics;
         previousGl = Gdx.gl;
         previousGl20 = Gdx.gl20;
@@ -36,6 +48,7 @@ class MainGameViewportTest {
 
     @AfterEach
     void restoreGdxState() {
+        Gdx.app = previousApp;
         Gdx.graphics = previousGraphics;
         Gdx.gl = previousGl;
         Gdx.gl20 = previousGl20;
@@ -273,6 +286,205 @@ class MainGameViewportTest {
                 || screen == MenuState.Screen.DIFFICULTY_SELECT || screen == MenuState.Screen.BRIEFING;
             MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()), screen);
             assertEquals(expected, MainGame.showsBackdrop(menu), screen.name());
+        }
+    }
+
+    @Test
+    void minimizedZeroStartupPreservesWindowedFallbackDimensions() {
+        Gdx.graphics = graphicsStub(0, 0, 0, 0, false);
+
+        MainGame defaultGame = new MainGame();
+        defaultGame.applyStartupDisplayMode(savedSettings(false));
+        assertEquals(1280, defaultGame.getWindowedWidth(), "0x0 minimized startup must not clobber width to 160");
+        assertEquals(720, defaultGame.getWindowedHeight(), "0x0 minimized startup must not clobber height to 120");
+
+        MainGame customGame = new MainGame(960, 540, true);
+        customGame.applyStartupDisplayMode(savedSettings(true));
+        assertEquals(960, customGame.getWindowedWidth());
+        assertEquals(540, customGame.getWindowedHeight());
+    }
+
+    @Test
+    void tinyWindowedResizeAndStartupEnforceMinimum160x120Floor() {
+        ViewportRecorder recorder = new ViewportRecorder();
+        Gdx.graphics = graphicsStub(80, 60, 80, 60, false);
+        Gdx.gl = recorder.gl;
+        Gdx.gl20 = recorder.gl;
+
+        MainGame game = new MainGame(1280, 720);
+        game.applyStartupDisplayMode(savedSettings(false));
+        assertEquals(160, game.getWindowedWidth());
+        assertEquals(120, game.getWindowedHeight());
+
+        game.resize(1600, 900);
+        assertEquals(1600, game.getWindowedWidth());
+        assertEquals(900, game.getWindowedHeight());
+
+        game.resize(100, 75);
+        assertEquals(160, game.getWindowedWidth(), "tiny windowed width clamps to 160");
+        assertEquals(120, game.getWindowedHeight(), "tiny windowed height clamps to 120");
+
+        game.resize(-20, 400);
+        game.resize(400, 0);
+        assertEquals(160, game.getWindowedWidth());
+        assertEquals(120, game.getWindowedHeight());
+    }
+
+    @Test
+    void backdropSimulationReplacesPlayedOrMutatedGameplaySimulationOnSameStage() {
+        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState.Screen.TITLE);
+        Levels.Stage outerBreach = menu.getActiveStage();
+        assertEquals("01_outer_breach", outerBreach.id);
+
+        GameSimulation cleanPreview = new GameSimulation(outerBreach.map);
+        assertSame(cleanPreview, MainGame.backdropSimulation(cleanPreview, menu, false),
+            "clean unplayed preview of active stage is reused without reallocating");
+
+        // Even if map matches, a simulation flagged as played replaces the instance.
+        GameSimulation afterFlaggedPlay = MainGame.backdropSimulation(cleanPreview, menu, true);
+        assertNotSame(cleanPreview, afterFlaggedPlay);
+        assertEquals(0f, afterFlaggedPlay.getTime(), 1e-6f);
+
+        // Stepped simulation on the same map (time > 0, fired shots, etc.) is replaced with a clean preview.
+        GameSimulation mutated = new GameSimulation(outerBreach.map);
+        PlayerInput fireInput = new PlayerInput();
+        fireInput.fire = true;
+        mutated.update(1f / 60f, fireInput);
+        assertTrue(mutated.getTime() > 0f);
+        assertTrue(mutated.getShotsFired() > 0);
+
+        GameSimulation rebuilt = MainGame.backdropSimulation(mutated, menu, false);
+        assertNotSame(mutated, rebuilt, "mutated gameplay simulation must not leak into menu backdrop");
+        assertSame(outerBreach.map, rebuilt.map);
+        assertEquals(0f, rebuilt.getTime(), 1e-6f);
+        assertEquals(0, rebuilt.getShotsFired());
+    }
+
+    private static final class FailingKeyValueStore implements KeyValueStore {
+        private final MapKeyValueStore delegate = new MapKeyValueStore();
+        private final RuntimeException flushFailure;
+        int flushCalls;
+
+        FailingKeyValueStore(RuntimeException flushFailure) {
+            this.flushFailure = flushFailure;
+        }
+
+        @Override
+        public float getFloat(String key, float defaultValue) {
+            return delegate.getFloat(key, defaultValue);
+        }
+
+        @Override
+        public int getInteger(String key, int defaultValue) {
+            return delegate.getInteger(key, defaultValue);
+        }
+
+        @Override
+        public boolean getBoolean(String key, boolean defaultValue) {
+            return delegate.getBoolean(key, defaultValue);
+        }
+
+        @Override
+        public String getString(String key, String defaultValue) {
+            return delegate.getString(key, defaultValue);
+        }
+
+        @Override
+        public void putFloat(String key, float value) {
+            delegate.putFloat(key, value);
+        }
+
+        @Override
+        public void putInteger(String key, int value) {
+            delegate.putInteger(key, value);
+        }
+
+        @Override
+        public void putBoolean(String key, boolean value) {
+            delegate.putBoolean(key, value);
+        }
+
+        @Override
+        public void putString(String key, String value) {
+            delegate.putString(key, value);
+        }
+
+        @Override
+        public void flush() {
+            flushCalls++;
+            if (flushFailure != null) throw flushFailure;
+        }
+    }
+
+    private static Disposable recordingDisposable(String name, List<String> log, RuntimeException failure) {
+        return () -> {
+            log.add(name);
+            if (failure != null) throw failure;
+        };
+    }
+
+    @Test
+    void disposeContinuesFreeingAllResourcesWhenSettingsFlushOrEarlierDisposablesThrow() {
+        Gdx.app = null;
+        FailingKeyValueStore failingStore = new FailingKeyValueStore(
+            new GdxRuntimeException("Read-only preferences file"));
+        GameSettings settings = new GameSettings();
+        settings.setFov(95f);
+
+        List<String> disposed = new ArrayList<>();
+        Disposable sound = recordingDisposable("soundManager", disposed,
+            new GdxRuntimeException("OpenAL context lost"));
+        Disposable world = recordingDisposable("worldRenderer", disposed, null);
+        Disposable viewmodel = recordingDisposable("viewmodelRenderer", disposed, null);
+        Disposable hud = recordingDisposable("hudRenderer", disposed,
+            new IllegalStateException("Shader already freed"));
+        Disposable textures = recordingDisposable("textures", disposed, null);
+
+        try (LogCapture capture = LogCapture.of(MainGame.class, Level.INFO)) {
+            assertDoesNotThrow(() -> MainGame.disposeResources(
+                settings, failingStore, false, sound, world, viewmodel, hud, textures));
+
+            assertEquals(1, failingStore.flushCalls);
+            assertEquals(95f, failingStore.getFloat("fov", 70f), 1e-6f);
+            assertEquals(
+                List.of("soundManager", "worldRenderer", "viewmodelRenderer", "hudRenderer", "textures"),
+                disposed,
+                "every OpenAL and OpenGL subsystem must still be disposed in order");
+            assertEquals(List.of(
+                "Failed to save settings: Read-only preferences file",
+                "Failed to dispose resource: OpenAL context lost",
+                "Failed to dispose resource: Shader already freed"),
+                capture.messages(Level.ERROR));
+
+            // Partial create() failure with null entries still disposes every non-null resource.
+            disposed.clear();
+            assertDoesNotThrow(() -> MainGame.disposeResources(
+                settings, failingStore, false, sound, null, viewmodel, null, textures));
+            assertEquals(List.of("soundManager", "viewmodelRenderer", "textures"), disposed);
+        }
+    }
+
+    @Test
+    void gameDisposeCatchesSettingsSaveFailureAndSkipsSaveOnUnattendedDemoRun() {
+        Gdx.app = null;
+        FailingKeyValueStore failingStore = new FailingKeyValueStore(new GdxRuntimeException("Disk full"));
+        MainGame game = new MainGame();
+        game.settings = new GameSettings();
+        game.settingsStore = failingStore;
+        game.soundManager = new SoundManager(true);
+
+        try (LogCapture capture = LogCapture.of(MainGame.class, Level.INFO)) {
+            assertDoesNotThrow(game::dispose);
+            assertEquals(1, failingStore.flushCalls);
+            assertEquals(List.of("Shutting down"), capture.messages(Level.INFO));
+            assertEquals(List.of("Failed to save settings: Disk full"), capture.messages(Level.ERROR));
+
+            List<String> demoDisposed = new ArrayList<>();
+            Disposable demoSound = recordingDisposable("soundManager", demoDisposed, null);
+            assertDoesNotThrow(() -> MainGame.disposeResources(game.settings, failingStore, true, demoSound));
+            assertEquals(1, failingStore.flushCalls, "unattended demo run skips saving settings");
+            assertEquals(List.of("soundManager"), demoDisposed);
         }
     }
 }

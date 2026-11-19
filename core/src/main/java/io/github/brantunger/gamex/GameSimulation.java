@@ -174,7 +174,6 @@ public final class GameSimulation {
     private final Vector3 viewRight = new Vector3();
     private final Vector3 viewUp = new Vector3();
     private final Vector3 aimPoint = new Vector3();
-    private final Vector2 spawnCheckPos = new Vector2();
     private final boolean[] breakHandled;
     private final boolean[] enemyBreakHandled;
     private final float[] enemyHazardTimers;
@@ -292,7 +291,8 @@ public final class GameSimulation {
         this.slugs = this.entryLoadout.slugs;
         this.activeWeapon = this.entryLoadout.activeWeapon;
         this.pendingWeapon = this.activeWeapon;
-        this.previousWeapon = initialPreviousWeapon(this.activeWeapon, this.hasScattergun, this.hasRailLance);
+        this.previousWeapon = initialPreviousWeapon(this.activeWeapon, this.hasScattergun, this.shells,
+            this.hasRailLance, this.slugs);
         this.player = new Player(map.getSpawnX(), map.getSpawnZ(), map.getSpawnYaw(),
             this.entryLoadout.health, this.entryLoadout.armor);
         for (GameMap.TargetSpawn spawn : map.getTargetSpawns()) {
@@ -385,10 +385,10 @@ public final class GameSimulation {
 
         boolean dashPressedEdge = input.dash && !prevDashInput;
         if (input.dash) {
-            charger.cancel();
-            railLance.cancelZoom();
             boolean canAffordDash = energy.canSpend(Player.DASH_COST);
             if (player.tryDash(input.moveForward, input.moveStrafe, energy)) {
+                charger.cancel();
+                railLance.cancelZoom();
                 emitPlayerSound(SoundEvent.Type.PLAYER_DASH, 1f);
             } else if (dashPressedEdge && !canAffordDash && !player.isDead() && !player.isDashing()) {
                 emitPlayerSound(SoundEvent.Type.LOW_ENERGY, 1f);
@@ -423,13 +423,13 @@ public final class GameSimulation {
         if (exitReached || swapping) {
             pistol.update(dt, false);
             scattergun.updateIdle(dt);
-            railLance.updateIdle(dt);
+            railLance.updateIdle(dt, !exitReached && input.charge);
             charger.cancel();
             prevChargeRefused = false;
             energy.regenerate(dt);
         } else if (activeWeapon == WeaponSlot.PISTOL) {
             scattergun.updateIdle(dt);
-            railLance.updateIdle(dt);
+            railLance.updateIdle(dt, input.charge);
             boolean fired = pistol.update(dt, input.fire);
             if (fired) {
                 firePistol();
@@ -445,17 +445,19 @@ public final class GameSimulation {
             if (firedCharge > 0f) kickScale = 1f;
         } else if (activeWeapon == WeaponSlot.SCATTERGUN) {
             pistol.update(dt, false);
-            railLance.updateIdle(dt);
+            railLance.updateIdle(dt, input.charge);
             charger.cancel();
             prevChargeRefused = false;
             energy.regenerate(dt);
             boolean wantPrimary = input.fire;
             boolean wantAlt = input.charge;
-            if (shells <= 0 && scattergun.isReady() && (wantPrimary || wantAlt)) {
+            if (shells <= 0) {
                 scattergun.updateIdle(dt);
-                emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
-                showToast("OUT OF SHELLS");
-                requestWeaponSwitch(bestLoadedFallbackWeapon(WeaponSlot.SCATTERGUN), false);
+                if (scattergun.isReady() && (wantPrimary || wantAlt)) {
+                    emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
+                    showToast("OUT OF SHELLS");
+                    smartSwapFromEmptyWeapon(WeaponSlot.SCATTERGUN);
+                }
             } else {
                 Scattergun.Shot shot = scattergun.update(dt, wantPrimary, wantAlt, shells);
                 if (shot != Scattergun.Shot.NONE) {
@@ -469,13 +471,13 @@ public final class GameSimulation {
             charger.cancel();
             prevChargeRefused = false;
             energy.regenerate(dt);
-            if (slugs <= 0 && railLance.isReady() && input.fire) {
-                railLance.updateIdle(dt);
+            if (slugs <= 0 && input.fire && railLance.isReadyAfter(dt)) {
+                railLance.updateIdle(dt, input.charge);
                 emitPlayerSound(SoundEvent.Type.WEAPON_DRY_FIRE, 1f);
                 showToast("OUT OF SLUGS");
-                requestWeaponSwitch(bestLoadedFallbackWeapon(WeaponSlot.RAIL_LANCE), false);
+                smartSwapFromEmptyWeapon(WeaponSlot.RAIL_LANCE);
             } else {
-                boolean firedRail = railLance.update(dt, input.fire, !player.isDashing() && input.charge, slugs);
+                boolean firedRail = railLance.update(dt, input.fire, input.charge, player.isDashing(), slugs);
                 if (railLance.consumeZoomInTriggered()) {
                     emitPlayerSound(SoundEvent.Type.RAIL_ZOOM_IN, 0.85f);
                 }
@@ -514,6 +516,7 @@ public final class GameSimulation {
                 triggerHitMarker(getTargetsRemaining() + getEnemiesRemaining() < aliveBefore);
             }
         }
+        resolveDestroyedObjects(true);
 
         if (firedCharge > 0f) {
             spawnBlast(firedCharge);
@@ -573,7 +576,7 @@ public final class GameSimulation {
         }
 
         updateHazards(dt);
-        resolveDestroyedObjects();
+        resolveDestroyedObjects(false);
         emitNonLethalHitSounds();
 
         float vitalsLost = Math.max(0f, vitalsBefore - (player.getHealth() + player.getArmor()));
@@ -587,6 +590,10 @@ public final class GameSimulation {
                 emitPlayerSound(SoundEvent.Type.PLAYER_HURT, Math.min(1f, 0.6f + vitalsLost / 50f));
             }
         }
+        if (player.isDead()) {
+            charger.cancel();
+            railLance.cancelZoom();
+        }
 
         boolean allDestroyed = completeOnAllTargets
             && (!targets.isEmpty() || !enemies.isEmpty())
@@ -597,6 +604,8 @@ public final class GameSimulation {
             levelCleared = true;
             log.info("Level cleared in {} s by {}: {} damage taken, {} of {} shots hit", roundedTime(),
                 exitReached ? "reaching the exit" : "destroying everything", damageTaken, shotsHit, shotsFired);
+            charger.cancel();
+            railLance.cancelZoom();
             // Nothing moves the player once the stage is cleared, so a jump in progress ends here.
             player.settleOnFloor();
         }
@@ -1076,9 +1085,7 @@ public final class GameSimulation {
         if (target == null || !target.isOwned(hasScattergun, hasRailLance)) return;
         WeaponSlot currentTarget = getTargetWeapon();
         if (target == currentTarget) return;
-        if (activeWeapon != target) {
-            previousWeapon = activeWeapon;
-        }
+        previousWeapon = currentTarget;
         charger.cancel();
         railLance.cancelZoom();
         prevChargeRefused = false;
@@ -1101,6 +1108,19 @@ public final class GameSimulation {
         }
     }
 
+    private void smartSwapFromEmptyWeapon(WeaponSlot emptySlot) {
+        WeaponSlot fallback = bestLoadedFallbackWeapon(emptySlot);
+        requestWeaponSwitch(fallback, false);
+        previousWeapon = loadedFallbackOtherThan(fallback);
+    }
+
+    private WeaponSlot loadedFallbackOtherThan(WeaponSlot current) {
+        if (current != WeaponSlot.PISTOL) return WeaponSlot.PISTOL;
+        if (hasRailLance && slugs > 0) return WeaponSlot.RAIL_LANCE;
+        if (hasScattergun && shells > 0) return WeaponSlot.SCATTERGUN;
+        return WeaponSlot.PISTOL;
+    }
+
     private WeaponSlot bestLoadedFallbackWeapon(WeaponSlot emptySlot) {
         if (previousWeapon != null && previousWeapon != emptySlot && isWeaponLoaded(previousWeapon)) {
             return previousWeapon;
@@ -1121,8 +1141,11 @@ public final class GameSimulation {
         return true;
     }
 
-    private static WeaponSlot initialPreviousWeapon(WeaponSlot active, boolean hasScattergun, boolean hasRailLance) {
+    private static WeaponSlot initialPreviousWeapon(WeaponSlot active, boolean hasScattergun, int shells,
+                                                    boolean hasRailLance, int slugs) {
         if (active != WeaponSlot.PISTOL) return WeaponSlot.PISTOL;
+        if (hasRailLance && slugs > 0) return WeaponSlot.RAIL_LANCE;
+        if (hasScattergun && shells > 0) return WeaponSlot.SCATTERGUN;
         if (hasRailLance) return WeaponSlot.RAIL_LANCE;
         if (hasScattergun) return WeaponSlot.SCATTERGUN;
         return WeaponSlot.PISTOL;
@@ -1130,13 +1153,14 @@ public final class GameSimulation {
 
     private void advanceWeaponSwap(float dt) {
         if (!swapping) return;
-        float before = swapElapsed;
         swapElapsed += dt;
-        if (before < SWAP_MIDPOINT && swapElapsed >= SWAP_MIDPOINT) {
-            activeWeapon = pendingWeapon;
+        if (swapElapsed >= SWAP_MIDPOINT) {
+            if (activeWeapon != pendingWeapon) {
+                activeWeapon = pendingWeapon;
+                viewmodel.resetShot();
+            }
         }
         if (swapElapsed >= SWAP_DURATION) {
-            activeWeapon = pendingWeapon;
             swapping = false;
             swapElapsed = 0f;
         }
@@ -1323,11 +1347,27 @@ public final class GameSimulation {
         float maxY = GameMap.WALL_HEIGHT - clearanceRadius - 0.01f;
         out.y = Math.max(minY, Math.min(maxY, out.y));
 
-        spawnCheckPos.set(out.x, out.z);
-        if (Collision.overlapsWall(map, doors, out.x, out.z, clearanceRadius)
-            || Collision.overlapsSolid(allDamageables, spawnCheckPos, clearanceRadius)) {
-            out.set(eye.x, Math.max(minY, eye.y - 0.05f), eye.z);
+        if (muzzleOverlaps3D(out.x, out.y, out.z, clearanceRadius)) {
+            out.set(eye.x, Math.max(minY, Math.min(maxY, eye.y - 0.05f)), eye.z);
         }
+    }
+
+    private boolean muzzleOverlaps3D(float x, float y, float z, float radius) {
+        if (y - radius <= 0f || y + radius >= GameMap.WALL_HEIGHT) return true;
+        if (Collision.overlapsWall(map, x, z, radius)) return true;
+        for (int i = 0; i < doors.size(); i++) {
+            if (doors.get(i).overlapsSphere(x, y, z, radius)) return true;
+        }
+        for (int i = 0; i < allDamageables.size(); i++) {
+            Damageable solid = allDamageables.get(i);
+            if (solid.isDestroyed()) continue;
+            if (y + radius < 0f || y - radius > solid.getHeight()) continue;
+            float dx = solid.getX() - x;
+            float dz = solid.getZ() - z;
+            float reach = solid.getRadius() + radius;
+            if (dx * dx + dz * dz < reach * reach) return true;
+        }
+        return false;
     }
 
     private void spawnBlast(float charge) {
@@ -1459,7 +1499,7 @@ public final class GameSimulation {
         return false;
     }
 
-    private void resolveDestroyedObjects() {
+    private void resolveDestroyedObjects(boolean allowPlayerHitMarker) {
         float canisterPlayerScale = CANISTER_SELF_DAMAGE_SCALE * entryLoadout.difficulty.damageTakenScale;
         boolean progressed = true;
         while (progressed) {
@@ -1468,15 +1508,17 @@ public final class GameSimulation {
                 if (breakHandled[i] || !targets.get(i).isDestroyed()) continue;
                 breakHandled[i] = true;
                 progressed = true;
-                triggerHitMarker(true);
+                if (allowPlayerHitMarker) {
+                    triggerHitMarker(true);
+                }
                 Target target = targets.get(i);
                 log.debug("Destroyed target {} at ({}, {}); {} left", target.getKind(), target.getX(), target.getZ(),
                     getTargetsRemaining());
                 if (target.getKind() == Target.Kind.CANISTER) {
                     Vector3 centre = new Vector3(target.getX(), target.getHeight() * 0.5f, target.getZ());
                     effects.add(new Effect(Effect.Type.EXPLOSION, centre, Vector3.Y, CANISTER_BLAST_RADIUS));
-                    Explosion.apply(map, doors, target.getX(), target.getZ(), CANISTER_BLAST_RADIUS,
-                        CANISTER_BLAST_DAMAGE, allDamageables, player, canisterPlayerScale);
+                    Explosion.apply(map, doors, target.getX(), target.getHeight() * 0.5f, target.getZ(),
+                        CANISTER_BLAST_RADIUS, CANISTER_BLAST_DAMAGE, allDamageables, player, canisterPlayerScale);
                     emitWorldSound(SoundEvent.Type.EXPLOSION, centre.x, centre.y, centre.z, 1.0f);
                     alertNoise(target.getX(), target.getZ(), 11.0f, 5.5f);
                 } else {
@@ -1489,7 +1531,9 @@ public final class GameSimulation {
                 if (enemyBreakHandled[i] || !enemies.get(i).isDestroyed()) continue;
                 enemyBreakHandled[i] = true;
                 progressed = true;
-                triggerHitMarker(true);
+                if (allowPlayerHitMarker) {
+                    triggerHitMarker(true);
+                }
                 Enemy enemy = enemies.get(i);
                 Vector3 centre = new Vector3(enemy.getX(), enemy.getHeight() * 0.5f, enemy.getZ());
                 boolean isBoss = enemy.getKind() == Enemy.Kind.WARDEN;
@@ -1513,19 +1557,16 @@ public final class GameSimulation {
     }
 
     private void updateHazards(float dt) {
-        if (player.isDashing() || player.getJumpHeight() > HAZARD_CLEARANCE_HEIGHT) {
-            playerHazardTimer = 0f;
-        } else {
-            playerHazardTimer = Math.max(0f, playerHazardTimer - dt);
-            if (map.isHazardAt(player.position.x, player.position.y) && playerHazardTimer <= 0f) {
-                float hx = (float) Math.floor(player.position.x) + 0.5f;
-                float hz = (float) Math.floor(player.position.y) + 0.5f;
-                player.damage(HAZARD_DAMAGE * entryLoadout.difficulty.damageTakenScale, hx, hz);
-                playerHazardTimer = HAZARD_INTERVAL;
-                emitPlayerSound(SoundEvent.Type.HAZARD_ZAP, 0.9f);
-                effects.add(new Effect(Effect.Type.IMPACT,
-                    new Vector3(player.position.x, 0.06f, player.position.y), Vector3.Y, 0.24f));
-            }
+        playerHazardTimer = Math.max(0f, playerHazardTimer - dt);
+        if (!player.isDead() && !player.isDashing() && player.getJumpHeight() <= HAZARD_CLEARANCE_HEIGHT
+            && map.isHazardAt(player.position.x, player.position.y) && playerHazardTimer <= 0f) {
+            float hx = (float) Math.floor(player.position.x) + 0.5f;
+            float hz = (float) Math.floor(player.position.y) + 0.5f;
+            player.damage(HAZARD_DAMAGE * entryLoadout.difficulty.damageTakenScale, hx, hz);
+            playerHazardTimer = HAZARD_INTERVAL;
+            emitPlayerSound(SoundEvent.Type.HAZARD_ZAP, 0.9f);
+            effects.add(new Effect(Effect.Type.IMPACT,
+                new Vector3(player.position.x, 0.06f, player.position.y), Vector3.Y, 0.24f));
         }
 
         if (map.getHazardCells().isEmpty()) return;
@@ -1647,11 +1688,11 @@ public final class GameSimulation {
 
     private void updateEnemiesWhenInactive(float dt) {
         for (int i = 0; i < enemies.size(); i++) {
-            enemies.get(i).update(dt, map, null, player, entryLoadout.difficulty, allDamageables, doors, null);
+            enemies.get(i).update(dt, map, null, null, entryLoadout.difficulty, allDamageables, doors, null);
         }
         for (int i = enemyProjectiles.size() - 1; i >= 0; i--) {
-            if (enemyProjectiles.get(i).update(dt, map, player, entryLoadout.difficulty.damageTakenScale,
-                targets, enemies, doors, consoles, effects)) {
+            if (enemyProjectiles.get(i).update(dt, map, null, 0f,
+                Collections.emptyList(), enemies, doors, consoles, effects)) {
                 enemyProjectiles.remove(i);
             }
         }

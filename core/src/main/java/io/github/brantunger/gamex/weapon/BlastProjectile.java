@@ -27,6 +27,8 @@ public final class BlastProjectile {
     private static final float MAX_STEP = 0.08f;
     /** Binary refinements used to land right against a contact surface on impact. */
     private static final int CONTACT_REFINE_STEPS = 8;
+    /** Safety cap on distance walked in a single update call to avoid extreme-dt loop stalls. */
+    private static final float MAX_STEP_DISTANCE = 10_000f;
 
     /** The centre of the ball; once it has exploded, the centre of the explosion. */
     public final Vector3 position = new Vector3();
@@ -36,13 +38,26 @@ public final class BlastProjectile {
 
     /**
      * @param origin the starting position, copied
-     * @param direction the unit flight direction, copied
+     * @param direction the flight direction, normalised and copied (defaulting to {@code (0, 0, -1)} if degenerate)
      * @param charge the charge it was fired with, from {@link BlastCharger#MIN_CHARGE} to 1
      */
     public BlastProjectile(Vector3 origin, Vector3 direction, float charge) {
-        this.position.set(origin);
-        this.direction.set(direction);
+        if (origin != null) {
+            this.position.set(origin);
+        }
+        setNormalizedDirection(direction, this.direction);
         this.charge = charge;
+    }
+
+    private static void setNormalizedDirection(Vector3 in, Vector3 out) {
+        if (in != null && Float.isFinite(in.x) && Float.isFinite(in.y) && Float.isFinite(in.z)) {
+            double len = Math.sqrt((double) in.x * in.x + (double) in.y * in.y + (double) in.z * in.z);
+            if (len >= 1e-6) {
+                out.set((float) (in.x / len), (float) (in.y / len), (float) (in.z / len));
+                return;
+            }
+        }
+        out.set(0f, 0f, -1f);
     }
 
     /**
@@ -110,8 +125,15 @@ public final class BlastProjectile {
      */
     public boolean update(float dt, GameMap map, List<? extends Damageable> targets, List<Door> doors,
                           Player player, float playerDamageScale) {
-        if (exploded) return false;
-        float distance = SPEED * dt;
+        if (exploded || !Float.isFinite(dt) || dt <= 0f) return false;
+        if (!Float.isFinite(position.x) || !Float.isFinite(position.y) || !Float.isFinite(position.z)) {
+            exploded = true;
+            return false;
+        }
+        if (touches(position.x, position.y, position.z, map, targets, doors)) {
+            return detonate(map, targets, doors, player, playerDamageScale);
+        }
+        float distance = (float) Math.min((double) SPEED * dt, MAX_STEP_DISTANCE);
         int steps = Math.max(1, (int) Math.ceil(distance / MAX_STEP));
         float step = distance / steps;
         for (int i = 0; i < steps; i++) {
@@ -140,32 +162,41 @@ public final class BlastProjectile {
                     }
                 }
                 position.set(freeX, freeY, freeZ);
-                exploded = true;
-                Explosion.apply(map, doors, position.x, position.z, blastRadius(charge), blastDamage(charge), targets,
-                    player, playerDamageScale);
-                return true;
+                return detonate(map, targets, doors, player, playerDamageScale);
             }
             position.set(x, y, z);
         }
         return false;
     }
 
+    private boolean detonate(GameMap map, List<? extends Damageable> targets, List<Door> doors,
+                             Player player, float playerDamageScale) {
+        exploded = true;
+        Explosion.apply(map, doors, position.x, position.y, position.z, blastRadius(charge), blastDamage(charge),
+            targets, player, playerDamageScale);
+        return true;
+    }
+
     private static boolean touches(float x, float y, float z, GameMap map, List<? extends Damageable> targets,
                                    List<Door> doors) {
         if (y - RADIUS <= 0f || y + RADIUS >= GameMap.WALL_HEIGHT) return true;
-        if (Collision.overlapsWall(map, x, z, RADIUS)) return true;
+        if (map != null && Collision.overlapsWall(map, x, z, RADIUS)) return true;
         if (doors != null) {
             for (int i = 0; i < doors.size(); i++) {
                 if (doors.get(i).overlapsSphere(x, y, z, RADIUS)) return true;
             }
         }
-        for (int i = 0; i < targets.size(); i++) {
-            Damageable target = targets.get(i);
-            if (target.isDestroyed() || y - RADIUS > target.getHeight()) continue;
-            float dx = target.getX() - x;
-            float dz = target.getZ() - z;
-            float reach = target.getRadius() + RADIUS;
-            if (dx * dx + dz * dz < reach * reach) return true;
+        if (targets != null) {
+            for (int i = 0; i < targets.size(); i++) {
+                Damageable target = targets.get(i);
+                if (target == null || target.isDestroyed() || y - RADIUS > target.getHeight() || y + RADIUS < 0f) {
+                    continue;
+                }
+                float dx = target.getX() - x;
+                float dz = target.getZ() - z;
+                float reach = target.getRadius() + RADIUS;
+                if (dx * dx + dz * dz < reach * reach) return true;
+            }
         }
         return false;
     }

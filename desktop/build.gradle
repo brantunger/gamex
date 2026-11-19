@@ -18,13 +18,21 @@ apply plugin: 'io.github.fourlastor.construo'
 import io.github.fourlastor.construo.Target
 
 sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
-application.mainClass = 'io.github.brantunger.gamex.desktop.DesktopLauncher'
-application.applicationName = appName
+application {
+  mainClass = 'io.github.brantunger.gamex.desktop.DesktopLauncher'
+  applicationName = appName
+  // Applies to both the run task and the generated bin/gamex and bin/gamex.bat start scripts for LWJGL3 on JDK 24+.
+  applicationDefaultJvmArgs = [
+    '--enable-native-access=ALL-UNNAMED',
+    '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+  ]
+}
 
 // From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
 // The article can be helpful when using assets.txt in your project.
 // This only runs when a file is added to, removed from or changed in the assets folder.
 tasks.register('generateAssetList') {
+  mustRunAfter(':tools:generateModels', ':tools:generateSounds')
   // projectFolder/assets
   File assetsFolder = rootProject.file('assets')
   // projectFolder/assets/assets.txt
@@ -41,6 +49,7 @@ tasks.register('generateAssetList') {
   }
 }
 processResources.dependsOn 'generateAssetList'
+processResources.mustRunAfter(':tools:generateModels', ':tools:generateSounds')
 
 dependencies {
   implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
@@ -79,6 +88,7 @@ processResources {
 test {
   useJUnitPlatform()
   inputs.dir(project.file("icons")).withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.file(project.file("build.gradle")).withPathSensitivity(PathSensitivity.NONE)
   // The version the launcher should report, for the test that reads gamex-version.properties.
   systemProperty 'gamex.version', projectVersion
 }
@@ -89,9 +99,6 @@ run {
   workingDir = rootProject.file('assets').path
 // You can uncomment the next line if your IDE claims a build failure even when the app closed properly.
   //setIgnoreExitValue(true)
-// The next two jvmArgs additions help LWJGL3 on JDK 24 and higher.
-  jvmArgs += "--enable-native-access=ALL-UNNAMED"
-  jvmArgs += "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED"
 // On macOS, we need to set this for the run task to allow debugging in IDEA or AS to work.
   if (os.contains('mac')) jvmArgs += "-XstartOnFirstThread"
 }
@@ -105,8 +112,16 @@ def configureFatJar = { Jar task, String suffix ->
   task.duplicatesStrategy = DuplicatesStrategy.EXCLUDE
   task.dependsOn configurations.runtimeClasspath
   task.from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
-// this "exclude" line removes some unnecessary duplicate files in the output JAR.
-  task.exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/maven/**')
+// this "exclude" line removes unnecessary duplicate files and conflicting Multi-Release module descriptors in the output JAR.
+  task.exclude(
+    'META-INF/INDEX.LIST',
+    'META-INF/*.SF',
+    'META-INF/*.DSA',
+    'META-INF/*.RSA',
+    'META-INF/maven/**',
+    'module-info.class',
+    'META-INF/versions/**/module-info.class'
+  )
 // Setting the manifest makes the JAR runnable.
 // Enabling native access helps avoid a warning when Java 24 or later runs the JAR.
 // Setting Multi-Release to true allows LWJGL3 to use different classes on recent Java versions.
@@ -207,12 +222,17 @@ tasks.register('dist') {
 // The application plugin copies both the jar task's output and every runtimeClasspath JAR into lib/ of the
 // distZip and distTar archives. The jar task here already builds a fat JAR holding all of those dependencies,
 // and the start scripts below only put that fat JAR on the classpath, so the loose dependency JARs are left out.
-// The files are compared when the archive is built, so nothing is resolved while this script is configured.
+// eachFile propagates into the application plugin's child lib/ CopySpec (unlike a root exclude predicate), and
+// the files are compared when the archive is built so nothing is resolved while this script is configured.
 def distRuntimeClasspath = configurations.runtimeClasspath
 distributions {
   main {
     contents {
-      exclude { distRuntimeClasspath.contains(it.file) }
+      eachFile { details ->
+        if (distRuntimeClasspath.contains(details.file)) {
+          details.exclude()
+        }
+      }
     }
   }
 }

@@ -188,4 +188,22 @@ class MenuStateTest {
         assertTrue(events.stream().noneMatch(e -> e.spatial));
         assertTrue(menu.drainSoundEvents().isEmpty());
     }
+
+    @Test
+    void intermissionReturnToTitleAfterFinalStageRestoresFirstCampaignStageOnTitle() {
+        GameSettings settings = new GameSettings();
+        MapKeyValueStore store = new MapKeyValueStore();
+        SaveData save = new SaveData(store);
+        save.saveCampaignRun(5, PlayerLoadout.forStage(5, Difficulty.NORMAL));
+        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+
+        menu.confirm(); // CONTINUE CAMPAIGN -> Stage 06
+        assertEquals("06_warden_core", menu.getActiveStage().id);
+        menu.onStageCleared(new Player(1.5f, 1.5f, 0f, 80f, 20f), 70f, 10, 10, 15f);
+        assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
+
+        menu.escape();
+        assertEquals(MenuState.Screen.TITLE, menu.getScreen());
+        assertEquals("01_outer_breach", menu.getActiveStage().id);
+    }
 }

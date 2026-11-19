@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import com.badlogic.gdx.math.Vector2;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import org.junit.jupiter.api.Test;
@@ -334,5 +335,150 @@ class EnemyMovementTest {
         assertTrue(firstHit > 0f, "guard never hit the player: " + where(guard));
         assertEquals(Enemy.Kind.GUARD.maxHealth, guard.getHealth(), 0f, "guard was zapped: " + where(guard));
         assertFalse(sim.targets.get(0).isDestroyed(), "the canister must still be standing");
+    }
+
+    @Test
+    void wardenSeparatedBySecurityConsoleWithinStopRangeGoesRoundItAndHitsPlayer() {
+        GameSimulation sim = soloSim(GameMap.parse(
+            "#########",
+            "#.......#",
+            "#..BS..>#",
+            "#.......#",
+            "#########"), Enemy.Kind.WARDEN, 3.5f, 2.5f);
+        Enemy warden = subject(sim);
+        // Place the player right across the indestructible console so Warden meets it at dist <= 1.35.
+        sim.player.position.set(5.00f, 2.50f);
+
+        float firstHit = runUntilPlayerDamaged(sim, warden, 8f);
+
+        assertTrue(firstHit > 0f, "warden never damaged the player across the console: " + where(warden));
+    }
+
+    @Test
+    void droneBlockedBehindCanisterWhileDoorIsClosedGoesRoundItOnceDoorOpens() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "#######",
+            "###D###",
+            "###o=##",
+            "###.>##",
+            "#######"), PlayerLoadout.fresh(Difficulty.NORMAL), false);
+        Enemy drone = subject(sim);
+        Door door = sim.doors.get(0);
+        PlayerInput input = new PlayerInput();
+
+        for (int i = 0; i < 90; i++) {
+            drone.alert();
+            sim.update(DT, input);
+        }
+        float restX = drone.getX();
+        float restZ = drone.getZ();
+        for (int i = 0; i < 60; i++) {
+            drone.alert();
+            sim.update(DT, input);
+            assertEquals(0f, Vector2.dst(restX, restZ, drone.getX(), drone.getZ()), 1e-4f,
+                "drone jittered while bypass door was closed: " + where(drone));
+        }
+        assertEquals(0f, sim.getDamageTaken(), 0f);
+
+        door.open();
+        float firstHit = runUntilPlayerDamaged(sim, drone, 6f);
+
+        assertTrue(firstHit > 0f, "drone stayed stuck behind canister after door opened: " + where(drone));
+        assertTrue(drone.getZ() > 2.5f, "drone did not pass the canister: " + where(drone));
+    }
+
+    @Test
+    void droneLungingInOneUnitWideCorridorNeverFinishesInsidePlayerOrWall() {
+        GameSimulation sim = soloSim(GameMap.parse(
+            "###",
+            "#D#",
+            "#.#",
+            "#.#",
+            "#>#",
+            "#.#",
+            "###"), Enemy.Kind.DRONE, 1.5f, 1.5f);
+        Enemy drone = subject(sim);
+        sim.player.position.set(1.26f, 4.50f);
+        PlayerInput input = new PlayerInput();
+        float minDist = Player.RADIUS + drone.getRadius();
+
+        for (int i = 0; i < 180 && !sim.player.isDead(); i++) {
+            drone.alert();
+            sim.update(DT, input);
+            float dist = Vector2.dst(drone.getX(), drone.getZ(), sim.player.position.x, sim.player.position.y);
+            assertTrue(dist >= minDist - 1e-4f,
+                "drone overlapped player in 1.0u corridor at dist=" + dist + ": " + where(drone));
+            assertFalse(Collision.overlapsWall(sim.map, sim.doors, drone.getX(), drone.getZ(),
+                drone.getRadius() - 1e-3f), "drone overlapped wall in 1.0u corridor: " + where(drone));
+        }
+
+        assertTrue(sim.getDamageTaken() > 0f, "drone never hit player in corridor: " + where(drone));
+    }
+
+    @Test
+    void guardNeverClipsObliqueShockGrateCornersOrRoutesAcrossDoubleGrateTowardGratePlayer() {
+        // 1. Stage-06-style sandwich of two ~~ shock grate strips with oblique sightline strafing: Guard must hit the
+        // player and keep strafing for the full 10s window without ever clipping a grate corner or taking zap damage.
+        GameSimulation strafeSim = soloSim(GameMap.parse(
+            "############",
+            "#.>........#",
+            "#....~~....#",
+            "#......G...#",
+            "#....~~....#",
+            "#..........#",
+            "############"), Enemy.Kind.GUARD, 7.5f, 3.5f);
+        Enemy strafeGuard = subject(strafeSim);
+        PlayerInput idle = new PlayerInput();
+        float strafeHit = -1f;
+        for (int i = 0; i < 60 * 10 && !strafeSim.player.isDead(); i++) {
+            strafeGuard.alert();
+            strafeSim.update(DT, idle);
+            assertFalse(strafeSim.map.isHazardAt(strafeGuard.getX(), strafeGuard.getZ()),
+                "strafing Guard clipped onto ~ grate at " + where(strafeGuard));
+            if (strafeHit < 0f && strafeSim.getDamageTaken() > 0f) {
+                strafeHit = (i + 1) * DT;
+            }
+        }
+        assertTrue(strafeHit > 0f, "Guard never damaged player: " + where(strafeGuard));
+        assertEquals(Enemy.Kind.GUARD.maxHealth, strafeGuard.getHealth(), 0f,
+            "strafing Guard took shock grate damage: " + where(strafeGuard));
+
+        // 2. Out-of-sight Guard when player hops repeatedly in place over the west ~ cell of a ~~ strip: Guard detours
+        // around the safe west corridor to (2..3, 1) instead of climbing onto (5, 1) ~, acquires LOS, and fires at the
+        // player with zero shock damage to the Guard.
+        GameMap grateGoalLoop = GameMap.parse(
+            "#######",
+            "#..>~~#",
+            "#..##.#",
+            "#...#G#",
+            "#.....#",
+            "#######");
+        GameSimulation loopSim = new GameSimulation(
+            grateGoalLoop, new PlayerLoadout(100f, 100f, Difficulty.EASY), false);
+        Enemy loopGuard = subject(loopSim);
+        loopGuard.alert();
+        loopSim.player.position.set(4.5f, 1.5f);
+        PlayerInput hopInput = new PlayerInput();
+        boolean reachedSafeWestFlank = false;
+        boolean guardFiredAtPlayer = false;
+        for (int i = 0; i < 60 * 10 && !loopSim.player.isDead(); i++) {
+            loopGuard.alert();
+            hopInput.jump = !loopSim.player.isAirborne();
+            loopSim.update(DT, hopInput);
+            assertFalse(loopSim.map.isHazardAt(loopGuard.getX(), loopGuard.getZ()),
+                "detouring Guard stepped onto ~ grate: " + where(loopGuard));
+            if (loopGuard.getX() < 3.8f && loopGuard.getZ() < 2.0f) {
+                reachedSafeWestFlank = true;
+            }
+            if (!loopSim.enemyProjectiles.isEmpty()) {
+                guardFiredAtPlayer = true;
+                if (reachedSafeWestFlank) break;
+            }
+        }
+        assertTrue(reachedSafeWestFlank,
+            "detouring Guard never rounded safe west corridor to row 1: " + where(loopGuard));
+        assertTrue(guardFiredAtPlayer, "detouring Guard never fired after rounding safe detour: " + where(loopGuard));
+        assertEquals(Enemy.Kind.GUARD.maxHealth, loopGuard.getHealth(), 0f,
+            "detouring Guard was zapped: " + where(loopGuard));
     }
 }

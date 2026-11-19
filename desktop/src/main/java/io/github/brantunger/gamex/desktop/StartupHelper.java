@@ -25,8 +25,10 @@ import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BooleanSupplier;
 
 /**
  * Relaunches the game on macOS so that it runs on the process's first thread.
@@ -48,6 +50,8 @@ final class StartupHelper {
     private static final Logger log = LoggerFactory.getLogger(StartupHelper.class);
 
     static final String JVM_RESTARTED_PROPERTY = "gamex.jvmIsRestarted";
+    static final String ENABLE_NATIVE_ACCESS_ARG = "--enable-native-access=ALL-UNNAMED";
+    static final String ADD_EXPORTS_INTERNAL_MISC_ARG = "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED";
 
     private StartupHelper() {}
 
@@ -63,10 +67,9 @@ final class StartupHelper {
      */
     static int startNewJvmIfRequired(String[] args) {
         if (!needsRestart(System.getProperty("os.name"), System.getProperty("org.graalvm.nativeimage.imagecode"),
-            System.getProperty(JVM_RESTARTED_PROPERTY))) {
+            System.getProperty(JVM_RESTARTED_PROPERTY), StartupHelper::isMainThread)) {
             return NOT_RESTARTED;
         }
-        if (isMainThread()) return NOT_RESTARTED;
 
         String javaExecPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         if (!new File(javaExecPath).exists()) {
@@ -90,36 +93,68 @@ final class StartupHelper {
     static final int NOT_RESTARTED = Integer.MIN_VALUE;
 
     /**
-     * Decides from system properties alone whether a restart could be needed; the first-thread check comes after.
+     * Decides whether a restart is needed. {@code os.name} and Graal native-image properties are checked before
+     * invoking {@code isMainThread} so non-macOS JVMs never load the Objective-C runtime; {@code isMainThread} is
+     * checked before {@code restartedFlag} so a relaunched macOS child JVM already on the first thread returns
+     * {@code false} silently without printing a fallback warning.
      * @param osName the {@code os.name} property
      * @param graalImageCode the {@code org.graalvm.nativeimage.imagecode} property, or null
      * @param restartedFlag the {@value #JVM_RESTARTED_PROPERTY} property, or null
-     * @return true only on macOS, outside a native image, in a JVM that was not itself started by this helper
+     * @param isMainThread lazy check for whether the calling thread is already the macOS first thread
+     * @return true only on macOS, outside a native image, when not already on the first thread and not already restarted
      */
-    static boolean needsRestart(String osName, String graalImageCode, String restartedFlag) {
+    static boolean needsRestart(String osName, String graalImageCode, String restartedFlag,
+                                BooleanSupplier isMainThread) {
         if (osName == null || !osName.toLowerCase(Locale.ROOT).contains("mac")) return false;
         if (graalImageCode != null && !graalImageCode.isEmpty()) return false;
+        if (isMainThread.getAsBoolean()) return false;
         if ("true".equals(restartedFlag)) {
-            // Should not be reachable; it stops a child from spawning children forever.
+            // Unreachable when -XstartOnFirstThread worked; stops a child from spawning children forever if it did not.
             log.warn("StartupHelper was asked to restart a JVM it had already restarted; carrying on.");
             return false;
         }
         return true;
     }
 
-    /** Builds the command line of the child JVM. */
+    /** Builds the command line of the child JVM, preserving required JDK 24+ native-access and module-export flags. */
     static List<String> childCommand(String javaExecPath, List<String> jvmArgs, String classPath, String mainClass,
                                      String[] args) {
+        List<String> safeJvmArgs = jvmArgs == null ? Collections.emptyList() : jvmArgs;
         List<String> command = new ArrayList<>();
         command.add(javaExecPath);
         command.add("-XstartOnFirstThread");
         command.add("-D" + JVM_RESTARTED_PROPERTY + "=true");
-        command.addAll(jvmArgs);
+        if (!hasEnableNativeAccess(safeJvmArgs)) {
+            command.add(ENABLE_NATIVE_ACCESS_ARG);
+        }
+        if (!hasAddExportsInternalMisc(safeJvmArgs)) {
+            command.add(ADD_EXPORTS_INTERNAL_MISC_ARG);
+        }
+        command.addAll(safeJvmArgs);
         command.add("-cp");
         command.add(classPath);
         command.add(mainClass);
         if (args != null) command.addAll(Arrays.asList(args));
         return command;
+    }
+
+    private static boolean hasEnableNativeAccess(List<String> jvmArgs) {
+        for (String arg : jvmArgs) {
+            if (ENABLE_NATIVE_ACCESS_ARG.equals(arg)) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasAddExportsInternalMisc(List<String> jvmArgs) {
+        for (int i = 0; i < jvmArgs.size(); i++) {
+            String arg = jvmArgs.get(i);
+            if (ADD_EXPORTS_INTERNAL_MISC_ARG.equals(arg)) return true;
+            if ("--add-exports".equals(arg) && i + 1 < jvmArgs.size()
+                && "java.base/jdk.internal.misc=ALL-UNNAMED".equals(jvmArgs.get(i + 1))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** @return whether the calling thread is the macOS main (first) thread; asks NSThread through the ObjC runtime */

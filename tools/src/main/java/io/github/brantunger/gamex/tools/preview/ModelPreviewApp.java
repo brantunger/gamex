@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.tools.preview;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
@@ -13,6 +14,8 @@ import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.VertexAttribute;
+import com.badlogic.gdx.graphics.VertexAttributes;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -20,6 +23,7 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix3;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.hud.PixelFont;
@@ -43,17 +47,23 @@ import io.github.brantunger.gamex.world.Target;
 import io.github.brantunger.gamex.world.WorldModels;
 
 import java.io.IOException;
+import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.zip.Deflater;
 
 /**
@@ -141,19 +151,28 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
     private final String requestedModel;
     private final String screenshotPath;
+    private final Path explicitModelsDir;
+    private final MeshFactory meshFactory;
     private int frames;
+    private boolean screenshotCaptured;
 
     public ModelPreviewApp() {
         this(null, null);
     }
 
     public ModelPreviewApp(String requestedModel, String screenshotPath) {
+        this(requestedModel, screenshotPath, null, GPU_MESH_FACTORY);
+    }
+
+    ModelPreviewApp(String requestedModel, String screenshotPath, Path explicitModelsDir, MeshFactory meshFactory) {
         this.requestedModel = requestedModel != null && !requestedModel.isEmpty()
             ? requestedModel
-            : System.getenv("GAMEX_PREVIEW_MODEL");
+            : (explicitModelsDir != null ? null : System.getenv("GAMEX_PREVIEW_MODEL"));
         this.screenshotPath = screenshotPath != null && !screenshotPath.isEmpty()
             ? screenshotPath
-            : System.getenv("GAMEX_PREVIEW_SCREENSHOT");
+            : (explicitModelsDir != null ? null : System.getenv("GAMEX_PREVIEW_SCREENSHOT"));
+        this.explicitModelsDir = explicitModelsDir;
+        this.meshFactory = meshFactory != null ? meshFactory : GPU_MESH_FACTORY;
     }
 
     public static void main(String[] args) {
@@ -167,11 +186,32 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         new Lwjgl3Application(new ModelPreviewApp(modelArg, screenshotArg), config);
     }
 
+    static PerspectiveCamera createPreviewCamera(Graphics graphics) {
+        boolean hasSize = graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0;
+        int w = hasSize ? graphics.getWidth() : 1280;
+        int h = hasSize ? graphics.getHeight() : 800;
+        // The no-arg constructor avoids an eager update(): Frustum.update calls native Matrix4.prj, which is only
+        // available once the backend has loaded the gdx natives.
+        PerspectiveCamera cam = new PerspectiveCamera();
+        cam.fieldOfView = 55f;
+        cam.viewportWidth = w;
+        cam.viewportHeight = h;
+        cam.near = 0.02f;
+        cam.far = 30f;
+        cam.update(nativesAvailable());
+        return cam;
+    }
+
+    private static boolean nativesAvailable() {
+        return Gdx.app != null && Gdx.gl != null
+            && !Proxy.isProxyClass(Gdx.app.getClass())
+            && !Proxy.isProxyClass(Gdx.gl.getClass());
+    }
+
     @Override
     public void create() {
-        camera = new PerspectiveCamera(55f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        camera.near = 0.02f;
-        camera.far = 30f;
+        camera = createPreviewCamera(Gdx.graphics);
+        applyBackBufferViewport();
 
         shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
         if (!shader.isCompiled()) {
@@ -179,11 +219,17 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         }
         shapes = new ShapeRenderer();
         batch = new SpriteBatch();
+        if (Gdx.graphics.getWidth() <= 0 || Gdx.graphics.getHeight() <= 0) {
+            batch.getProjectionMatrix().setToOrtho2D(0f, 0f, 1280f, 800f);
+        }
         Pixmap px = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-        px.setColor(Color.WHITE);
-        px.fill();
-        white = new Texture(px);
-        px.dispose();
+        try {
+            px.setColor(Color.WHITE);
+            px.fill();
+            white = new Texture(px);
+        } finally {
+            px.dispose();
+        }
 
         loadAllEntries();
 
@@ -232,13 +278,9 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             @Override
             public boolean keyDown(int keycode) {
                 if (keycode == Input.Keys.RIGHT || keycode == Input.Keys.RIGHT_BRACKET) {
-                    currentIndex = (currentIndex + 1) % entries.size();
-                    accentIndex = 0;
-                    resetCameraForEntry();
+                    stepEntry(1);
                 } else if (keycode == Input.Keys.LEFT || keycode == Input.Keys.LEFT_BRACKET) {
-                    currentIndex = (currentIndex - 1 + entries.size()) % entries.size();
-                    accentIndex = 0;
-                    resetCameraForEntry();
+                    stepEntry(-1);
                 } else if (keycode == Input.Keys.SPACE) {
                     animate = !animate;
                 } else if (keycode == Input.Keys.G) {
@@ -257,7 +299,15 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         });
     }
 
-    private Path resolveModelsDir() {
+    void stepEntry(int delta) {
+        if (entries.isEmpty()) return;
+        currentIndex = Math.floorMod(currentIndex + delta, entries.size());
+        accentIndex = 0;
+        resetCameraForEntry();
+    }
+
+    Path resolveModelsDir() {
+        if (explicitModelsDir != null) return explicitModelsDir;
         String configured = System.getProperty("gamex.modelsDir");
         if (configured != null) return Paths.get(configured);
         Path direct = Paths.get("models");
@@ -265,9 +315,20 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         return Paths.get("assets", "models");
     }
 
+    @FunctionalInterface
+    interface ThrowingRunnable {
+        void run() throws IOException;
+    }
+
     private void regenerateAndReload() {
+        reloadModels(() -> GenerateAllModels.generateAll(resolveModelsDir()));
+    }
+
+    void reloadModels(ThrowingRunnable generator) {
         try {
-            GenerateAllModels.generateAll(resolveModelsDir());
+            if (generator != null) {
+                generator.run();
+            }
             loadAllEntries();
             statusToast = "REGENERATED ALL MODELS";
             statusTimer = 2.0f;
@@ -278,111 +339,213 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     }
 
     private void disposeEntries() {
-        for (Entry e : entries) e.dispose();
-        entries.clear();
+        disposeEntryList(entries);
     }
 
-    private void loadAllEntries() {
-        disposeEntries();
+    private static void disposeEntryList(List<Entry> list) {
+        RuntimeException firstError = null;
+        for (Entry e : list) {
+            try {
+                e.dispose();
+            } catch (RuntimeException ex) {
+                if (firstError == null) firstError = ex;
+                else firstError.addSuppressed(ex);
+            }
+        }
+        list.clear();
+        if (firstError != null) throw firstError;
+    }
+
+    void loadAllEntries() {
         Path dir = resolveModelsDir();
+        List<Entry> loaded = new ArrayList<>();
+        try {
+            // 0: Combined first-person viewmodel (pistol + hand).
+            ObjModel pistolObj = readObj(dir.resolve("viewmodel-pistol.obj"), "pistol");
+            ObjModel handObj = readObj(dir.resolve("viewmodel-hand.obj"), "hand");
+            PistolModel pistol = PistolModel.from(pistolObj);
+            ModelVertices.IndexedMesh handIndexed = HandModel.packIndexed(handObj);
+            Entry vm = new Entry("viewmodel (pistol+hand)", pistolObj, 0f, -0.06f, 0.08f, 0.55f, 0f, 0f);
+            loaded.add(vm);
+            addPartMesh(vm, "body", pistol.bodyMesh);
+            addPartMesh(vm, "slide", pistol.slideMesh);
+            addPartMesh(vm, "hand", handIndexed);
+            vm.rig = new ModelRig(pistolObj);
+            vm.totalTriangles = pistol.bodyMesh.triangleCount() + pistol.slideMesh.triangleCount()
+                + handIndexed.triangleCount();
+            vm.uniqueVertices = pistol.bodyMesh.vertexCount() + pistol.slideMesh.vertexCount()
+                + handIndexed.vertexCount();
+            vm.rawVertices = vm.totalTriangles * 3;
 
-        // 0: Combined first-person viewmodel (pistol + hand).
-        ObjModel pistolObj = readObj(dir.resolve("viewmodel-pistol.obj"), "pistol");
-        ObjModel handObj = readObj(dir.resolve("viewmodel-hand.obj"), "hand");
-        PistolModel pistol = PistolModel.from(pistolObj);
-        ModelVertices.IndexedMesh handIndexed = HandModel.packIndexed(handObj);
-        Entry vm = new Entry("viewmodel (pistol+hand)", pistolObj, 0f, -0.06f, 0.08f, 0.55f, 0f, 0f);
-        vm.partMeshes.put("body", ModelMesh.buildIndexed(pistol.bodyMesh));
-        vm.partMeshes.put("slide", ModelMesh.buildIndexed(pistol.slideMesh));
-        vm.partMeshes.put("hand", ModelMesh.buildIndexed(handIndexed));
-        vm.rig = new ModelRig(pistolObj);
-        vm.totalTriangles = pistol.bodyMesh.triangleCount() + pistol.slideMesh.triangleCount()
-            + handIndexed.triangleCount();
-        vm.uniqueVertices = pistol.bodyMesh.vertexCount() + pistol.slideMesh.vertexCount() + handIndexed.vertexCount();
-        vm.rawVertices = vm.totalTriangles * 3;
-        entries.add(vm);
+            ObjModel scatterObj = readObj(dir.resolve("viewmodel-scattergun.obj"), "scattergun");
+            ScattergunModel scatter = ScattergunModel.from(scatterObj);
+            Entry vmScatter = new Entry("viewmodel-scattergun (scattergun+hand)", scatterObj, 0f, -0.05f, 0.01f, 0.62f,
+                0f, 0f);
+            loaded.add(vmScatter);
+            addPartMesh(vmScatter, "body", scatter.bodyMesh);
+            addPartMesh(vmScatter, "pump", scatter.pumpMesh);
+            addPartMesh(vmScatter, "hand", handIndexed);
+            vmScatter.rig = new ModelRig(scatterObj);
+            vmScatter.totalTriangles = scatter.bodyMesh.triangleCount() + scatter.pumpMesh.triangleCount()
+                + handIndexed.triangleCount();
+            vmScatter.uniqueVertices = scatter.bodyMesh.vertexCount() + scatter.pumpMesh.vertexCount()
+                + handIndexed.vertexCount();
+            vmScatter.rawVertices = vmScatter.totalTriangles * 3;
 
-        ObjModel scatterObj = readObj(dir.resolve("viewmodel-scattergun.obj"), "scattergun");
-        ScattergunModel scatter = ScattergunModel.from(scatterObj);
-        Entry vmScatter = new Entry("viewmodel-scattergun (scattergun+hand)", scatterObj, 0f, -0.05f, 0.01f, 0.62f,
-            0f, 0f);
-        vmScatter.partMeshes.put("body", ModelMesh.buildIndexed(scatter.bodyMesh));
-        vmScatter.partMeshes.put("pump", ModelMesh.buildIndexed(scatter.pumpMesh));
-        vmScatter.partMeshes.put("hand", ModelMesh.buildIndexed(handIndexed));
-        vmScatter.rig = new ModelRig(scatterObj);
-        vmScatter.totalTriangles = scatter.bodyMesh.triangleCount() + scatter.pumpMesh.triangleCount()
-            + handIndexed.triangleCount();
-        vmScatter.uniqueVertices = scatter.bodyMesh.vertexCount() + scatter.pumpMesh.vertexCount()
-            + handIndexed.vertexCount();
-        vmScatter.rawVertices = vmScatter.totalTriangles * 3;
-        entries.add(vmScatter);
+            ObjModel railObj = readObj(dir.resolve("viewmodel-raillance.obj"), "raillance");
+            RailLanceModel rail = RailLanceModel.from(railObj);
+            Entry vmRail = new Entry("viewmodel-raillance (raillance+hand)", railObj, 0f, -0.05f, -0.03f, 0.76f,
+                0f, 0f);
+            loaded.add(vmRail);
+            addPartMesh(vmRail, "body", rail.bodyMesh);
+            addPartMesh(vmRail, "bolt", rail.boltMesh);
+            addPartMesh(vmRail, "hand", handIndexed);
+            vmRail.rig = new ModelRig(railObj);
+            vmRail.totalTriangles = rail.bodyMesh.triangleCount() + rail.boltMesh.triangleCount()
+                + handIndexed.triangleCount();
+            vmRail.uniqueVertices = rail.bodyMesh.vertexCount() + rail.boltMesh.vertexCount()
+                + handIndexed.vertexCount();
+            vmRail.rawVertices = vmRail.totalTriangles * 3;
 
-        ObjModel railObj = readObj(dir.resolve("viewmodel-raillance.obj"), "raillance");
-        RailLanceModel rail = RailLanceModel.from(railObj);
-        Entry vmRail = new Entry("viewmodel-raillance (raillance+hand)", railObj, 0f, -0.05f, -0.03f, 0.76f,
-            0f, 0f);
-        vmRail.partMeshes.put("body", ModelMesh.buildIndexed(rail.bodyMesh));
-        vmRail.partMeshes.put("bolt", ModelMesh.buildIndexed(rail.boltMesh));
-        vmRail.partMeshes.put("hand", ModelMesh.buildIndexed(handIndexed));
-        vmRail.rig = new ModelRig(railObj);
-        vmRail.totalTriangles = rail.bodyMesh.triangleCount() + rail.boltMesh.triangleCount()
-            + handIndexed.triangleCount();
-        vmRail.uniqueVertices = rail.bodyMesh.vertexCount() + rail.boltMesh.vertexCount()
-            + handIndexed.vertexCount();
-        vmRail.rawVertices = vmRail.totalTriangles * 3;
-        entries.add(vmRail);
+            addWorldEntry(loaded, dir, "enemy-warden.obj", 0f, Enemy.Kind.WARDEN.height * 0.5f, 0f, 1.55f,
+                Enemy.Kind.WARDEN.radius, Enemy.Kind.WARDEN.height,
+                "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
+            addWorldEntry(loaded, dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
+                Enemy.Kind.GUARD.radius, Enemy.Kind.GUARD.height,
+                "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
+            addWorldEntry(loaded, dir, "enemy-turret.obj", 0f, Enemy.Kind.TURRET.height * 0.5f, 0f, 1.25f,
+                Enemy.Kind.TURRET.radius, Enemy.Kind.TURRET.height,
+                "base", "head", "barrels");
+            addWorldEntry(loaded, dir, "enemy-drone.obj", 0f, 0.35f, 0f, 1.05f,
+                Enemy.Kind.DRONE.radius, Enemy.Kind.DRONE.height);
+            addWorldEntry(loaded, dir, "door-bulkhead.obj", 0f, 0.50f, 0f, 1.70f, 0f, GameMap.WALL_HEIGHT);
+            addWorldEntry(loaded, dir, "hazard-grate.obj", 0f, 0.012f, 0f, 1.45f, 0f, 0.024f);
+            addWorldEntry(loaded, dir, "security-console.obj", 0f, 0.36f, 0f, 1.15f,
+                SecurityConsole.RADIUS, SecurityConsole.HEIGHT);
+            addWorldEntry(loaded, dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
+            addWorldEntry(loaded, dir, "pickup-shells.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.27f);
+            addWorldEntry(loaded, dir, "pickup-raillance.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.31f);
+            addWorldEntry(loaded, dir, "pickup-slugs.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.28f);
+            addWorldEntry(loaded, dir, "pickup-keycard.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
+            addWorldEntry(loaded, dir, "pickup-medkit.obj", 0f, 0.14f, 0f, 0.72f, Pickup.RADIUS, 0.28f);
+            addWorldEntry(loaded, dir, "pickup-armor.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
+            addWorldEntry(loaded, dir, "pickup-energy.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
+            addWorldEntry(loaded, dir, "canister.obj", 0f, 0.28f, 0f, 1.05f,
+                Target.Kind.CANISTER.radius, Target.Kind.CANISTER.height);
+            addWorldEntry(loaded, dir, "ring-board.obj", 0f, 0.40f, 0f, 1.25f,
+                Target.Kind.RING_BOARD.radius, Target.Kind.RING_BOARD.height);
+            addWorldEntry(loaded, dir, "blast-orb.obj", 0f, 0f, 0f, 0.55f, BlastProjectile.RADIUS, 0f);
+            addWorldEntry(loaded, dir, "rail-beam.obj", 0f, 0f, -0.5f, 1.25f, 0f, 0f);
+            addWorldEntry(loaded, dir, "enemy-bolt.obj", 0f, 0f, 0f, 0.45f, EnemyProjectile.RADIUS, 0f);
+        } catch (RuntimeException | Error e) {
+            try {
+                disposeEntryList(loaded);
+            } catch (RuntimeException suppress) {
+                e.addSuppressed(suppress);
+            }
+            throw e;
+        }
 
-        addWorldEntry(dir, "enemy-warden.obj", 0f, Enemy.Kind.WARDEN.height * 0.5f, 0f, 1.55f,
-            Enemy.Kind.WARDEN.radius, Enemy.Kind.WARDEN.height,
-            "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
-        addWorldEntry(dir, "enemy-guard.obj", 0f, Enemy.Kind.GUARD.height * 0.5f, 0f, 1.35f,
-            Enemy.Kind.GUARD.radius, Enemy.Kind.GUARD.height,
-            "pelvis", "leg_l", "leg_r", "torso", "arm_l", "arm_r");
-        addWorldEntry(dir, "enemy-turret.obj", 0f, Enemy.Kind.TURRET.height * 0.5f, 0f, 1.25f,
-            Enemy.Kind.TURRET.radius, Enemy.Kind.TURRET.height,
-            "base", "head", "barrels");
-        addWorldEntry(dir, "enemy-drone.obj", 0f, 0.35f, 0f, 1.05f, Enemy.Kind.DRONE.radius, Enemy.Kind.DRONE.height);
-        addWorldEntry(dir, "door-bulkhead.obj", 0f, 0.50f, 0f, 1.70f, 0f, GameMap.WALL_HEIGHT);
-        addWorldEntry(dir, "hazard-grate.obj", 0f, 0.012f, 0f, 1.45f, 0f, 0.024f);
-        addWorldEntry(dir, "security-console.obj", 0f, 0.36f, 0f, 1.15f,
-            SecurityConsole.RADIUS, SecurityConsole.HEIGHT);
-        addWorldEntry(dir, "pickup-scattergun.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
-        addWorldEntry(dir, "pickup-shells.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.27f);
-        addWorldEntry(dir, "pickup-raillance.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.31f);
-        addWorldEntry(dir, "pickup-slugs.obj", 0f, 0.14f, 0f, 0.68f, Pickup.RADIUS, 0.28f);
-        addWorldEntry(dir, "pickup-keycard.obj", 0f, 0.15f, 0f, 0.72f, Pickup.RADIUS, 0.30f);
-        addWorldEntry(dir, "pickup-medkit.obj", 0f, 0.14f, 0f, 0.72f, Pickup.RADIUS, 0.28f);
-        addWorldEntry(dir, "pickup-armor.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
-        addWorldEntry(dir, "pickup-energy.obj", 0f, 0.17f, 0f, 0.72f, Pickup.RADIUS, 0.34f);
-        addWorldEntry(dir, "canister.obj", 0f, 0.28f, 0f, 1.05f, Target.Kind.CANISTER.radius, Target.Kind.CANISTER.height);
-        addWorldEntry(dir, "ring-board.obj", 0f, 0.40f, 0f, 1.25f,
-            Target.Kind.RING_BOARD.radius, Target.Kind.RING_BOARD.height);
-        addWorldEntry(dir, "blast-orb.obj", 0f, 0f, 0f, 0.55f, BlastProjectile.RADIUS, 0f);
-        addWorldEntry(dir, "rail-beam.obj", 0f, 0f, -0.5f, 1.25f, 0f, 0f);
-        addWorldEntry(dir, "enemy-bolt.obj", 0f, 0f, 0f, 0.45f, EnemyProjectile.RADIUS, 0f);
+        boolean hadEntries = !entries.isEmpty();
+        disposeEntries();
+        entries.addAll(loaded);
+        if (entries.isEmpty()) {
+            currentIndex = 0;
+        } else if (!hadEntries) {
+            currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
+        } else if (currentIndex < 0 || currentIndex >= entries.size()) {
+            currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
+            resetCameraForEntry();
+        }
     }
 
-    private void addWorldEntry(Path dir, String fileName, float cx, float cy, float cz, float defaultDist,
+    private void addWorldEntry(List<Entry> target, Path dir, String fileName,
+                               float cx, float cy, float cz, float defaultDist,
                                float cylRadius, float cylHeight, String... parts) {
         ObjModel model = readObj(dir.resolve(fileName), fileName);
         Entry e = new Entry(fileName, model, cx, cy, cz, defaultDist, cylRadius, cylHeight);
         e.rig = new ModelRig(model);
+        target.add(e);
         if (parts.length == 0) {
             ModelVertices.IndexedMesh indexed = WorldModels.packIndexed(model);
-            e.partMeshes.put(ObjModel.ROOT_PART, ModelMesh.buildIndexed(indexed));
+            addPartMesh(e, ObjModel.ROOT_PART, indexed);
             e.totalTriangles = indexed.triangleCount();
             e.uniqueVertices = indexed.vertexCount();
             e.rawVertices = indexed.triangleCount() * 3;
         } else {
             for (String p : parts) {
                 ModelVertices.IndexedMesh indexed = WorldModels.packPartIndexed(model, p);
-                e.partMeshes.put(p, ModelMesh.buildIndexed(indexed));
+                addPartMesh(e, p, indexed);
                 e.totalTriangles += indexed.triangleCount();
                 e.uniqueVertices += indexed.vertexCount();
                 e.rawVertices += indexed.triangleCount() * 3;
             }
         }
-        entries.add(e);
+    }
+
+    private void addPartMesh(Entry entry, String partName, ModelVertices.IndexedMesh indexed) {
+        if (indexed == null || indexed.vertices == null || indexed.vertices.length == 0
+            || indexed.vertices.length % ModelVertices.VERTEX_SIZE != 0) {
+            throw new IllegalArgumentException(
+                "Model '" + entry.label + "' part '" + partName + "' has empty or invalid vertex data");
+        }
+        short[] wireIndices = buildWireframeIndices(indexed.indices, indexed.vertexCount());
+        PreviewMesh solid = meshFactory.buildTriangles(indexed);
+        entry.partMeshes.put(partName, solid);
+        PreviewMesh wire = meshFactory.buildWireframe(indexed, wireIndices);
+        entry.partWireMeshes.put(partName, wire);
+    }
+
+    static short[] buildWireframeIndices(short[] triangleIndices) {
+        return buildWireframeIndices(triangleIndices, ModelVertices.MAX_INDEXED_VERTICES);
+    }
+
+    static short[] buildWireframeIndices(short[] triangleIndices, int vertexCount) {
+        if (triangleIndices == null || triangleIndices.length == 0) {
+            throw new IllegalArgumentException("Triangle index buffer must not be empty");
+        }
+        if (triangleIndices.length % 3 != 0) {
+            throw new IllegalArgumentException(
+                "Triangle index count must be a multiple of 3: " + triangleIndices.length);
+        }
+        if (vertexCount <= 0 || vertexCount > ModelVertices.MAX_INDEXED_VERTICES) {
+            throw new IllegalArgumentException(
+                "Wireframe vertex count out of 16-bit range: " + vertexCount);
+        }
+        int triangleCount = triangleIndices.length / 3;
+        if (triangleCount > Integer.MAX_VALUE / 6) {
+            throw new IllegalArgumentException("Triangle count exceeds index buffer capacity: " + triangleCount);
+        }
+        short[] out = new short[triangleCount * 6];
+        Set<Long> seenEdges = new HashSet<>(triangleCount * 3);
+        int at = 0;
+        for (int i = 0; i < triangleIndices.length; i += 3) {
+            int i0 = triangleIndices[i] & 0xFFFF;
+            int i1 = triangleIndices[i + 1] & 0xFFFF;
+            int i2 = triangleIndices[i + 2] & 0xFFFF;
+            if (i0 >= vertexCount || i1 >= vertexCount || i2 >= vertexCount) {
+                throw new IllegalArgumentException("Triangle index exceeds vertex count " + vertexCount);
+            }
+            at = appendWireEdge(i0, i1, seenEdges, out, at);
+            at = appendWireEdge(i1, i2, seenEdges, out, at);
+            at = appendWireEdge(i2, i0, seenEdges, out, at);
+        }
+        if (at == 0) {
+            throw new IllegalArgumentException("Triangle index buffer contained only degenerate zero-length edges");
+        }
+        return at == out.length ? out : Arrays.copyOf(out, at);
+    }
+
+    private static int appendWireEdge(int a, int b, Set<Long> seenEdges, short[] out, int at) {
+        if (a == b) return at;
+        int lo = Math.min(a, b);
+        int hi = Math.max(a, b);
+        long key = ((long) lo << 32) | (hi & 0xFFFFFFFFL);
+        if (seenEdges.add(key)) {
+            out[at++] = (short) a;
+            out[at++] = (short) b;
+        }
+        return at;
     }
 
     private static ObjModel readObj(Path file, String label) {
@@ -394,7 +557,9 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         }
     }
 
-    private void resetCameraForEntry() {
+    void resetCameraForEntry() {
+        if (entries.isEmpty()) return;
+        currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
         Entry e = entries.get(currentIndex);
         targetCenter.set(e.centerX, e.centerY, e.centerZ);
         orbitDist = e.defaultDist;
@@ -406,14 +571,25 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     @Override
     public void render() {
         frames++;
-        float dt = Math.min(0.05f, Gdx.graphics.getDeltaTime());
+        applyBackBufferViewport();
+        float dt = Gdx.graphics != null ? Math.min(0.05f, Gdx.graphics.getDeltaTime()) : 0f;
         if (animate && screenshotPath == null) time += dt;
         else if (screenshotPath != null) time = 0.65f;
         statusTimer = Math.max(0f, statusTimer - dt);
 
+        if (Gdx.gl != null) {
+            ScreenUtils.clear(0.16f, 0.18f, 0.23f, 1f, true);
+        }
+        if (entries.isEmpty()) {
+            maybeCaptureAutomatedScreenshot();
+            return;
+        }
+        currentIndex = MathUtils.clamp(currentIndex, 0, entries.size() - 1);
         Entry entry = entries.get(currentIndex);
-        ScreenUtils.clear(0.16f, 0.18f, 0.23f, 1f, true);
 
+        if (camera == null) {
+            camera = createPreviewCamera(Gdx.graphics);
+        }
         double yawRad = Math.toRadians(orbitYaw);
         double pitchRad = Math.toRadians(orbitPitch);
         float cosP = (float) Math.cos(pitchRad);
@@ -423,7 +599,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             targetCenter.z + orbitDist * cosP * (float) Math.cos(yawRad));
         camera.lookAt(targetCenter);
         camera.up.set(Vector3.Y);
-        camera.update();
+        camera.update(nativesAvailable());
 
         rootMat.idt();
         animRotations.clear();
@@ -492,61 +668,75 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             animRotations.put("slide", new Matrix4().setToTranslation(0f, 0f, slideKick));
         }
 
-        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
-        Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
-        Gdx.gl.glEnable(GL20.GL_CULL_FACE);
-        Gdx.gl.glCullFace(GL20.GL_BACK);
+        if (Gdx.gl != null) {
+            Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+            Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
+            if (wireframe) {
+                Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+            } else {
+                Gdx.gl.glEnable(GL20.GL_CULL_FACE);
+                Gdx.gl.glCullFace(GL20.GL_BACK);
+            }
+        }
 
-        shader.bind();
-        shader.setUniformMatrix("u_projViewTrans", camera.combined);
-        shader.setUniformf("u_cameraPosition", camera.position);
-        if (accent == null) shader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
-        else shader.setUniformf("u_accentColour", accent[0], accent[1], accent[2], accent[3]);
+        if (shader != null) {
+            shader.bind();
+            shader.setUniformMatrix("u_projViewTrans", camera.combined);
+            shader.setUniformf("u_cameraPosition", camera.position);
+            if (accent == null) shader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
+            else shader.setUniformf("u_accentColour", accent[0], accent[1], accent[2], accent[3]);
+        }
 
-        for (Map.Entry<String, Mesh> part : entry.partMeshes.entrySet()) {
+        Map<String, PreviewMesh> activeMeshes = wireframe ? entry.partWireMeshes : entry.partMeshes;
+        int primitiveType = wireframe ? GL20.GL_LINES : GL20.GL_TRIANGLES;
+        for (Map.Entry<String, PreviewMesh> part : activeMeshes.entrySet()) {
             String partName = part.getKey();
             if ("hand".equals(partName)) {
                 partMat.set(rootMat);
             } else {
                 entry.rig.evaluatePartTransform(partName, animRotations, rootMat, partMat);
             }
-            shader.setUniformMatrix("u_model", partMat);
             normalMat.set(partMat).inv().transpose();
-            shader.setUniformMatrix("u_normalMatrix", normalMat);
-            part.getValue().render(shader, wireframe ? GL20.GL_LINES : GL20.GL_TRIANGLES);
+            if (shader != null) {
+                shader.setUniformMatrix("u_model", partMat);
+                shader.setUniformMatrix("u_normalMatrix", normalMat);
+                part.getValue().render(shader, primitiveType);
+            }
         }
 
-        if (showGizmos) {
+        if (showGizmos && shapes != null) {
             drawGizmos(entry);
         }
 
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
-        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        batch.begin();
-        float u = Gdx.graphics.getHeight() / 800f;
-        float topY = Gdx.graphics.getHeight() - 28f * u;
-        batch.setColor(0.55f, 0.95f, 1f, 1f);
-        PixelFont.draw(batch, white, "MODEL: " + entry.label.toUpperCase(Locale.ROOT), 20f * u, topY, 3f * u);
-        batch.setColor(0.88f, 0.92f, 0.96f, 0.95f);
-        PixelFont.draw(batch, white,
-            "TRIS " + entry.totalTriangles + "  VERTS " + entry.uniqueVertices + " / " + entry.rawVertices
-                + "  ACCENT: " + accentLabel,
-            20f * u, topY - 26f * u, 2.2f * u);
-        if (statusTimer > 0f) {
-            batch.setColor(0.45f, 1f, 0.65f, 1f);
-            PixelFont.draw(batch, white, statusToast, 20f * u, topY - 52f * u, 2.4f * u);
+        if (Gdx.gl != null) {
+            Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+            Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+            Gdx.gl.glEnable(GL20.GL_BLEND);
         }
-        batch.setColor(0.70f, 0.76f, 0.85f, 0.9f);
-        PixelFont.draw(batch, white,
-            "DRAG: ORBIT  SCROLL: ZOOM  LEFT/RIGHT: MODEL  SPACE: ANIM  C: ACCENT  G: GIZMOS  W: WIRE  R: REBUILD",
-            20f * u, 20f * u, 1.9f * u);
-        batch.end();
+        if (batch != null && white != null) {
+            batch.begin();
+            int hudH = Gdx.graphics != null ? Math.max(1, Gdx.graphics.getHeight()) : 800;
+            float u = hudH / 800f;
+            float topY = hudH - 28f * u;
+            batch.setColor(0.55f, 0.95f, 1f, 1f);
+            PixelFont.draw(batch, white, "MODEL: " + entry.label.toUpperCase(Locale.ROOT), 20f * u, topY, 3f * u);
+            batch.setColor(0.88f, 0.92f, 0.96f, 0.95f);
+            PixelFont.draw(batch, white,
+                "TRIS " + entry.totalTriangles + "  VERTS " + entry.uniqueVertices + " / " + entry.rawVertices
+                    + "  ACCENT: " + accentLabel,
+                20f * u, topY - 26f * u, 2.2f * u);
+            if (statusTimer > 0f) {
+                batch.setColor(0.45f, 1f, 0.65f, 1f);
+                PixelFont.draw(batch, white, statusToast, 20f * u, topY - 52f * u, 2.4f * u);
+            }
+            batch.setColor(0.70f, 0.76f, 0.85f, 0.9f);
+            PixelFont.draw(batch, white,
+                "DRAG: ORBIT  SCROLL: ZOOM  LEFT/RIGHT: MODEL  SPACE: ANIM  C: ACCENT  G: GIZMOS  W: WIRE  R: REBUILD",
+                20f * u, 20f * u, 1.9f * u);
+            batch.end();
+        }
 
-        if (screenshotPath != null && frames == 2) {
-            saveScreenshot(screenshotPath);
-            Gdx.app.exit();
-        }
+        maybeCaptureAutomatedScreenshot();
     }
 
     private void drawGizmos(Entry entry) {
@@ -586,32 +776,190 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         shapes.end();
     }
 
-    private static void saveScreenshot(String path) {
+    @FunctionalInterface
+    interface FrameCapture<P extends Disposable> {
+        P capture(int width, int height);
+    }
+
+    private void maybeCaptureAutomatedScreenshot() {
+        if (Gdx.graphics == null) return;
+        maybeCaptureAutomatedScreenshot(
+            Gdx.graphics.getBackBufferWidth(),
+            Gdx.graphics.getBackBufferHeight(),
+            (w, h) -> Pixmap.createFromFrameBuffer(0, 0, w, h),
+            Pixmap::getPixels,
+            pixmap -> PixmapIO.writePNG(
+                Gdx.files.absolute(screenshotPath), pixmap, Deflater.DEFAULT_COMPRESSION, true),
+            () -> {
+                if (Gdx.app != null) Gdx.app.exit();
+            });
+    }
+
+    <P extends Disposable> boolean maybeCaptureAutomatedScreenshot(int w, int h,
+                                                                   FrameCapture<P> capture,
+                                                                   Function<P, ByteBuffer> pixelsOf,
+                                                                   Consumer<P> writer,
+                                                                   Runnable onExit) {
+        if (screenshotPath == null || screenshotCaptured || frames < 2) return false;
+        if (!saveScreenshot(w, h, capture, pixelsOf, writer)) return false;
+        screenshotCaptured = true;
+        onExit.run();
+        return true;
+    }
+
+    static boolean saveScreenshot(String path) {
+        if (Gdx.graphics == null) return false;
         int w = Gdx.graphics.getBackBufferWidth();
         int h = Gdx.graphics.getBackBufferHeight();
-        Pixmap pixmap = Pixmap.createFromFrameBuffer(0, 0, w, h);
-        ByteBuffer px = pixmap.getPixels();
-        for (int i = 3; i < w * h * 4; i += 4) px.put(i, (byte) 0xFF);
-        PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, Deflater.DEFAULT_COMPRESSION, true);
-        pixmap.dispose();
+        return saveScreenshot(
+            w, h,
+            (width, height) -> Pixmap.createFromFrameBuffer(0, 0, width, height),
+            Pixmap::getPixels,
+            pixmap -> PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, Deflater.DEFAULT_COMPRESSION, true));
+    }
+
+    static <P extends Disposable> boolean saveScreenshot(int w, int h,
+                                                         FrameCapture<P> capture,
+                                                         Function<P, ByteBuffer> pixelsOf,
+                                                         Consumer<P> writer) {
+        if (w <= 0 || h <= 0) return false;
+        P pixmap = capture.capture(w, h);
+        try {
+            ByteBuffer px = pixelsOf.apply(pixmap);
+            int limit = Math.min(px.capacity(), w * h * 4);
+            for (int i = 3; i < limit; i += 4) {
+                px.put(i, (byte) 0xFF);
+            }
+            writer.accept(pixmap);
+            return true;
+        } finally {
+            pixmap.dispose();
+        }
+    }
+
+    void applyBackBufferViewport() {
+        if (Gdx.graphics == null || Gdx.gl == null) return;
+        int bw = Gdx.graphics.getBackBufferWidth();
+        int bh = Gdx.graphics.getBackBufferHeight();
+        if (bw > 0 && bh > 0) {
+            Gdx.gl.glViewport(0, 0, bw, bh);
+        }
     }
 
     @Override
     public void resize(int width, int height) {
         if (width <= 0 || height <= 0) return;
-        camera.viewportWidth = width;
-        camera.viewportHeight = height;
-        camera.update();
-        batch.getProjectionMatrix().setToOrtho2D(0f, 0f, width, height);
+        applyBackBufferViewport();
+        if (camera != null) {
+            camera.viewportWidth = width;
+            camera.viewportHeight = height;
+            camera.update(nativesAvailable());
+        }
+        if (batch != null) {
+            batch.getProjectionMatrix().setToOrtho2D(0f, 0f, width, height);
+        }
     }
 
     @Override
     public void dispose() {
         disposeEntries();
-        shader.dispose();
-        shapes.dispose();
-        batch.dispose();
-        white.dispose();
+        if (shader != null) shader.dispose();
+        if (shapes != null) shapes.dispose();
+        if (batch != null) batch.dispose();
+        if (white != null) white.dispose();
+    }
+
+    int getEntryCount() {
+        return entries.size();
+    }
+
+    int getCurrentIndex() {
+        return currentIndex;
+    }
+
+    void setCurrentIndex(int index) {
+        this.currentIndex = index;
+    }
+
+    String getEntryLabel(int index) {
+        return entries.get(index).label;
+    }
+
+    String getStatusToast() {
+        return statusToast;
+    }
+
+    float getStatusTimer() {
+        return statusTimer;
+    }
+
+    PerspectiveCamera getCamera() {
+        return camera;
+    }
+
+    void setCameraForTest(PerspectiveCamera camera) {
+        this.camera = camera;
+    }
+
+    void advanceFrameForTest() {
+        frames++;
+    }
+
+    interface PreviewMesh extends Disposable {
+        void render(ShaderProgram shader, int primitiveType);
+    }
+
+    interface MeshFactory {
+        PreviewMesh buildTriangles(ModelVertices.IndexedMesh data);
+
+        PreviewMesh buildWireframe(ModelVertices.IndexedMesh data, short[] wireframeIndices);
+    }
+
+    private static final MeshFactory GPU_MESH_FACTORY = new MeshFactory() {
+        @Override
+        public PreviewMesh buildTriangles(ModelVertices.IndexedMesh data) {
+            return new GpuPreviewMesh(ModelMesh.buildIndexed(data));
+        }
+
+        @Override
+        public PreviewMesh buildWireframe(ModelVertices.IndexedMesh data, short[] wireframeIndices) {
+            return new GpuPreviewMesh(buildWireframeGpuMesh(data, wireframeIndices));
+        }
+    };
+
+    private static Mesh buildWireframeGpuMesh(ModelVertices.IndexedMesh data, short[] wireframeIndices) {
+        Mesh mesh = new Mesh(true, data.vertexCount(), wireframeIndices.length,
+            new VertexAttribute(VertexAttributes.Usage.Position, 3, ShaderProgram.POSITION_ATTRIBUTE),
+            new VertexAttribute(VertexAttributes.Usage.Normal, 3, ShaderProgram.NORMAL_ATTRIBUTE),
+            new VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_colour"),
+            new VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_gloss"),
+            new VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_accent"));
+        try {
+            mesh.setVertices(data.vertices);
+            mesh.setIndices(wireframeIndices);
+            return mesh;
+        } catch (RuntimeException | Error e) {
+            mesh.dispose();
+            throw e;
+        }
+    }
+
+    private static final class GpuPreviewMesh implements PreviewMesh {
+        private final Mesh mesh;
+
+        GpuPreviewMesh(Mesh mesh) {
+            this.mesh = mesh;
+        }
+
+        @Override
+        public void render(ShaderProgram shader, int primitiveType) {
+            mesh.render(shader, primitiveType);
+        }
+
+        @Override
+        public void dispose() {
+            mesh.dispose();
+        }
     }
 
     private static final class Entry {
@@ -623,7 +971,8 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         final float defaultDist;
         final float cylRadius;
         final float cylHeight;
-        final Map<String, Mesh> partMeshes = new LinkedHashMap<>();
+        final Map<String, PreviewMesh> partMeshes = new LinkedHashMap<>();
+        final Map<String, PreviewMesh> partWireMeshes = new LinkedHashMap<>();
         ModelRig rig;
         int totalTriangles;
         int uniqueVertices;
@@ -642,8 +991,26 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         }
 
         void dispose() {
-            for (Mesh m : partMeshes.values()) m.dispose();
+            RuntimeException firstError = null;
+            for (PreviewMesh m : partMeshes.values()) {
+                try {
+                    m.dispose();
+                } catch (RuntimeException ex) {
+                    if (firstError == null) firstError = ex;
+                    else firstError.addSuppressed(ex);
+                }
+            }
             partMeshes.clear();
+            for (PreviewMesh m : partWireMeshes.values()) {
+                try {
+                    m.dispose();
+                } catch (RuntimeException ex) {
+                    if (firstError == null) firstError = ex;
+                    else firstError.addSuppressed(ex);
+                }
+            }
+            partWireMeshes.clear();
+            if (firstError != null) throw firstError;
         }
     }
 }

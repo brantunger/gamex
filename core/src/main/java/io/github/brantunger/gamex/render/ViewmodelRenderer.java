@@ -1,6 +1,7 @@
 package io.github.brantunger.gamex.render;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Mesh;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
@@ -17,6 +18,7 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.weapon.BlastCharger;
@@ -42,12 +44,14 @@ public final class ViewmodelRenderer implements Disposable {
 
     private static final Logger log = LoggerFactory.getLogger(ViewmodelRenderer.class);
 
+    static final int DEFAULT_VIEWPORT_WIDTH = 1280;
+    static final int DEFAULT_VIEWPORT_HEIGHT = 720;
     private static final float FIELD_OF_VIEW = 52f;
     private static final float NEAR = 0.02f;
     private static final float FAR = 4f;
 
     /** Where the gun's origin rests in view space: right of and below the centre of the view. */
-    private static final float REST_X = 0.140f;
+    static final float REST_X = 0.140f;
     private static final float REST_Y = -0.066f;
     private static final float REST_Z = -0.550f;
     /** The yaw, in degrees, that points the muzzle inwards, towards the centre of the view. */
@@ -149,36 +153,34 @@ public final class ViewmodelRenderer implements Disposable {
     /** @param textures the textures of the muzzle flash and the charge glow; the caller keeps ownership of them */
     public ViewmodelRenderer(ProceduralTextures textures) {
         // The camera never moves: it sits at the origin of view space, looking down negative z.
-        camera = new PerspectiveCamera(FIELD_OF_VIEW, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        camera.near = NEAR;
-        camera.far = FAR;
-        camera.position.setZero();
-        camera.direction.set(0f, 0f, -1f);
-        camera.up.set(Vector3.Y);
-        resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        int initialWidth = initialViewportWidth(Gdx.graphics);
+        int initialHeight = initialViewportHeight(Gdx.graphics);
+        camera = createViewmodelCamera(Gdx.graphics);
+        resize(initialWidth, initialHeight);
 
         shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
         if (!shader.isCompiled()) {
             throw new GdxRuntimeException("The viewmodel shader did not compile: " + shader.getLog());
         }
         int modelsBefore = ModelMesh.getLoadedCount();
-        ObjModel pistolObj = ModelMesh.loadModel(PistolModel.ASSET_PATH, "pistol");
-        PistolModel pistol = PistolModel.from(pistolObj);
+        ObjModel pistolObj = ModelMesh.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");
+        PistolModel pistol = unpackPistol(pistolObj);
         muzzleSocket = pistolObj.getSocket("muzzle");
-        body = ModelMesh.buildIndexed(pistol.bodyMesh);
-        slide = ModelMesh.buildIndexed(pistol.slideMesh);
-        ObjModel scatterObj = ModelMesh.loadModel(ScattergunModel.ASSET_PATH, "scattergun");
-        ScattergunModel scatter = ScattergunModel.from(scatterObj);
+        body = ModelMesh.buildIndexed(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body");
+        slide = ModelMesh.buildIndexed(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide");
+        ObjModel scatterObj = ModelMesh.loadModel(ScattergunModel.ASSET_PATH, "viewmodel scattergun");
+        ScattergunModel scatter = unpackScattergun(scatterObj);
         scatterMuzzleSocket = scatterObj.getSocket("muzzle");
-        scatterBody = ModelMesh.buildIndexed(scatter.bodyMesh);
-        scatterPump = ModelMesh.buildIndexed(scatter.pumpMesh);
-        ObjModel railObj = ModelMesh.loadModel(RailLanceModel.ASSET_PATH, "rail lance");
-        RailLanceModel rail = RailLanceModel.from(railObj);
+        scatterBody = ModelMesh.buildIndexed(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body");
+        scatterPump = ModelMesh.buildIndexed(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump");
+        ObjModel railObj = ModelMesh.loadModel(RailLanceModel.ASSET_PATH, "viewmodel rail lance");
+        RailLanceModel rail = unpackRailLance(railObj);
         railMuzzleSocket = railObj.getSocket("muzzle");
-        railBody = ModelMesh.buildIndexed(rail.bodyMesh);
-        railBolt = ModelMesh.buildIndexed(rail.boltMesh);
+        railBody = ModelMesh.buildIndexed(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body");
+        railBolt = ModelMesh.buildIndexed(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt");
         // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
-        hand = ModelMesh.loadIndexedMesh(HandModel.ASSET_PATH, "hand", HandModel::packIndexed);
+        ObjModel handObj = ModelMesh.loadModel(HandModel.ASSET_PATH, "viewmodel hand");
+        hand = ModelMesh.buildIndexed(unpackHand(handObj), HandModel.ASSET_PATH, "viewmodel hand");
         log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
 
         groupStrategy = new CameraGroupStrategy(camera);
@@ -187,17 +189,83 @@ public final class ViewmodelRenderer implements Disposable {
         glow = Decal.newDecal(1f, 1f, new TextureRegion(textures.orb), GL20.GL_SRC_ALPHA, GL20.GL_ONE);
     }
 
+    static PistolModel unpackPistol(ObjModel pistolObj) {
+        PistolModel pistol = ModelMesh.convert(
+            pistolObj, PistolModel.ASSET_PATH, "viewmodel pistol", PistolModel::from);
+        ModelMesh.requireMesh(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body");
+        ModelMesh.requireMesh(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide");
+        return pistol;
+    }
+
+    static ScattergunModel unpackScattergun(ObjModel scatterObj) {
+        ScattergunModel scatter = ModelMesh.convert(
+            scatterObj, ScattergunModel.ASSET_PATH, "viewmodel scattergun", ScattergunModel::from);
+        ModelMesh.requireMesh(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body");
+        ModelMesh.requireMesh(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump");
+        return scatter;
+    }
+
+    static RailLanceModel unpackRailLance(ObjModel railObj) {
+        RailLanceModel rail = ModelMesh.convert(
+            railObj, RailLanceModel.ASSET_PATH, "viewmodel rail lance", RailLanceModel::from);
+        ModelMesh.requireMesh(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body");
+        ModelMesh.requireMesh(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt");
+        return rail;
+    }
+
+    static ModelVertices.IndexedMesh unpackHand(ObjModel handObj) {
+        return ModelMesh.convertMesh(handObj, HandModel.ASSET_PATH, "viewmodel hand", HandModel::packIndexed);
+    }
+
+    static int initialViewportWidth(Graphics graphics) {
+        return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
+            ? graphics.getWidth()
+            : DEFAULT_VIEWPORT_WIDTH;
+    }
+
+    static int initialViewportHeight(Graphics graphics) {
+        return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
+            ? graphics.getHeight()
+            : DEFAULT_VIEWPORT_HEIGHT;
+    }
+
+    static PerspectiveCamera createViewmodelCamera(Graphics graphics) {
+        PerspectiveCamera cam = new PerspectiveCamera();
+        cam.fieldOfView = FIELD_OF_VIEW;
+        cam.viewportWidth = initialViewportWidth(graphics);
+        cam.viewportHeight = initialViewportHeight(graphics);
+        cam.near = NEAR;
+        cam.far = FAR;
+        cam.position.setZero();
+        cam.direction.set(0f, 0f, -1f);
+        cam.up.set(Vector3.Y);
+        cam.update(Gdx.app != null && Gdx.gl != null);
+        return cam;
+    }
+
+    static boolean applyViewportResize(PerspectiveCamera camera, int width, int height) {
+        if (width <= 0 || height <= 0) return false;
+        camera.viewportWidth = width;
+        camera.viewportHeight = height;
+        camera.update(Gdx.app != null && Gdx.gl != null);
+        return true;
+    }
+
+    static float computeRestX(int width, int height, float previousRestX) {
+        if (width <= 0 || height <= 0) return previousRestX;
+        return REST_X * MathUtils.clamp((float) width / height / (16f / 9f), 0.6f, 1.2f);
+    }
+
     /**
      * Adapts the camera to a new window size.
      * @param width the new width in pixels
      * @param height the new height in pixels
      */
     public void resize(int width, int height) {
-        camera.viewportWidth = width;
-        camera.viewportHeight = height;
-        camera.update();
+        if (width <= 0 || height <= 0) return;
+        applyViewportResize(camera, width, height);
         // The rest offset is tuned for a 16:9 window; a narrower window pulls the gun in so it stays in view.
-        restX = REST_X * MathUtils.clamp((float) width / height / (16f / 9f), 0.6f, 1.2f);
+        restX = computeRestX(width, height, restX);
     }
 
     /**
@@ -331,10 +399,14 @@ public final class ViewmodelRenderer implements Disposable {
             glow.setColor(1f, 1f, 1f, charger.isReadyToFire() ? 1f : 0.55f);
             decalBatch.add(glow);
         }
-        decalBatch.flush();
+        Gdx.gl.glDepthMask(false);
+        try {
+            decalBatch.flush();
+        } finally {
+            Gdx.gl.glDepthMask(true);
+        }
 
         // Leave a plain state for the 2D pass.
-        Gdx.gl.glDepthMask(true);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }

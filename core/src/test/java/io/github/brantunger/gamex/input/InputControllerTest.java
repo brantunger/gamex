@@ -2,6 +2,7 @@ package io.github.brantunger.gamex.input;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -10,8 +11,10 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
+import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
+import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
@@ -40,6 +43,8 @@ class InputControllerTest {
     private final Set<Integer> held = new HashSet<>();
     /** Whether the left button is reported as held down. */
     private boolean leftHeld;
+    /** Whether the right button is reported as held down. */
+    private boolean rightHeld;
     /** Whether the left button is reported as just pressed, at ({@link #mouseX}, {@link #mouseY}). */
     private boolean leftJustPressed;
     private int mouseX;
@@ -68,8 +73,11 @@ class InputControllerTest {
                         return justPressed.contains((Integer) args[0]);
                     case "isKeyPressed":
                         return held.contains((Integer) args[0]);
-                    case "isButtonPressed":
-                        return leftHeld && (Integer) args[0] == Input.Buttons.LEFT;
+                    case "isButtonPressed": {
+                        int button = (Integer) args[0];
+                        return (button == Input.Buttons.LEFT && leftHeld)
+                            || (button == Input.Buttons.RIGHT && rightHeld);
+                    }
                     case "isButtonJustPressed":
                         return leftJustPressed && (Integer) args[0] == Input.Buttons.LEFT;
                     case "getX":
@@ -117,12 +125,38 @@ class InputControllerTest {
     }
 
     private static MenuState menuOn(MenuState.Screen screen) {
+        if (screen == MenuState.Screen.STAGE_SELECT) {
+            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+                MenuState.Screen.TITLE);
+            menu.setSelectedIndex(menu.getOptions().indexOf("SELECT STAGE"));
+            menu.confirm();
+            assertEquals(screen, menu.getScreen());
+            return menu;
+        }
+        if (screen == MenuState.Screen.DIFFICULTY_SELECT) {
+            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+                MenuState.Screen.TITLE);
+            menu.setSelectedIndex(menu.getOptions().indexOf("START CAMPAIGN"));
+            menu.confirm();
+            assertEquals(screen, menu.getScreen());
+            return menu;
+        }
+        if (screen == MenuState.Screen.BRIEFING) {
+            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+                MenuState.Screen.TITLE);
+            menu.setSelectedIndex(menu.getOptions().indexOf("TRAINING RANGE"));
+            menu.confirm();
+            assertEquals(screen, menu.getScreen());
+            return menu;
+        }
         MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         if (screen == MenuState.Screen.PAUSED) {
             menu.escape();
         } else if (screen == MenuState.Screen.DEAD) {
             menu.onPlayerDied();
+        } else if (screen == MenuState.Screen.INTERMISSION) {
+            menu.onStageCleared(new Player(1.5f, 1.5f, 0f, 100f, 0f), 30f, 5, 5, 0f);
         } else if (screen == MenuState.Screen.TITLE) {
             menu.escape();
             menu.setSelectedIndex(menu.getOptions().indexOf("RETURN TO TITLE"));
@@ -494,5 +528,376 @@ class InputControllerTest {
         leftHeld = true;
         poll(controller, FRAME);
         assertTrue(out.fire, "a new press of the button fires");
+    }
+
+    @Test
+    void freshMouseButtonsFireAndChargeImmediatelyAfterKeyboardStartOrResume() {
+        // Resuming from PAUSED via Esc with mouse buttons released must not swallow the first LMB/RMB press.
+        MenuState menu = menuOn(MenuState.Screen.PAUSED);
+        InputController controller = new InputController(menu, new GameSettings());
+        assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ESCAPE));
+        assertTrue(menu.isPlaying());
+
+        leftHeld = true;
+        rightHeld = true;
+        poll(controller, FRAME);
+        assertTrue(out.fire, "fresh LMB after keyboard resume fires on frame 1");
+        assertTrue(out.charge, "fresh RMB after keyboard resume charges on frame 1");
+
+        // Starting a controller directly on Screen.PLAYING with buttons initially up also fires on frame 1.
+        leftHeld = false;
+        rightHeld = false;
+        MenuState directPlay = menuOn(MenuState.Screen.PLAYING);
+        InputController directController = new InputController(directPlay, new GameSettings());
+        leftHeld = true;
+        rightHeld = true;
+        poll(directController, FRAME);
+        assertTrue(out.fire, "fresh LMB on initial PLAYING frame fires");
+        assertTrue(out.charge, "fresh RMB on initial PLAYING frame charges");
+    }
+
+    @Test
+    void rightButtonHeldDuringResumeIsSwallowedUntilReleased() {
+        MenuState menu = menuOn(MenuState.Screen.PAUSED);
+        InputController controller = new InputController(menu, new GameSettings());
+
+        rightHeld = true;
+        assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ESCAPE));
+        assertTrue(menu.isPlaying());
+        poll(controller, FRAME);
+        assertFalse(out.charge, "RMB already held when play resumed must not start charging");
+
+        rightHeld = false;
+        poll(controller, FRAME);
+        rightHeld = true;
+        poll(controller, FRAME);
+        assertTrue(out.charge, "RMB charges once released and pressed again");
+    }
+
+    @Test
+    void quickRestartInPlayResetsHeldInputsLookDeltasAndScrollSwaps() {
+        MenuState menu = menuOn(MenuState.Screen.PLAYING);
+        InputController controller = new InputController(menu, new GameSettings());
+
+        // Accumulate mouse movement, scroll wheel swap, and held Space/LMB/RMB on the restart frame.
+        processorOf(controller).mouseMoved(100, 100);
+        processorOf(controller).mouseMoved(160, 130);
+        processorOf(controller).scrolled(0f, 1f);
+        held.add(Input.Keys.SPACE);
+        leftHeld = true;
+        rightHeld = true;
+
+        assertEquals(MenuState.Command.LAUNCH_STAGE, poll(controller, FRAME, Input.Keys.R));
+        assertTrue(menu.isPlaying());
+
+        // Frame 1 of the restarted stage with buttons/Space still held must not leak look, scroll, jump, fire, charge.
+        processorOf(controller).mouseMoved(240, 200);
+        poll(controller, FRAME);
+        assertEquals(0f, out.yawDelta, 1e-6f, "pre-restart look X delta must be discarded");
+        assertEquals(0f, out.pitchDelta, 1e-6f, "pre-restart look Y delta must be discarded");
+        assertEquals(0, out.weaponSlot, "pre-restart scroll weapon swap must be discarded");
+        assertFalse(out.jump, "held Space across R quick-restart must not jump at spawn");
+        assertFalse(out.fire, "held LMB across R quick-restart must not fire at spawn");
+        assertFalse(out.charge, "held RMB across R quick-restart must not charge at spawn");
+
+        // Releasing and pressing fresh inputs works normally in the restarted stage.
+        held.clear();
+        leftHeld = false;
+        rightHeld = false;
+        poll(controller, FRAME);
+
+        held.add(Input.Keys.SPACE);
+        leftHeld = true;
+        rightHeld = true;
+        processorOf(controller).mouseMoved(250, 200);
+        poll(controller, FRAME);
+        assertTrue(out.jump);
+        assertTrue(out.fire);
+        assertTrue(out.charge);
+        assertTrue(out.yawDelta > 0f);
+    }
+
+    @Test
+    void quickRestartInPlayWithButtonsReleasedAllowsImmediateFreshFireAndJump() {
+        MenuState menu = menuOn(MenuState.Screen.PLAYING);
+        InputController controller = new InputController(menu, new GameSettings());
+
+        assertEquals(MenuState.Command.LAUNCH_STAGE, poll(controller, FRAME, Input.Keys.R));
+        held.add(Input.Keys.SPACE);
+        leftHeld = true;
+        rightHeld = true;
+        poll(controller, FRAME);
+        assertTrue(out.jump, "fresh Space on frame 1 after R quick-restart jumps");
+        assertTrue(out.fire, "fresh LMB on frame 1 after R quick-restart fires");
+        assertTrue(out.charge, "fresh RMB on frame 1 after R quick-restart charges");
+    }
+
+    @Test
+    void gameplayKeyAndClickEventsInSameBatchBeforeWindowPauseDoNotActOnPauseMenu() {
+        for (int key : new int[] {
+            Input.Keys.SPACE, Input.Keys.ENTER, Input.Keys.ESCAPE, Input.Keys.R, Input.Keys.Q, Input.Keys.DOWN
+        }) {
+            MenuState menu = menuOn(MenuState.Screen.PLAYING);
+            InputController controller = new InputController(menu, new GameSettings());
+
+            // Simulate in-play events arriving in the same GLFW event batch right before focus loss / minimise.
+            processorOf(controller).keyDown(key);
+            click(controller, 640, 320, Input.Buttons.LEFT);
+            controller.pause();
+            assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
+
+            // Also click test directly at the RESUME row coordinates before pause on a second pass.
+            MenuState menuClick = menuOn(MenuState.Screen.PLAYING);
+            InputController clickController = new InputController(menuClick, new GameSettings());
+            MenuState probePaused = menuOn(MenuState.Screen.PAUSED);
+            click(clickController, 640, rowY(probePaused, "RESUME"), Input.Buttons.LEFT);
+            clickController.pause();
+
+            assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME),
+                "in-play key " + Input.Keys.toString(key) + " before pause must not act on PAUSED");
+            assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
+            assertEquals(0, menu.getSelectedIndex());
+            assertFalse(menu.isQuitPromptVisible());
+
+            assertEquals(MenuState.Command.NONE, pollMinimised(clickController, FRAME),
+                "in-play LMB click before pause must not click RESUME");
+            assertEquals(MenuState.Screen.PAUSED, menuClick.getScreen());
+        }
+    }
+
+    @Test
+    void horizontalKeysOnNonSettingsMenusDoNotSwallowSameFrameConfirmOrMouseClick() {
+        List<MenuState.Screen> nonSettingsMenus = List.of(
+            MenuState.Screen.TITLE,
+            MenuState.Screen.STAGE_SELECT,
+            MenuState.Screen.DIFFICULTY_SELECT,
+            MenuState.Screen.BRIEFING,
+            MenuState.Screen.PAUSED,
+            MenuState.Screen.DEAD,
+            MenuState.Screen.INTERMISSION);
+        int[] horizontalKeys = {Input.Keys.LEFT, Input.Keys.A, Input.Keys.RIGHT, Input.Keys.D};
+
+        for (MenuState.Screen screen : nonSettingsMenus) {
+            for (int hKey : horizontalKeys) {
+                String context = screen + " + " + Input.Keys.toString(hKey);
+                MenuState.Command expectedCmd = (screen == MenuState.Screen.BRIEFING || screen == MenuState.Screen.DEAD)
+                    ? MenuState.Command.LAUNCH_STAGE
+                    : MenuState.Command.NONE;
+
+                // Same-frame Enter confirm with horizontal key pressed.
+                MenuState enterMenu = menuOn(screen);
+                InputController enterCtrl = new InputController(enterMenu, new GameSettings());
+                assertEquals(expectedCmd, poll(enterCtrl, FRAME, hKey, Input.Keys.ENTER), context + " + ENTER");
+                assertNotEquals(screen, enterMenu.getScreen(), context + " + ENTER must confirm");
+
+                // Same-frame Space confirm with horizontal key pressed.
+                MenuState spaceMenu = menuOn(screen);
+                InputController spaceCtrl = new InputController(spaceMenu, new GameSettings());
+                assertEquals(expectedCmd, poll(spaceCtrl, FRAME, hKey, Input.Keys.SPACE), context + " + SPACE");
+                assertNotEquals(screen, spaceMenu.getScreen(), context + " + SPACE must confirm");
+
+                // Same-frame left mouse click on default option row with horizontal key pressed.
+                MenuState clickMenu = menuOn(screen);
+                InputController clickCtrl = new InputController(clickMenu, new GameSettings());
+                String defaultOption = clickMenu.getOptions().get(clickMenu.getSelectedIndex());
+                click(clickCtrl, 640, rowY(clickMenu, defaultOption), Input.Buttons.LEFT);
+                assertEquals(expectedCmd, poll(clickCtrl, FRAME, hKey), context + " + click");
+                assertNotEquals(screen, clickMenu.getScreen(), context + " + click must confirm");
+            }
+        }
+    }
+
+    @Test
+    void opposingVerticalMenuKeysCancelOutWithoutMovingSelectionOrQueueingMoveSounds() {
+        for (MenuState.Screen screen : List.of(
+            MenuState.Screen.TITLE, MenuState.Screen.PAUSED, MenuState.Screen.SETTINGS)) {
+            GameSettings settings = new GameSettings();
+            MenuState menu = screen == MenuState.Screen.SETTINGS ? settingsMenuOnFov(settings) : menuOn(screen);
+            InputController controller = new InputController(menu, settings);
+            menu.setSelectedIndex(1);
+            menu.drainSoundEvents();
+
+            int[][] opposingPairs = {
+                {Input.Keys.W, Input.Keys.S},
+                {Input.Keys.UP, Input.Keys.DOWN},
+                {Input.Keys.W, Input.Keys.DOWN},
+                {Input.Keys.UP, Input.Keys.S},
+                {Input.Keys.UP, Input.Keys.W, Input.Keys.DOWN, Input.Keys.S}
+            };
+            for (int[] keys : opposingPairs) {
+                assertEquals(MenuState.Command.NONE, poll(controller, FRAME, keys), screen.name());
+                assertEquals(1, menu.getSelectedIndex(), "opposing vertical keys cancel on " + screen);
+                assertTrue(menu.drainSoundEvents().isEmpty(),
+                    "opposing vertical keys must emit no MENU_MOVE sound on " + screen);
+            }
+
+            // Redundant same-direction keys (UP + W or DOWN + S) step once and emit exactly one MENU_MOVE sound.
+            assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.UP, Input.Keys.W));
+            assertEquals(0, menu.getSelectedIndex());
+            List<SoundEvent> upEvents = menu.drainSoundEvents();
+            assertEquals(1, upEvents.size());
+            assertEquals(SoundEvent.Type.MENU_MOVE, upEvents.get(0).type);
+
+            assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.DOWN, Input.Keys.S));
+            assertEquals(1, menu.getSelectedIndex());
+            List<SoundEvent> downEvents = menu.drainSoundEvents();
+            assertEquals(1, downEvents.size());
+            assertEquals(SoundEvent.Type.MENU_MOVE, downEvents.get(0).type);
+        }
+    }
+
+    @Test
+    void opposingHorizontalSettingsKeysCancelOutWithoutSteppingSlidersFlippingTogglesOrSwallowingConfirm() {
+        GameSettings settings = new GameSettings();
+        MenuState menu = settingsMenuOnFov(settings);
+        InputController controller = new InputController(menu, settings);
+        menu.drainSoundEvents();
+
+        int[][] opposingHorizontal = {
+            {Input.Keys.A, Input.Keys.D},
+            {Input.Keys.LEFT, Input.Keys.RIGHT},
+            {Input.Keys.A, Input.Keys.RIGHT},
+            {Input.Keys.LEFT, Input.Keys.D}
+        };
+        for (int[] keys : opposingHorizontal) {
+            assertEquals(MenuState.Command.NONE, poll(controller, FRAME, keys));
+            assertEquals(GameSettings.DEFAULT_FOV, settings.getFov(), 1e-6f,
+                "opposing horizontal keys must not step FOV");
+            assertTrue(menu.drainSoundEvents().isEmpty(),
+                "opposing horizontal keys must emit no sound");
+        }
+
+        // Boolean toggle rows (such as FULLSCREEN at index 5) must neither flip nor emit APPLY_DISPLAY.
+        int fullscreenRow = 5;
+        assertTrue(menu.getOptions().get(fullscreenRow).startsWith("FULLSCREEN"));
+        menu.setSelectedIndex(fullscreenRow);
+        menu.drainSoundEvents();
+        boolean initialFullscreen = settings.isFullscreen();
+        for (int[] keys : opposingHorizontal) {
+            assertEquals(MenuState.Command.NONE, poll(controller, FRAME, keys));
+            assertEquals(initialFullscreen, settings.isFullscreen(),
+                "opposing horizontal keys must not flip FULLSCREEN");
+            assertTrue(menu.drainSoundEvents().isEmpty());
+        }
+
+        // Cancelled A + D falls through cleanly to same-frame Enter confirm or mouse click on BACK.
+        menu.setSelectedIndex(menu.getOptions().indexOf("BACK"));
+        menu.drainSoundEvents();
+        assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.A, Input.Keys.D, Input.Keys.ENTER));
+        assertEquals(MenuState.Screen.PAUSED, menu.getScreen(),
+            "cancelled A+D on Settings must fall through to same-frame Enter");
+
+        MenuState clickSettings = settingsMenuOnFov(settings);
+        InputController clickCtrl = new InputController(clickSettings, settings);
+        click(clickCtrl, 640, rowY(clickSettings, "BACK"), Input.Buttons.LEFT);
+        assertEquals(MenuState.Command.NONE, poll(clickCtrl, FRAME, Input.Keys.LEFT, Input.Keys.RIGHT));
+        assertEquals(MenuState.Screen.PAUSED, clickSettings.getScreen(),
+            "cancelled Left+Right on Settings must fall through to same-frame mouse click");
+    }
+
+    @Test
+    void scrollCallbacksAccumulateNetVerticalDeltaPerFrameAndCancelOpposingScrolls() {
+        MenuState menu = menuOn(MenuState.Screen.PLAYING);
+        InputController controller = new InputController(menu, new GameSettings());
+
+        // Single positive and negative scroll detents map to NEXT and PREV once, then reset.
+        assertTrue(processorOf(controller).scrolled(0f, 1f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_CYCLE_NEXT, out.weaponSlot);
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot);
+
+        assertTrue(processorOf(controller).scrolled(0f, -1f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_CYCLE_PREV, out.weaponSlot);
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot);
+
+        // Opposing callbacks in the same frame (+1 then -1, -1 then +1, and fractional sums) cancel to WEAPON_NONE.
+        assertTrue(processorOf(controller).scrolled(0f, 1f));
+        assertTrue(processorOf(controller).scrolled(0f, -1f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot, "+1f followed by -1f must cancel");
+
+        assertTrue(processorOf(controller).scrolled(0f, -1f));
+        assertTrue(processorOf(controller).scrolled(0f, 1f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot, "-1f followed by +1f must cancel");
+
+        assertTrue(processorOf(controller).scrolled(0f, 0.1f));
+        assertTrue(processorOf(controller).scrolled(0f, 0.2f));
+        assertTrue(processorOf(controller).scrolled(0f, -0.3f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot, "opposing fractional scroll callbacks must cancel");
+
+        // Net sign across multiple callbacks wins rather than the last callback's direction.
+        assertTrue(processorOf(controller).scrolled(0f, 1f));
+        assertTrue(processorOf(controller).scrolled(0f, 1f));
+        assertTrue(processorOf(controller).scrolled(0f, -1f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_CYCLE_NEXT, out.weaponSlot, "+1, +1, -1 has net +1 -> NEXT");
+
+        assertTrue(processorOf(controller).scrolled(0f, -1f));
+        assertTrue(processorOf(controller).scrolled(0f, -1f));
+        assertTrue(processorOf(controller).scrolled(0f, 1f));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_CYCLE_PREV, out.weaponSlot, "-1, -1, +1 has net -1 -> PREV");
+
+        // Zero, horizontal-only, and non-finite scroll values are ignored without corrupting accumulated scroll.
+        assertFalse(processorOf(controller).scrolled(2f, 0f));
+        assertFalse(processorOf(controller).scrolled(0f, -0f));
+        assertFalse(processorOf(controller).scrolled(0f, Float.NaN));
+        assertFalse(processorOf(controller).scrolled(0f, Float.POSITIVE_INFINITY));
+        assertFalse(processorOf(controller).scrolled(0f, Float.NEGATIVE_INFINITY));
+        assertTrue(processorOf(controller).scrolled(0f, 0.5f));
+        assertFalse(processorOf(controller).scrolled(0f, Float.NaN));
+        assertFalse(processorOf(controller).scrolled(0f, Float.NEGATIVE_INFINITY));
+        poll(controller, FRAME);
+        assertEquals(PlayerInput.WEAPON_CYCLE_NEXT, out.weaponSlot);
+    }
+
+    @Test
+    void accumulatedScrollResetsOnWindowPauseEscapeMenuAndDirectWeaponKeys() {
+        // Uncaptured scroll on menus returns false and does not leak on resume.
+        MenuState paused = menuOn(MenuState.Screen.PAUSED);
+        InputController pausedCtrl = new InputController(paused, new GameSettings());
+        assertFalse(processorOf(pausedCtrl).scrolled(0f, 1f));
+        poll(pausedCtrl, FRAME, Input.Keys.ESCAPE);
+        assertTrue(paused.isPlaying());
+        poll(pausedCtrl, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot);
+
+        // Scroll accumulated in play before window pause() is cleared.
+        MenuState playing = menuOn(MenuState.Screen.PLAYING);
+        InputController ctrl = new InputController(playing, new GameSettings());
+        assertTrue(processorOf(ctrl).scrolled(0f, 1f));
+        ctrl.pause();
+        assertEquals(MenuState.Screen.PAUSED, playing.getScreen());
+        poll(ctrl, FRAME, Input.Keys.ESCAPE);
+        assertTrue(playing.isPlaying());
+        poll(ctrl, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot, "scroll before pause() must be discarded");
+
+        // Scroll accumulated in the same frame as pressing Escape to pause is cleared on capture release.
+        assertTrue(processorOf(ctrl).scrolled(0f, -1f));
+        poll(ctrl, FRAME, Input.Keys.ESCAPE);
+        assertEquals(MenuState.Screen.PAUSED, playing.getScreen());
+        poll(ctrl, FRAME, Input.Keys.ESCAPE);
+        assertTrue(playing.isPlaying());
+        poll(ctrl, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot, "scroll on Escape pause frame must be discarded");
+
+        // Direct weapon key (NUM_2) takes priority and still clears pendingScrollY for subsequent frames.
+        assertTrue(processorOf(ctrl).scrolled(0f, 1f));
+        poll(ctrl, FRAME, Input.Keys.NUM_2);
+        assertEquals(2, out.weaponSlot);
+        poll(ctrl, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot, "scroll superseded by NUM_2 must not fire next frame");
+
+        // Direct resetCaptureForStageLaunch() clears pendingScrollY even while already captured.
+        assertTrue(processorOf(ctrl).scrolled(0f, -1f));
+        ctrl.resetCaptureForStageLaunch();
+        poll(ctrl, FRAME);
+        assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot);
     }
 }

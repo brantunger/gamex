@@ -157,6 +157,35 @@ class LevelsTest {
     }
 
     @Test
+    void commandVaultBriefingLeadsTowardWardenCoreWithoutPrematureFinalLabels() {
+        List<Levels.Stage> campaign = Levels.campaign();
+        assertEquals("05_command_vault", campaign.get(4).id);
+        assertEquals("06_warden_core", campaign.get(5).id);
+
+        for (int i = 0; i < campaign.size() - 1; i++) {
+            Levels.Stage stage = campaign.get(i);
+            for (String line : stage.briefing) {
+                assertFalse(line.contains("FINAL OBJECTIVE"), stage.id + " prematurely claims FINAL OBJECTIVE: " + line);
+                assertFalse(line.contains("FINAL EXTRACTION"),
+                    stage.id + " prematurely claims FINAL EXTRACTION: " + line);
+            }
+        }
+
+        Levels.Stage vault = Levels.commandVault();
+        assertEquals(3, vault.briefing.size());
+        assertTrue(vault.briefing.get(0).contains("COMMAND VAULT"), vault.briefing.get(0));
+        assertTrue(vault.briefing.get(2).contains("WARDEN CORE"), vault.briefing.get(2));
+
+        String allowedChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-:.,%+!?()<>[]'*~";
+        for (String line : vault.briefing) {
+            for (int i = 0; i < line.length(); i++) {
+                char c = line.charAt(i);
+                assertTrue(allowedChars.indexOf(c) >= 0, "unsupported PixelFont character '" + c + "' in: " + line);
+            }
+        }
+    }
+
+    @Test
     void parsesBomCommentsCrlfAndColonsInStageHeaders() {
         String stageText = "\uFEFF"
             + "// Stage header comment\r\n"

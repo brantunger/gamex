@@ -3,6 +3,7 @@ package io.github.brantunger.gamex;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
+import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.audio.SoundManager;
 import io.github.brantunger.gamex.debug.DemoRun;
 import io.github.brantunger.gamex.hud.HudRenderer;
@@ -34,10 +35,12 @@ public class MainGame extends ApplicationAdapter {
     private static final float DEATH_MENU_DELAY = 0.45f;
     private static final int DEFAULT_WINDOW_WIDTH = 1280;
     private static final int DEFAULT_WINDOW_HEIGHT = 720;
+    static final int MIN_WINDOW_WIDTH = 160;
+    static final int MIN_WINDOW_HEIGHT = 120;
 
     private final PlayerInput input = new PlayerInput();
-    private KeyValueStore settingsStore;
-    private GameSettings settings;
+    KeyValueStore settingsStore;
+    GameSettings settings;
     private SaveData saveData;
     private MenuState menuState;
     private GameSimulation simulation;
@@ -45,10 +48,10 @@ public class MainGame extends ApplicationAdapter {
     private WorldRenderer worldRenderer;
     private ViewmodelRenderer viewmodelRenderer;
     private HudRenderer hudRenderer;
-    private SoundManager soundManager;
+    SoundManager soundManager;
     private InputController controller;
     /** The unattended screenshot run, or null in a normal game. */
-    private DemoRun demoRun;
+    DemoRun demoRun;
     private float backdropTime;
     private float deathTimer;
     private float smoothedDt = 1f / 60f;
@@ -56,6 +59,7 @@ public class MainGame extends ApplicationAdapter {
     private int windowedHeight;
     private int lastResizeWidth;
     private int lastResizeHeight;
+    private boolean simulationPlayed;
     /** Whether the launcher forced a windowed start, which the saved fullscreen setting must not undo. */
     private final boolean forceWindowed;
 
@@ -80,8 +84,8 @@ public class MainGame extends ApplicationAdapter {
      *     that startup does not switch to fullscreen for a saved fullscreen setting; the setting itself is kept
      */
     public MainGame(int initialWindowWidth, int initialWindowHeight, boolean forceWindowed) {
-        this.windowedWidth = Math.max(160, initialWindowWidth);
-        this.windowedHeight = Math.max(120, initialWindowHeight);
+        this.windowedWidth = Math.max(MIN_WINDOW_WIDTH, initialWindowWidth);
+        this.windowedHeight = Math.max(MIN_WINDOW_HEIGHT, initialWindowHeight);
         this.forceWindowed = forceWindowed;
     }
 
@@ -160,6 +164,7 @@ public class MainGame extends ApplicationAdapter {
             Levels.Stage initialStage = menuState.getActiveStage();
             simulation = new GameSimulation(initialStage.map, menuState.getActiveLoadout(),
                 initialStage.completeOnAllTargets);
+            simulationPlayed = false;
             log.info("Loaded settings: sensitivity {}, invert Y {}, field of view {}, view bob {}, volume {},"
                 + " fullscreen {}", settings.getMouseSensitivity(), settings.isInvertY(), settings.getFov(),
                 settings.isViewBob(), settings.getMasterVolume(), settings.isFullscreen());
@@ -184,8 +189,8 @@ public class MainGame extends ApplicationAdapter {
         if (width <= 0 || height <= 0) return;
         if (width != lastResizeWidth || height != lastResizeHeight) log.debug("Resized to {}x{}", width, height);
         if (Gdx.graphics != null && !Gdx.graphics.isFullscreen()) {
-            windowedWidth = width;
-            windowedHeight = height;
+            windowedWidth = Math.max(MIN_WINDOW_WIDTH, width);
+            windowedHeight = Math.max(MIN_WINDOW_HEIGHT, height);
         }
         applyBackBufferViewport();
         lastResizeWidth = width;
@@ -239,12 +244,13 @@ public class MainGame extends ApplicationAdapter {
         MenuState.Screen beforeScreen = menuState.getScreen();
         MenuState.Command command = controller.poll(input);
         if (beforeScreen == MenuState.Screen.SETTINGS && menuState.getScreen() != MenuState.Screen.SETTINGS) {
-            settings.save(settingsStore);
+            saveSettingsQuietly(settings, settingsStore);
         }
         executeCommand(command);
 
         MenuState.Screen screen = menuState.getScreen();
         if (screen == MenuState.Screen.PLAYING) {
+            simulationPlayed = true;
             simulation.update(stepDt, input);
             if (simulation.isLevelCleared()) {
                 menuState.onStageCleared(simulation.captureCarryOverLoadout(), runStatsOf(simulation));
@@ -260,16 +266,18 @@ public class MainGame extends ApplicationAdapter {
             simulation.pause();
         } else if (screen == MenuState.Screen.DEAD) {
             // Keep settling the lowered camera and lingering blast effects behind the death overlay.
+            simulationPlayed = true;
             input.clear();
             simulation.update(stepDt, input);
         }
         soundManager.update(simulation, menuState, settings);
 
         if (showsBackdrop(menuState)) {
-            if (simulation.map != menuState.getActiveStage().map) {
-                Levels.Stage stage = menuState.getActiveStage();
-                log.debug("Backdrop shows stage {}", stage.id);
-                simulation = new GameSimulation(stage.map, menuState.getActiveLoadout(), stage.completeOnAllTargets);
+            GameSimulation next = backdropSimulation(simulation, menuState, simulationPlayed);
+            if (next != simulation) {
+                log.debug("Backdrop shows stage {}", menuState.getActiveStage().id);
+                simulation = next;
+                simulationPlayed = false;
             }
             worldRenderer.renderBackdrop(simulation, settings, backdropTime);
         } else {
@@ -312,6 +320,31 @@ public class MainGame extends ApplicationAdapter {
         }
     }
 
+    /**
+     * Returns {@code current} when it is already an unplayed preview of {@code menuState}'s active stage, or a fresh
+     * {@link GameSimulation} for that stage when the map changed or {@code current} was stepped or mutated in play.
+     */
+    static GameSimulation backdropSimulation(GameSimulation current, MenuState menuState, boolean simulationPlayed) {
+        Levels.Stage stage = menuState.getActiveStage();
+        if (current == null || current.map != stage.map || simulationPlayed || isSimulationMutated(current)) {
+            return new GameSimulation(stage.map);
+        }
+        return current;
+    }
+
+    private static boolean isSimulationMutated(GameSimulation sim) {
+        return sim.getTime() > 0f
+            || sim.isLevelCleared()
+            || sim.player.isDead()
+            || sim.getShotsFired() > 0
+            || sim.getDamageTaken() > 0f
+            || sim.getPickupsCollected() > 0
+            || !sim.projectiles.isEmpty()
+            || !sim.enemyProjectiles.isEmpty()
+            || !sim.railBeams.isEmpty()
+            || !sim.effects.isEmpty();
+    }
+
     private void executeCommand(MenuState.Command command) {
         switch (command) {
             case LAUNCH_STAGE: {
@@ -320,18 +353,19 @@ public class MainGame extends ApplicationAdapter {
                 log.info("Level started: {} ({}) on {}, health {}, armor {}, weapon {}", stage.id, stage.title,
                     loadout.difficulty, loadout.health, loadout.armor, loadout.activeWeapon);
                 simulation = new GameSimulation(stage.map, loadout, stage.completeOnAllTargets);
+                simulationPlayed = true;
                 worldRenderer.setMap(simulation.map);
                 deathTimer = 0f;
-                controller.syncCursorCapture();
+                controller.resetCaptureForStageLaunch();
                 break;
             }
             case APPLY_DISPLAY:
-                settings.save(settingsStore);
+                saveSettingsQuietly(settings, settingsStore);
                 applyDisplayMode(settings.isFullscreen());
                 break;
             case QUIT:
                 log.info("Quit chosen from the menu");
-                settings.save(settingsStore);
+                saveSettingsQuietly(settings, settingsStore);
                 Gdx.app.exit();
                 break;
             case NONE:
@@ -376,8 +410,12 @@ public class MainGame extends ApplicationAdapter {
      */
     void applyStartupDisplayMode(GameSettings loaded) {
         if (!Gdx.graphics.isFullscreen()) {
-            windowedWidth = Math.max(160, Gdx.graphics.getWidth());
-            windowedHeight = Math.max(120, Gdx.graphics.getHeight());
+            int currentWidth = Gdx.graphics.getWidth();
+            int currentHeight = Gdx.graphics.getHeight();
+            if (currentWidth > 0 && currentHeight > 0) {
+                windowedWidth = Math.max(MIN_WINDOW_WIDTH, currentWidth);
+                windowedHeight = Math.max(MIN_WINDOW_HEIGHT, currentHeight);
+            }
         }
         if (forceWindowed) return;
         if (loaded.isFullscreen() != Gdx.graphics.isFullscreen()) {
@@ -408,14 +446,41 @@ public class MainGame extends ApplicationAdapter {
     @Override
     public void dispose() {
         log.info("Shutting down");
-        if (settings != null && settingsStore != null && demoRun == null) {
-            settings.save(settingsStore);
-        }
         // create() may have failed part-way, so any of these can still be null.
-        if (soundManager != null) soundManager.dispose();
-        if (worldRenderer != null) worldRenderer.dispose();
-        if (viewmodelRenderer != null) viewmodelRenderer.dispose();
-        if (hudRenderer != null) hudRenderer.dispose();
-        if (textures != null) textures.dispose();
+        disposeResources(settings, settingsStore, demoRun != null,
+            soundManager, worldRenderer, viewmodelRenderer, hudRenderer, textures);
+    }
+
+    static void disposeResources(GameSettings settings, KeyValueStore settingsStore, boolean skipSettingsSave,
+                                 Disposable... resources) {
+        if (!skipSettingsSave) {
+            saveSettingsQuietly(settings, settingsStore);
+        }
+        if (resources == null) return;
+        for (Disposable resource : resources) {
+            disposeQuietly(resource);
+        }
+    }
+
+    static void saveSettingsQuietly(GameSettings settings, KeyValueStore settingsStore) {
+        if (settings == null || settingsStore == null) return;
+        try {
+            settings.save(settingsStore);
+        } catch (RuntimeException e) {
+            logError("Failed to save settings", e);
+        }
+    }
+
+    static void disposeQuietly(Disposable resource) {
+        if (resource == null) return;
+        try {
+            resource.dispose();
+        } catch (RuntimeException e) {
+            logError("Failed to dispose resource", e);
+        }
+    }
+
+    private static void logError(String context, RuntimeException error) {
+        log.error("{}: {}", context, error.getMessage(), error);
     }
 }

@@ -592,4 +592,78 @@ class MenuStateFlowTest {
         assertEquals(MenuState.Command.NONE, choose(menu, "BACK"));
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
     }
+
+    @Test
+    void returningToTitleAlwaysRestoresOuterBreachBackdropAndClearsTrainingRangeFlag() {
+        MapKeyValueStore store = storeWithOldRun();
+        new SaveData(store).unlockStage(Levels.campaign().size() - 1);
+        MenuState menu = titleMenu(store);
+        String outerBreachId = Levels.campaign().get(0).id;
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+        assertFalse(menu.isInTrainingRange());
+
+        // Training Range briefing -> Esc and RETURN TO TITLE both restore Stage 01 and clear inTrainingRange.
+        choose(menu, "TRAINING RANGE");
+        assertEquals(Levels.trainingRange().id, menu.getActiveStage().id);
+        assertTrue(menu.isInTrainingRange());
+        menu.escape();
+        assertEquals(MenuState.Screen.TITLE, menu.getScreen());
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+        assertFalse(menu.isInTrainingRange());
+
+        choose(menu, "TRAINING RANGE");
+        choose(menu, "RETURN TO TITLE");
+        assertEquals(MenuState.Screen.TITLE, menu.getScreen());
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+        assertFalse(menu.isInTrainingRange());
+
+        // Settings opened from Title after Training Range keeps Outer Breach backdrop.
+        choose(menu, "SETTINGS");
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+        menu.escape();
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+
+        // Stage 03 briefing -> Esc restores Outer Breach without touching the saved OLD_RUN.
+        choose(menu, "SELECT STAGE");
+        menu.setSelectedIndex(2);
+        menu.confirm();
+        choose(menu, "NORMAL");
+        assertEquals("03_security_hub", menu.getActiveStage().id);
+        menu.escape();
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+
+        // CONTINUE CAMPAIGN still loads OLD_RUN from SaveData rather than Title's activeStage (01_outer_breach).
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
+        assertEquals(Levels.campaign().get(OLD_RUN_STAGE).id, menu.getActiveStage().id);
+        assertLoadout(OLD_RUN, menu.getActiveLoadout(), "CONTINUE after Title backdrop reset");
+
+        menu.onPlayerDied();
+        menu.escape();
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+
+        // Deploying Stage 03 saves Stage 03, PAUSED -> RETURN TO TITLE resets backdrop to Outer Breach, and CONTINUE
+        // resumes Stage 03 rather than Outer Breach.
+        choose(menu, "SELECT STAGE");
+        menu.setSelectedIndex(2);
+        menu.confirm();
+        choose(menu, "NORMAL");
+        choose(menu, "DEPLOY");
+        menu.escape();
+        choose(menu, "RETURN TO TITLE");
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+        assertEquals(MenuState.Command.LAUNCH_STAGE, choose(menu, "CONTINUE"));
+        assertEquals("03_security_hub", menu.getActiveStage().id);
+        assertLoadout(PlayerLoadout.forStage(2, Difficulty.NORMAL), menu.getActiveLoadout(),
+            "CONTINUE resumes deployed Stage 03");
+        menu.escape();
+        choose(menu, "RETURN TO TITLE");
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+
+        choose(menu, "TRAINING RANGE");
+        choose(menu, "DEPLOY");
+        menu.onStageCleared(PlayerLoadout.fresh(), 25f, 11, 11, 0f);
+        choose(menu, "RETURN TO TITLE");
+        assertEquals(outerBreachId, menu.getActiveStage().id);
+        assertFalse(menu.isInTrainingRange());
+    }
 }

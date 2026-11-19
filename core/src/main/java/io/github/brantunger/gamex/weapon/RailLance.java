@@ -40,6 +40,7 @@ public final class RailLance {
     private float zoom;
     private boolean suppressZoomUntilRelease;
     private boolean zoomEngaged;
+    private boolean lastZoomHeld;
     private boolean zoomInTriggered;
     private boolean zoomOutTriggered;
 
@@ -52,6 +53,21 @@ public final class RailLance {
         sinceShot += dt;
         zoom = Math.max(0f, zoom - ZOOM_SPEED * 2f * dt);
         zoomEngaged = false;
+        lastZoomHeld = false;
+    }
+
+    /**
+     * Advances capacitor recharge and settles optic zoom while tracking RMB state (such as during a weapon swap)
+     * so releasing RMB clears zoom suppression and holding a fresh RMB press during draw zooms on completion.
+     * @param dt time step in seconds
+     * @param zoomHeld whether tactical optic zoom (RMB) is held
+     */
+    public void updateIdle(float dt, boolean zoomHeld) {
+        updateIdle(dt);
+        lastZoomHeld = zoomHeld;
+        if (!zoomHeld) {
+            suppressZoomUntilRelease = false;
+        }
     }
 
     /**
@@ -63,14 +79,28 @@ public final class RailLance {
      * @return {@code true} if a rail beam fired on this step
      */
     public boolean update(float dt, boolean fireTrigger, boolean zoomHeld, int availableSlugs) {
+        return update(dt, fireTrigger, zoomHeld, false, availableSlugs);
+    }
+
+    /**
+     * Advances capacitor cooldown, optic zoom interpolation, and firing state for one frame.
+     * @param dt time step in seconds
+     * @param fireTrigger whether primary fire (LMB) is held
+     * @param zoomHeld whether tactical optic zoom (RMB) is physically held
+     * @param zoomBlocked whether zoom engagement is temporarily blocked (such as during an active dash)
+     * @param availableSlugs slugs currently in the player's pool
+     * @return {@code true} if a rail beam fired on this step
+     */
+    public boolean update(float dt, boolean fireTrigger, boolean zoomHeld, boolean zoomBlocked, int availableSlugs) {
         boolean wasReady = cooldown <= 0f;
         cooldown -= dt;
         sinceShot += dt;
+        lastZoomHeld = zoomHeld;
 
         if (!zoomHeld) {
             suppressZoomUntilRelease = false;
         }
-        boolean zooming = zoomHeld && !suppressZoomUntilRelease;
+        boolean zooming = zoomHeld && !zoomBlocked && !suppressZoomUntilRelease;
         if (zooming && !zoomEngaged) {
             zoomEngaged = true;
             zoomInTriggered = true;
@@ -97,19 +127,30 @@ public final class RailLance {
     }
 
     /**
-     * Immediately drops optic zoom and prevents re-zooming until RMB is released and pressed again.
+     * Immediately drops optic zoom and prevents re-zooming if zoom or RMB was active until RMB is released.
      */
     public void cancelZoom() {
+        if (zoom > 0f || zoomEngaged || lastZoomHeld) {
+            suppressZoomUntilRelease = true;
+        }
         zoom = 0f;
         zoomEngaged = false;
         zoomInTriggered = false;
         zoomOutTriggered = false;
-        suppressZoomUntilRelease = true;
     }
 
     /** @return whether the Rail Lance capacitor is fully charged and ready to fire. */
     public boolean isReady() {
         return cooldown <= 0f;
+    }
+
+    /**
+     * @param dt upcoming frame duration in seconds
+     * @return whether the capacitor will be fully charged once {@code dt} elapses
+     */
+    public boolean isReadyAfter(float dt) {
+        float step = Float.isFinite(dt) && dt > 0f ? dt : 0f;
+        return cooldown - step <= 0f;
     }
 
     /** @return whether the muzzle flash decal should currently be drawn. */

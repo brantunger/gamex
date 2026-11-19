@@ -60,18 +60,26 @@ public final class MeshBuilder {
 
     /**
      * Declares (or switches to) an articulated hierarchical part with rest pivot {@code (px, py, pz)}.
-     * @param name unique part name
+     * @param name unique non-root part name
      * @param parent parent part name, or {@code "root"}
      */
     public MeshBuilder part(String name, String parent, float px, float py, float pz) {
-        parts.put(name, new PartDecl(name, parent == null || parent.isEmpty() ? "root" : parent, px, py, pz));
-        currentPart = name;
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Part name must not be blank");
+        }
+        String trimmedName = name.trim();
+        if ("root".equals(trimmedName)) {
+            throw new IllegalArgumentException("Cannot redefine 'root' part; call usePart(\"root\") instead");
+        }
+        parts.put(trimmedName,
+            new PartDecl(trimmedName, parent == null || parent.trim().isEmpty() ? "root" : parent.trim(), px, py, pz));
+        currentPart = trimmedName;
         return this;
     }
 
-    /** Selects an already-declared part for subsequent geometry. */
+    /** Selects an already-declared part (or {@code "root"}) for subsequent geometry. */
     public MeshBuilder usePart(String name) {
-        currentPart = (name == null || name.isEmpty()) ? "root" : name;
+        currentPart = (name == null || name.trim().isEmpty()) ? "root" : name.trim();
         return this;
     }
 
@@ -160,20 +168,82 @@ public final class MeshBuilder {
     }
 
     /**
-     * Builds an arbitrary-center vertical frustum/cylinder between {@code y0} and {@code y1}.
+     * Builds an arbitrary-center vertical frustum, cylinder, or cone between {@code y0} and {@code y1}, placing
+     * radius {@code r0} at {@code y0} and radius {@code r1} at {@code y1}.
      */
     public MeshBuilder frustumY(String group, String material, float cx, float cz, float y0, float y1,
                                 float r0, float r1, int sides, boolean smoothSides) {
-        float lo = Math.min(y0, y1);
-        float hi = Math.max(y0, y1);
+        if (!Float.isFinite(cx) || !Float.isFinite(cz) || !Float.isFinite(y0) || !Float.isFinite(y1)) {
+            throw new IllegalArgumentException("Frustum coordinates must be finite");
+        }
+        if (y0 == y1) {
+            throw new IllegalArgumentException("Frustum must have non-zero height");
+        }
+        if (!Float.isFinite(r0) || !Float.isFinite(r1) || r0 < 0f || r1 < 0f || (r0 == 0f && r1 == 0f)) {
+            throw new IllegalArgumentException(
+                "Frustum radii must be finite, non-negative, and not both zero: r0=" + r0 + ", r1=" + r1);
+        }
+        if (sides < 3) {
+            throw new IllegalArgumentException("Frustum requires at least 3 sides: " + sides);
+        }
+        boolean swapped = y0 > y1;
+        float lo = swapped ? y1 : y0;
+        float hi = swapped ? y0 : y1;
+        float rLo = swapped ? r1 : r0;
+        float rHi = swapped ? r0 : r1;
+
+        if (rLo == 0f) {
+            Surface surface = beginSurface(group, material);
+            int apexIdx = surface.addVertex(new double[] {cx, lo, cz});
+            int[] hiIdx = new int[sides];
+            for (int i = 0; i < sides; i++) {
+                double angle = i * 2.0 * Math.PI / sides;
+                hiIdx[i] = surface.addVertex(
+                    new double[] {cx + rHi * Math.cos(angle), hi, cz - rHi * Math.sin(angle)});
+            }
+            for (int i = 0; i < sides; i++) {
+                int next = (i + 1) % sides;
+                addTri(surface, smoothSides, apexIdx, hiIdx[next], hiIdx[i]);
+            }
+            if (smoothSides) {
+                surface.addFlatCapFan(hiIdx, false);
+            } else {
+                surface.addFlatFace(hiIdx);
+            }
+            return surface.finish();
+        }
+
+        if (rHi == 0f) {
+            Surface surface = beginSurface(group, material);
+            int[] loIdx = new int[sides];
+            for (int i = 0; i < sides; i++) {
+                double angle = i * 2.0 * Math.PI / sides;
+                loIdx[i] = surface.addVertex(
+                    new double[] {cx + rLo * Math.cos(angle), lo, cz - rLo * Math.sin(angle)});
+            }
+            int apexIdx = surface.addVertex(new double[] {cx, hi, cz});
+            for (int i = 0; i < sides; i++) {
+                int next = (i + 1) % sides;
+                addTri(surface, smoothSides, loIdx[i], loIdx[next], apexIdx);
+            }
+            if (smoothSides) {
+                surface.addFlatCapFan(loIdx, true);
+            } else {
+                int[] revLow = new int[sides];
+                for (int i = 0; i < sides; i++) revLow[i] = loIdx[sides - 1 - i];
+                surface.addFlatFace(revLow);
+            }
+            return surface.finish();
+        }
+
         double[][] low = new double[sides][3];
         double[][] high = new double[sides][3];
         for (int i = 0; i < sides; i++) {
             double angle = i * 2.0 * Math.PI / sides;
             double cos = Math.cos(angle);
             double sin = Math.sin(angle);
-            low[i] = new double[] {cx + r0 * cos, lo, cz - r0 * sin};
-            high[i] = new double[] {cx + r1 * cos, hi, cz - r1 * sin};
+            low[i] = new double[] {cx + rLo * cos, lo, cz - rLo * sin};
+            high[i] = new double[] {cx + rHi * cos, hi, cz - rHi * sin};
         }
         if (!smoothSides) {
             return loftFlat(group, material, low, high);
@@ -195,28 +265,42 @@ public final class MeshBuilder {
     }
 
     /**
-     * Builds a Z-aligned cylinder/frustum centered at {@code (cx, cy)} from {@code z0} to {@code z1}.
+     * Builds a Z-aligned cylinder, frustum, or cone centered at {@code (cx, cy)} from {@code z0} (radius {@code r0})
+     * to {@code z1} (radius {@code r1}).
      */
     public MeshBuilder cylinderZ(String group, String material, float cx, float cy, float r0, float r1,
                                  float z0, float z1, int sides, boolean smoothSides) {
+        if (!Float.isFinite(cx) || !Float.isFinite(cy)) {
+            throw new IllegalArgumentException("Cylinder center must be finite");
+        }
         pushTransform();
-        translate(cx, cy, 0f);
-        rotateX(90f);
-        frustumY(group, material, 0f, 0f, z0, z1, r0, r1, sides, smoothSides);
-        popTransform();
+        try {
+            translate(cx, cy, 0f);
+            rotateX(90f);
+            frustumY(group, material, 0f, 0f, z0, z1, r0, r1, sides, smoothSides);
+        } finally {
+            popTransform();
+        }
         return this;
     }
 
     /**
-     * Builds an X-aligned cylinder/frustum centered at {@code (cy, cz)} from {@code x0} to {@code x1}.
+     * Builds an X-aligned cylinder, frustum, or cone centered at {@code (cy, cz)} from {@code x0} (radius {@code r0})
+     * to {@code x1} (radius {@code r1}).
      */
     public MeshBuilder cylinderX(String group, String material, float cy, float cz, float r0, float r1,
                                  float x0, float x1, int sides, boolean smoothSides) {
+        if (!Float.isFinite(cy) || !Float.isFinite(cz)) {
+            throw new IllegalArgumentException("Cylinder center must be finite");
+        }
         pushTransform();
-        translate(0f, cy, cz);
-        rotateZ(-90f);
-        frustumY(group, material, 0f, 0f, x0, x1, r0, r1, sides, smoothSides);
-        popTransform();
+        try {
+            translate(0f, cy, cz);
+            rotateZ(-90f);
+            frustumY(group, material, 0f, 0f, x0, x1, r0, r1, sides, smoothSides);
+        } finally {
+            popTransform();
+        }
         return this;
     }
 
@@ -328,11 +412,18 @@ public final class MeshBuilder {
             sb.append("# @accent ").append(mat).append('\n');
         }
         Set<String> declaredParts = new LinkedHashSet<>();
+        declaredParts.add("root");
         for (Map.Entry<String, PartDecl> entry : parts.entrySet()) {
             PartDecl p = entry.getValue();
             sb.append(String.format(Locale.ROOT, "# @part %s parent=%s pivot=%.6f,%.6f,%.6f%n",
                 p.name, p.parent, zeroed(p.px, 6), zeroed(p.py, 6), zeroed(p.pz, 6)).replace("\r", ""));
             declaredParts.add(p.name);
+        }
+        for (GroupEntry entry : entries) {
+            if (!declaredParts.contains(entry.part)) {
+                sb.append("# @part ").append(entry.part).append(" parent=root pivot=0.000000,0.000000,0.000000\n");
+                declaredParts.add(entry.part);
+            }
         }
         for (SocketDecl s : sockets) {
             sb.append(String.format(Locale.ROOT, "# @socket %s part=%s pos=%.6f,%.6f,%.6f%n",
@@ -344,16 +435,11 @@ public final class MeshBuilder {
         for (double[] n : exportedNormals) {
             sb.append(String.format(Locale.ROOT, "vn %.5f %.5f %.5f%n", zeroed(n[0], 5), zeroed(n[1], 5), zeroed(n[2], 5)).replace("\r", ""));
         }
-        String emittedPart = "root";
+        String emittedPart = declaredParts.size() == 1 ? "root" : null;
         for (GroupEntry entry : entries) {
             if (!entry.part.equals(emittedPart)) {
                 emittedPart = entry.part;
-                if (!declaredParts.contains(emittedPart)) {
-                    sb.append("# @part ").append(emittedPart).append(" parent=root pivot=0,0,0\n");
-                    declaredParts.add(emittedPart);
-                } else {
-                    sb.append("# @part ").append(emittedPart).append('\n');
-                }
+                sb.append("# @part ").append(emittedPart).append('\n');
             }
             sb.append("g ").append(entry.group).append('\n');
             sb.append("usemtl ").append(entry.material).append('\n');

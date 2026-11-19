@@ -332,4 +332,288 @@ class HitscanTest {
         // A level ray above the top misses as before.
         assertEquals(RayHit.Kind.WALL, Hitscan.cast(MAP, drones, eye, new Vector3(1f, 0f, 0f), RANGE).kind);
     }
+
+    @Test
+    void doorIntersectRayHandlesAllSixFacesFlushBoundariesAndInteriorOrigins() {
+        Door spanZ = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 1);
+        float minX = spanZ.getX() - spanZ.getHalfExtentX();
+        float maxX = spanZ.getX() + spanZ.getHalfExtentX();
+        float minZ = spanZ.getZ() - spanZ.getHalfExtentZ();
+        float maxZ = spanZ.getZ() + spanZ.getHalfExtentZ();
+        float[] normal = new float[3];
+
+        // Exterior hits on west (-X) and east (+X) faces return outward normals opposing the ray.
+        assertEquals(0.5f, spanZ.intersectRay(minX - 0.5f, 0.5f, 1.5f, 1f, 0f, 0f, RANGE, normal), EPSILON);
+        assertVector(-1f, 0f, 0f, new Vector3(normal[0], normal[1], normal[2]));
+        assertEquals(0.5f, spanZ.intersectRay(maxX + 0.5f, 0.5f, 1.5f, -1f, 0f, 0f, RANGE, normal), EPSILON);
+        assertVector(1f, 0f, 0f, new Vector3(normal[0], normal[1], normal[2]));
+
+        // Flush on entering faces (tEnter == 0, tExit > 0) hits at distance 0 with outward face normal.
+        assertEquals(0f, spanZ.intersectRay(minX, 0.5f, 1.5f, 1f, 0f, 0f, RANGE, normal), EPSILON);
+        assertVector(-1f, 0f, 0f, new Vector3(normal[0], normal[1], normal[2]));
+        assertEquals(0f, spanZ.intersectRay(maxX, 0.5f, 1.5f, -1f, 0f, 0f, RANGE, normal), EPSILON);
+        assertVector(1f, 0f, 0f, new Vector3(normal[0], normal[1], normal[2]));
+        assertEquals(0f, spanZ.intersectRay(3.5f, 0.5f, minZ, 0f, 0f, 1f, RANGE, normal), EPSILON);
+        assertVector(0f, 0f, -1f, new Vector3(normal[0], normal[1], normal[2]));
+        assertEquals(0f, spanZ.intersectRay(3.5f, 0.5f, maxZ, 0f, 0f, -1f, RANGE, normal), EPSILON);
+        assertVector(0f, 0f, 1f, new Vector3(normal[0], normal[1], normal[2]));
+
+        // Flush on exiting faces pointing away from the slab (tExit == 0) misses cleanly.
+        assertEquals(Float.POSITIVE_INFINITY, spanZ.intersectRay(maxX, 0.5f, 1.5f, 1f, 0f, 0f, RANGE, normal));
+        assertEquals(Float.POSITIVE_INFINITY, spanZ.intersectRay(minX, 0.5f, 1.5f, -1f, 0f, 0f, RANGE, normal));
+        assertEquals(Float.POSITIVE_INFINITY, spanZ.intersectRay(3.5f, 0.5f, maxZ, 0f, 0f, 1f, RANGE, normal));
+        assertEquals(Float.POSITIVE_INFINITY, spanZ.intersectRay(3.5f, 0.5f, minZ, 0f, 0f, -1f, RANGE, normal));
+
+        // Retracting bulkhead past CLEAR_PROGRESS (0.80): bottom face and interior origins still block 3D rays.
+        spanZ.open();
+        spanZ.update(Door.OPEN_DURATION * 0.8f);
+        assertFalse(spanZ.isBlockingPassage());
+        float bottomY = spanZ.getBottomY();
+        assertTrue(bottomY > 0.78f && bottomY < 0.86f);
+
+        // Flush on bottom face pointing up enters slab; pointing down away misses.
+        assertEquals(0f, spanZ.intersectRay(3.5f, bottomY, 1.5f, 0f, 1f, 0f, RANGE, normal), EPSILON);
+        assertVector(0f, -1f, 0f, new Vector3(normal[0], normal[1], normal[2]));
+        assertEquals(Float.POSITIVE_INFINITY, spanZ.intersectRay(3.5f, bottomY, 1.5f, 0f, -1f, 0f, RANGE, normal));
+
+        // Jumping eye strictly inside the retracting slab stops Hitscan.cast and Hitscan.castPiercing at distance 0.
+        Vector3 insideEye = new Vector3(3.5f, (bottomY + GameMap.WALL_HEIGHT) * 0.5f, 1.5f);
+        Vector3 slanted = new Vector3(1f, -0.25f, 0.2f).nor();
+        Target behindDoor = new Target(Target.Kind.CANISTER, 5.0f, 1.5f);
+        List<Door> doors = Collections.singletonList(spanZ);
+        List<Target> targets = Collections.singletonList(behindDoor);
+
+        RayHit castHit = Hitscan.cast(MAP, targets, doors, insideEye, slanted, RANGE);
+        assertEquals(RayHit.Kind.DOOR, castHit.kind);
+        assertSame(spanZ, castHit.door);
+        assertEquals(0f, castHit.distance, EPSILON);
+        assertVector(insideEye.x, insideEye.y, insideEye.z, castHit.point);
+        assertVector(-slanted.x, -slanted.y, -slanted.z, castHit.normal);
+
+        Hitscan.PiercingResult pierced = Hitscan.castPiercing(MAP, targets, doors, insideEye,
+            new Vector3(1f, -0.1f, 0f).nor(), RANGE);
+        assertEquals(RayHit.Kind.DOOR, pierced.terminalHit.kind);
+        assertEquals(0f, pierced.stopDistance, EPSILON);
+        assertTrue(pierced.targetHits.isEmpty(), "retracted steel slab blocks rail beam from inside");
+
+        // Zero-length direction inside slab falls back to (0, 0, 1) unit normal.
+        assertEquals(0f, spanZ.intersectRay(insideEye.x, insideEye.y, insideEye.z, 0f, 0f, 0f, RANGE, normal),
+            EPSILON);
+        assertVector(0f, 0f, 1f, new Vector3(normal[0], normal[1], normal[2]));
+    }
+
+    @Test
+    void castGridStopsAtSolidOriginAndHandlesVerticalInfiniteRangeRaysWithoutNaN() {
+        Vector3 insidePillar = new Vector3(4.5f, 0.5f, 2.5f);
+        Vector3 diag = new Vector3(0.6f, 0f, -0.8f);
+        Target beyondPillar = new Target(Target.Kind.CANISTER, 5.5f, 1.5f);
+
+        RayHit wallHit = Hitscan.cast(MAP, Collections.singletonList(beyondPillar), insidePillar, diag, RANGE);
+        assertEquals(RayHit.Kind.WALL, wallHit.kind);
+        assertEquals(0f, wallHit.distance, EPSILON);
+        assertEquals('%', wallHit.wallType);
+        assertVector(4.5f, 0.5f, 2.5f, wallHit.point);
+        assertVector(-0.6f, 0f, 0.8f, wallHit.normal);
+
+        Hitscan.PiercingResult piercedFromWall = Hitscan.castPiercing(MAP, Collections.singletonList(beyondPillar),
+            Collections.emptyList(), insidePillar, new Vector3(1f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.WALL, piercedFromWall.terminalHit.kind);
+        assertEquals(0f, piercedFromWall.stopDistance, EPSILON);
+        assertTrue(piercedFromWall.targetHits.isEmpty());
+
+        // Vertical ray inside solid wall still hits WALL at distance 0 with a finite unit fallback normal.
+        RayHit verticalInWall = Hitscan.cast(MAP, NO_TARGETS, insidePillar, new Vector3(0f, -1f, 0f),
+            Float.POSITIVE_INFINITY);
+        assertEquals(RayHit.Kind.WALL, verticalInWall.kind);
+        assertEquals(0f, verticalInWall.distance, EPSILON);
+        assertEquals(1f, verticalInWall.normal.len(), EPSILON);
+
+        // Vertical and zero-XZ infinite-range rays in open cells never march out-of-bounds to Infinity or NaN.
+        RayHit downInf = Hitscan.cast(MAP, NO_TARGETS, ORIGIN, new Vector3(0f, -1f, 0f), Float.POSITIVE_INFINITY);
+        assertEquals(RayHit.Kind.FLOOR, downInf.kind);
+        assertEquals(0.5f, downInf.distance, EPSILON);
+        assertVector(2.5f, 0f, 2.5f, downInf.point);
+
+        RayHit upInf = Hitscan.cast(MAP, NO_TARGETS, ORIGIN, new Vector3(0f, 1f, 0f), Float.POSITIVE_INFINITY);
+        assertEquals(RayHit.Kind.CEILING, upInf.kind);
+        assertEquals(0.5f, upInf.distance, EPSILON);
+        assertVector(2.5f, 1f, 2.5f, upInf.point);
+
+        RayHit zeroDirInf = Hitscan.cast(MAP, NO_TARGETS, ORIGIN, new Vector3(0f, 0f, 0f), Float.POSITIVE_INFINITY);
+        assertEquals(RayHit.Kind.NONE, zeroDirInf.kind);
+        assertFalse(zeroDirInf.isHit());
+
+        RayHit belowFloorDownInf = Hitscan.cast(MAP, NO_TARGETS, new Vector3(2.5f, -0.2f, 2.5f),
+            new Vector3(0f, -1f, 0f), Float.POSITIVE_INFINITY);
+        assertEquals(RayHit.Kind.NONE, belowFloorDownInf.kind);
+        assertFalse(belowFloorDownInf.isHit());
+    }
+
+    @Test
+    void lineOfSightIsSymmetricOnAllCellFacesAndRejectsPointsSlightlyInsideSolidWalls() {
+        Door closedDoor = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 1);
+        List<Door> doors = Collections.singletonList(closedDoor);
+
+        // Outer corridor wall faces (west x=1, east x=6, north z=1, south z=4) looking into open floor.
+        assertSymmetricLos(MAP, doors, 1.0f, 1.5f, 2.5f, 1.5f, true);
+        assertSymmetricLos(MAP, doors, 6.0f, 3.5f, 2.5f, 3.5f, true);
+        assertSymmetricLos(MAP, doors, 2.5f, 1.0f, 2.5f, 2.5f, true);
+        assertSymmetricLos(MAP, doors, 2.5f, 4.0f, 2.5f, 2.5f, true);
+        assertSymmetricLos(MAP, Collections.emptyList(), 1.0f, 1.5f, 6.0f, 1.5f, true);
+        assertSymmetricLos(MAP, Collections.emptyList(), 2.5f, 1.0f, 2.5f, 4.0f, true);
+
+        // Rays sliding flush along north, south, west, and east corridor wall faces.
+        assertSymmetricLos(MAP, Collections.emptyList(), 1.5f, 1.0f, 5.5f, 1.0f, true);
+        assertSymmetricLos(MAP, Collections.emptyList(), 1.5f, 4.0f, 5.5f, 4.0f, true);
+        assertSymmetricLos(MAP, Collections.emptyList(), 1.0f, 1.5f, 1.0f, 3.5f, true);
+        assertSymmetricLos(MAP, Collections.emptyList(), 6.0f, 1.5f, 6.0f, 3.5f, true);
+
+        // Pillar [4..5, 2..3] faces: visible from adjacent open side, blocked looking through the pillar.
+        assertSymmetricLos(MAP, doors, 4.0f, 2.5f, 2.5f, 2.5f, true);
+        assertSymmetricLos(MAP, doors, 4.0f, 2.5f, 5.5f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 5.0f, 2.5f, 5.5f, 2.5f, true);
+        assertSymmetricLos(MAP, doors, 5.0f, 2.5f, 2.5f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 4.5f, 2.0f, 4.5f, 1.5f, true);
+        assertSymmetricLos(MAP, doors, 4.5f, 2.0f, 4.5f, 3.5f, false);
+        assertSymmetricLos(MAP, doors, 4.5f, 3.0f, 4.5f, 3.5f, true);
+        assertSymmetricLos(MAP, doors, 4.5f, 3.0f, 4.5f, 1.5f, false);
+
+        // Points strictly inside solid walls (even 1e-5f, 5e-5f, or 1e-4f deep) are blocked in BOTH directions.
+        assertSymmetricLos(MAP, doors, 2.5f, 2.5f, 4.00001f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 2.5f, 2.5f, 4.00005f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 2.5f, 2.5f, 4.0001f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 5.5f, 2.5f, 4.99995f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 2.5f, 1.5f, 2.5f, 0.99995f, false);
+        assertSymmetricLos(MAP, doors, 2.5f, 3.5f, 2.5f, 4.00005f, false);
+        assertSymmetricLos(MAP, doors, 2.5f, 2.5f, 6.00005f, 2.5f, false);
+
+        // Degenerate/coincident and sub-1e-6f segments still check solid walls and closed doors symmetrically.
+        assertSymmetricLos(MAP, doors, 2.5f, 2.5f, 2.5f, 2.5f, true);
+        assertSymmetricLos(MAP, doors, 4.5f, 2.5f, 4.5f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 4.00005f, 2.5f, 4.00005f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, Math.nextDown(4.0f), 2.5f, 4.0f, 2.5f, true);
+        assertTrue(Math.nextUp(4.0f) - Math.nextDown(4.0f) < 1e-6f);
+        assertSymmetricLos(MAP, doors, Math.nextDown(4.0f), 2.5f, Math.nextUp(4.0f), 2.5f, false);
+        assertSymmetricLos(MAP, doors, 3.5f, 1.5f, 3.5f, 1.5f, false);
+
+        // Exact 45-degree corner graze against pillar (4, 2) is symmetric in both directions.
+        boolean cornerForward = Hitscan.hasLineOfSight(MAP, doors, 3.5f, 1.5f, 4.5f, 2.5f);
+        assertFalse(cornerForward);
+        assertSymmetricLos(MAP, doors, 3.5f, 1.5f, 4.5f, 2.5f, false);
+        assertSymmetricLos(MAP, doors, 3.5f, 2.5f, 4.5f, 1.5f, false);
+    }
+
+    private static void assertSymmetricLos(GameMap map, List<Door> doors, float ax, float az, float bx, float bz,
+                                           boolean expected) {
+        assertEquals(expected, Hitscan.hasLineOfSight(map, doors, ax, az, bx, bz),
+            "forward with doors (" + ax + "," + az + ") -> (" + bx + "," + bz + ")");
+        assertEquals(expected, Hitscan.hasLineOfSight(map, doors, bx, bz, ax, az),
+            "reverse with doors (" + bx + "," + bz + ") -> (" + ax + "," + az + ")");
+        if (doors == null || doors.isEmpty()) {
+            assertEquals(expected, Hitscan.hasLineOfSight(map, ax, az, bx, bz),
+                "forward map-only (" + ax + "," + az + ") -> (" + bx + "," + bz + ")");
+            assertEquals(expected, Hitscan.hasLineOfSight(map, bx, bz, ax, az),
+                "reverse map-only (" + bx + "," + bz + ") -> (" + ax + "," + az + ")");
+        } else {
+            assertEquals(
+                Hitscan.hasLineOfSight(map, ax, az, bx, bz),
+                Hitscan.hasLineOfSight(map, bx, bz, ax, az),
+                "map-only symmetry (" + ax + "," + az + ") <-> (" + bx + "," + bz + ")");
+        }
+    }
+
+    @Test
+    void floorAndCeilingRejectNegativePlaneDistancesWhenOriginIsOutsideRoomHeight() {
+        Vector3 belowFloor = new Vector3(2.5f, -0.25f, 2.5f);
+        Vector3 downEast = new Vector3(1f, -0.1f, 0f).nor();
+
+        RayHit belowHit = Hitscan.cast(MAP, NO_TARGETS, belowFloor, downEast, RANGE);
+        assertEquals(RayHit.Kind.WALL, belowHit.kind);
+        assertTrue(belowHit.distance > 0f);
+
+        Target forwardTarget = new Target(Target.Kind.CANISTER, 3.5f, 2.5f);
+        Vector3 upIntoRoom = new Vector3(1f, -0.05f, 0f).nor();
+        Hitscan.PiercingResult belowPiercing = Hitscan.castPiercing(MAP, Collections.singletonList(forwardTarget),
+            Collections.emptyList(), new Vector3(2.5f, -0.01f, 2.5f), upIntoRoom, RANGE);
+        assertEquals(RayHit.Kind.WALL, belowPiercing.terminalHit.kind);
+        assertTrue(belowPiercing.stopDistance > 1.4f, "stopDistance must not be negative behind origin");
+
+        Vector3 aboveCeiling = new Vector3(2.5f, 1.25f, 2.5f);
+        Vector3 upEast = new Vector3(1f, 0.1f, 0f).nor();
+        RayHit aboveHit = Hitscan.cast(MAP, NO_TARGETS, aboveCeiling, upEast, RANGE);
+        assertEquals(RayHit.Kind.WALL, aboveHit.kind);
+        assertTrue(aboveHit.distance > 0f);
+
+        Hitscan.PiercingResult abovePiercing = Hitscan.castPiercing(MAP, NO_TARGETS, Collections.emptyList(),
+            aboveCeiling, upEast, RANGE);
+        assertEquals(RayHit.Kind.WALL, abovePiercing.terminalHit.kind);
+        assertTrue(abovePiercing.stopDistance > 1.4f, "ceiling behind origin must not set negative stopDistance");
+
+        // Below-floor ray slanted upward enters forward target cleanly when negative floor plane hit is ignored.
+        Hitscan.PiercingResult risingFromBelow = Hitscan.castPiercing(MAP, Collections.singletonList(forwardTarget),
+            Collections.emptyList(), new Vector3(2.5f, -0.05f, 2.5f), new Vector3(1f, 0.3f, 0f).nor(), RANGE);
+        assertEquals(1, risingFromBelow.targetHits.size());
+        assertSame(forwardTarget, risingFromBelow.targetHits.get(0).target);
+    }
+
+    @Test
+    void verticalRaysInsideTargetCylinderHitAtDistanceZeroWithUnitNormals() {
+        Target canister = new Target(Target.Kind.CANISTER, 2.5f, 2.5f);
+        List<Target> targets = Collections.singletonList(canister);
+        Vector3 inside = new Vector3(2.55f, 0.3f, 2.5f);
+
+        RayHit downHit = Hitscan.cast(MAP, targets, inside, new Vector3(0f, -1f, 0f), RANGE);
+        assertEquals(RayHit.Kind.TARGET, downHit.kind);
+        assertSame(canister, downHit.target);
+        assertEquals(0f, downHit.distance, EPSILON);
+        assertVector(inside.x, inside.y, inside.z, downHit.point);
+        assertVector(0f, 1f, 0f, downHit.normal);
+
+        RayHit upHit = Hitscan.cast(MAP, targets, inside, new Vector3(0f, 1f, 0f), RANGE);
+        assertEquals(RayHit.Kind.TARGET, upHit.kind);
+        assertSame(canister, upHit.target);
+        assertEquals(0f, upHit.distance, EPSILON);
+        assertVector(inside.x, inside.y, inside.z, upHit.point);
+        assertVector(0f, -1f, 0f, upHit.normal);
+
+        Hitscan.PiercingResult downPierced = Hitscan.castPiercing(MAP, targets, Collections.emptyList(),
+            inside, new Vector3(0f, -1f, 0f), RANGE);
+        assertEquals(1, downPierced.targetHits.size());
+        assertSame(canister, downPierced.targetHits.get(0).target);
+        assertEquals(0f, downPierced.targetHits.get(0).distance, EPSILON);
+        assertVector(0f, 1f, 0f, downPierced.targetHits.get(0).normal);
+        assertEquals(RayHit.Kind.FLOOR, downPierced.terminalHit.kind);
+        assertEquals(0.3f, downPierced.stopDistance, EPSILON);
+
+        SecurityConsole console = new SecurityConsole(2.5f, 2.5f);
+        Hitscan.PiercingResult consolePierced = Hitscan.castPiercing(MAP, Collections.singletonList(console),
+            Collections.emptyList(), inside, new Vector3(0f, -1f, 0f), RANGE);
+        assertEquals(RayHit.Kind.TARGET, consolePierced.terminalHit.kind);
+        assertSame(console, consolePierced.terminalHit.target);
+        assertEquals(0f, consolePierced.stopDistance, EPSILON);
+        assertVector(0f, 1f, 0f, consolePierced.terminalHit.normal);
+
+        // Degenerate zero-direction vector inside cylinder still produces a unit normal.
+        RayHit zeroDirHit = Hitscan.cast(MAP, targets, inside, new Vector3(0f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.TARGET, zeroDirHit.kind);
+        assertEquals(0f, zeroDirHit.distance, EPSILON);
+        assertVector(0f, 1f, 0f, zeroDirHit.normal);
+    }
+
+    @Test
+    void castHandlesNullTargetsAndDoorsWithoutThrowing() {
+        RayHit fiveArgNullTargets = Hitscan.cast(MAP, null, ORIGIN, new Vector3(1f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.WALL, fiveArgNullTargets.kind);
+        assertEquals(1.5f, fiveArgNullTargets.distance, EPSILON);
+
+        RayHit sixArgNullBoth = Hitscan.cast(MAP, null, null, ORIGIN, new Vector3(1f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.WALL, sixArgNullBoth.kind);
+        assertEquals(1.5f, sixArgNullBoth.distance, EPSILON);
+
+        Door door = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 1);
+        RayHit doorOnly = Hitscan.cast(MAP, null, Collections.singletonList(door),
+            new Vector3(1.5f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f), RANGE);
+        assertEquals(RayHit.Kind.DOOR, doorOnly.kind);
+        assertSame(door, doorOnly.door);
+    }
 }

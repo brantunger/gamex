@@ -100,6 +100,11 @@ public final class Enemy implements Damageable {
 
     private static final float WAKE_COOLDOWN = 0.25f;
     private static final float STRAFE_SWITCH_TIME = 1.8f;
+    private static final float TURRET_MAX_PITCH_DEG = 28f;
+    private static final float FORWARD_FIRE_ARC_DEG = 28f;
+    private static final float MAX_BOLT_PITCH_DEG = 35f;
+    private static final float MUZZLE_WALL_MARGIN = 0.015f;
+    private static final float PROJECTILE_FIRST_STEP = 0.06f;
     /** Extra clearance a straight chase needs on each side of the body, so a clear corridor is a walkable one. */
     private static final float CORRIDOR_MARGIN = 0.02f;
     /** How far beyond contact a solid object ahead still counts as having stopped a step. */
@@ -113,6 +118,8 @@ public final class Enemy implements Damageable {
     private final Vector2 position = new Vector2();
     private final Vector2 steerDir = new Vector2();
     private final Vector2 gaveUpDir = new Vector2();
+    private final Vector2 probePos = new Vector2();
+    private final Vector2 simPos = new Vector2();
     private final List<Damageable> otherBlockers = new ArrayList<>();
     private float yaw;
     private float health;
@@ -366,7 +373,7 @@ public final class Enemy implements Damageable {
         float damageScale = difficulty == null ? 1f : difficulty.damageTakenScale;
         switch (kind) {
             case TURRET:
-                updateTurret(dt, dx, dz, dist, hasLos, speedScale, player, outProjectiles);
+                updateTurret(dt, map, doors, dx, dz, dist, hasLos, speedScale, player, outProjectiles);
                 break;
             case GUARD:
                 updateGuard(dt, map, pathfinder, dx, dz, dist, hasLos, speedScale, player, worldBlockers, doors,
@@ -394,16 +401,16 @@ public final class Enemy implements Damageable {
         return dot >= FOV_COS;
     }
 
-    private void updateTurret(float dt, float dx, float dz, float dist, boolean hasLos, float speedScale,
-                              Player player, List<EnemyProjectile> outProjectiles) {
+    private void updateTurret(float dt, GameMap map, List<Door> doors, float dx, float dz, float dist, boolean hasLos,
+                              float speedScale, Player player, List<EnemyProjectile> outProjectiles) {
         if (hasLos && dist > 1e-4f) {
             float targetYaw = yawToward(dx, dz);
             yaw = turnToward(yaw, targetYaw, TURRET_TURN_RATE * dt);
             float targetPitch = (float) Math.toDegrees(
                 Math.atan2(player.getAimTargetY() - WorldModels.TURRET_MUZZLE_Y, Math.max(0.1f, dist)));
-            targetPitch = Math.max(-28f, Math.min(28f, targetPitch));
+            targetPitch = Math.max(-TURRET_MAX_PITCH_DEG, Math.min(TURRET_MAX_PITCH_DEG, targetPitch));
             aimPitch = moveToward(aimPitch, targetPitch, 90f * dt);
-        } else {
+        } else if (state != State.WINDUP || burstRemaining == 0) {
             aimPitch = moveToward(aimPitch, 0f, 60f * dt);
         }
 
@@ -418,14 +425,14 @@ public final class Enemy implements Damageable {
                 stateTimer -= dt;
                 if (stateTimer <= 0f) {
                     burstRemaining = TURRET_BURST_COUNT;
-                    fireTurretBolt(speedScale, player, outProjectiles);
+                    fireTurretBolt(map, doors, speedScale, outProjectiles);
                     burstRemaining--;
                     burstTimer = TURRET_BURST_INTERVAL / speedScale;
                 }
             } else {
                 burstTimer -= dt;
                 while (burstTimer <= 0f && burstRemaining > 0) {
-                    fireTurretBolt(speedScale, player, outProjectiles);
+                    fireTurretBolt(map, doors, speedScale, outProjectiles);
                     burstRemaining--;
                     if (burstRemaining > 0) {
                         burstTimer += TURRET_BURST_INTERVAL / speedScale;
@@ -439,7 +446,8 @@ public final class Enemy implements Damageable {
             return;
         }
 
-        if (hasLos && dist <= SIGHT_RANGE && cooldown <= 0f && Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= 18f) {
+        boolean aligned = dist <= 1e-4f || Math.abs(angleDiff(yaw, yawToward(dx, dz))) <= 18f;
+        if (hasLos && dist <= SIGHT_RANGE && cooldown <= 0f && aligned) {
             state = State.WINDUP;
             stateDuration = TURRET_WINDUP_TIME / speedScale;
             stateTimer = stateDuration;
@@ -447,7 +455,8 @@ public final class Enemy implements Damageable {
         }
     }
 
-    private void fireTurretBolt(float speedScale, Player player, List<EnemyProjectile> outProjectiles) {
+    private void fireTurretBolt(GameMap map, List<Door> doors, float speedScale,
+                                List<EnemyProjectile> outProjectiles) {
         if (outProjectiles == null) return;
         double rad = Math.toRadians(yaw);
         float fx = (float) Math.sin(rad);
@@ -459,8 +468,12 @@ public final class Enemy implements Damageable {
         float fwd = -WorldModels.TURRET_MUZZLE_Z;
         Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * side, WorldModels.TURRET_MUZZLE_Y,
             position.y + fz * fwd + rz * side);
-        Vector3 aim = new Vector3(player.position.x - muzzle.x, player.getAimTargetY() - muzzle.y,
-            player.position.y - muzzle.z).nor();
+        pullMuzzleClearOfWalls(map, doors, muzzle);
+        float clampedPitch = Math.max(-TURRET_MAX_PITCH_DEG, Math.min(TURRET_MAX_PITCH_DEG, aimPitch));
+        double pitchRad = Math.toRadians(clampedPitch);
+        float cosPitch = (float) Math.cos(pitchRad);
+        Vector3 aim = new Vector3(fx * cosPitch, (float) Math.sin(pitchRad), fz * cosPitch);
+        ensureFirstStepClearOfWalls(map, doors, muzzle, aim);
         outProjectiles.add(new EnemyProjectile(muzzle, aim, TURRET_BOLT_SPEED * speedScale, TURRET_BOLT_DAMAGE, this));
     }
 
@@ -507,10 +520,9 @@ public final class Enemy implements Damageable {
             float dirZ = moveZ / moveLen;
             float step = kind.moveSpeed * moveScale * dt;
             boolean currentlyOnHazard = map != null && map.isHazardAt(position.x, position.y);
-            boolean nextOnHazard = map != null && map.isHazardAt(
-                position.x + dirX * (kind.radius + 0.25f),
-                position.y + dirZ * (kind.radius + 0.25f));
-            if (hasLos && !currentlyOnHazard && nextOnHazard) {
+            boolean nextOnHazard = !currentlyOnHazard
+                && probesHazardAhead(map, position.x, position.y, dirX, dirZ, step);
+            if (hasLos && nextOnHazard) {
                 strafeSign = -strafeSign;
                 strafeTimer = STRAFE_SWITCH_TIME;
                 step = 0f;
@@ -518,14 +530,19 @@ public final class Enemy implements Damageable {
             if (step > 0f) {
                 float beforeX = position.x;
                 float beforeZ = position.y;
+                boolean revertedHazard = false;
                 if (hasLos) {
                     moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
+                    if (!currentlyOnHazard && map != null && map.isHazardAt(position.x, position.y)) {
+                        position.set(beforeX, beforeZ);
+                        revertedHazard = true;
+                    }
                 } else {
                     stepRoundSolids(map, worldBlockers, doors, player, dirX, dirZ, step);
                 }
                 float moved = Vector2.dst(beforeX, beforeZ, position.x, position.y);
                 walkPhase += moved * 7.5f;
-                if (moved < step * STALL_RATIO) {
+                if (revertedHazard || moved < step * STALL_RATIO) {
                     strafeSign = -strafeSign;
                     strafeTimer = STRAFE_SWITCH_TIME;
                 }
@@ -536,7 +553,7 @@ public final class Enemy implements Damageable {
             stateTimer -= dt;
             if (stateTimer <= 0f) {
                 if (hasLos) {
-                    fireGuardBolt(speedScale, player, outProjectiles);
+                    fireGuardBolt(map, doors, speedScale, player, outProjectiles);
                 }
                 state = State.PURSUING;
                 cooldown = GUARD_COOLDOWN / speedScale;
@@ -544,14 +561,20 @@ public final class Enemy implements Damageable {
             return;
         }
 
-        if (hasLos && dist <= GUARD_ATTACK_RANGE && cooldown <= 0f) {
+        float nowDx = player.position.x - position.x;
+        float nowDz = player.position.y - position.y;
+        float nowDist = (float) Math.hypot(nowDx, nowDz);
+        boolean facingPlayer = nowDist <= 1e-4f
+            || Math.abs(angleDiff(yaw, yawToward(nowDx, nowDz))) <= FORWARD_FIRE_ARC_DEG;
+        if (hasLos && nowDist <= GUARD_ATTACK_RANGE && cooldown <= 0f && facingPlayer) {
             state = State.WINDUP;
             stateDuration = GUARD_WINDUP_TIME / speedScale;
             stateTimer = stateDuration;
         }
     }
 
-    private void fireGuardBolt(float speedScale, Player player, List<EnemyProjectile> outProjectiles) {
+    private void fireGuardBolt(GameMap map, List<Door> doors, float speedScale, Player player,
+                               List<EnemyProjectile> outProjectiles) {
         if (outProjectiles == null) return;
         double rad = Math.toRadians(yaw);
         float fx = (float) Math.sin(rad);
@@ -561,8 +584,15 @@ public final class Enemy implements Damageable {
         float fwd = -WorldModels.GUARD_MUZZLE_Z;
         Vector3 muzzle = new Vector3(position.x + fx * fwd + rx * WorldModels.GUARD_MUZZLE_X,
             WorldModels.GUARD_MUZZLE_Y, position.y + fz * fwd + rz * WorldModels.GUARD_MUZZLE_X);
-        Vector3 aim = new Vector3(player.position.x - muzzle.x, player.getAimTargetY() - muzzle.y,
-            player.position.y - muzzle.z).nor();
+        pullMuzzleClearOfWalls(map, doors, muzzle);
+        Vector3 aim = clampedAimVector(muzzle.x, muzzle.y, muzzle.z,
+            player.position.x, player.getAimTargetY(), player.position.y,
+            FORWARD_FIRE_ARC_DEG, MAX_BOLT_PITCH_DEG);
+        if (ensureFirstStepClearOfWalls(map, doors, muzzle, aim)) {
+            aim = clampedAimVector(muzzle.x, muzzle.y, muzzle.z,
+                player.position.x, player.getAimTargetY(), player.position.y,
+                FORWARD_FIRE_ARC_DEG, MAX_BOLT_PITCH_DEG);
+        }
         outProjectiles.add(new EnemyProjectile(muzzle, aim, GUARD_BOLT_SPEED * speedScale, GUARD_BOLT_DAMAGE, this));
     }
 
@@ -580,11 +610,9 @@ public final class Enemy implements Damageable {
             stateTimer -= dt;
             if (stateTimer <= 0f) {
                 if (windupIsSlam) {
-                    if (hasLos && dist > 1e-4f) {
-                        lungeDirX = dx / dist;
-                        lungeDirZ = dz / dist;
-                        yaw = yawToward(lungeDirX, lungeDirZ);
-                    }
+                    double rad = Math.toRadians(yaw);
+                    lungeDirX = (float) Math.sin(rad);
+                    lungeDirZ = (float) -Math.cos(rad);
                     state = State.LUNGING;
                     stateDuration = WARDEN_SLAM_LUNGE_TIME;
                     stateTimer = stateDuration;
@@ -592,7 +620,7 @@ public final class Enemy implements Damageable {
                     slamTriggered = true;
                 } else {
                     if (hasLos) {
-                        fireWardenFanVolley(effectiveScale, player, outProjectiles);
+                        fireWardenFanVolley(map, doors, effectiveScale, player, outProjectiles);
                     }
                     state = State.PURSUING;
                     cooldown = WARDEN_COOLDOWN / effectiveScale;
@@ -638,7 +666,9 @@ public final class Enemy implements Damageable {
         float moveZ = 0f;
         if (hasLos && dist > 1e-4f) {
             yaw = turnToward(yaw, yawToward(dx, dz), 320f * phaseScale * dt);
-            if (dist > 1.35f) {
+            boolean solidBlocking = sidestepping
+                || isSolidBlockingPath(worldBlockers, dx / dist, dz / dist, dist - (Player.RADIUS + kind.radius));
+            if (dist > 1.35f || solidBlocking) {
                 steerTowardVisiblePlayer(map, pathfinder, doors, dx, dz, dist);
                 moveX = steerDir.x;
                 moveZ = steerDir.y;
@@ -658,28 +688,31 @@ public final class Enemy implements Damageable {
         }
 
         if (hasLos && cooldown <= 0f) {
-            if (dist <= WARDEN_SLAM_TRIGGER_RANGE && (preferSlamNext || dist <= 1.75f)) {
-                if (dist > 1e-4f) {
-                    lungeDirX = dx / dist;
-                    lungeDirZ = dz / dist;
-                } else {
-                    double rad = Math.toRadians(yaw);
-                    lungeDirX = (float) Math.sin(rad);
-                    lungeDirZ = (float) -Math.cos(rad);
-                }
-                yaw = yawToward(lungeDirX, lungeDirZ);
+            float nowDx = player.position.x - position.x;
+            float nowDz = player.position.y - position.y;
+            float nowDist = (float) Math.hypot(nowDx, nowDz);
+            boolean facingPlayer = nowDist <= 1e-4f
+                || Math.abs(angleDiff(yaw, yawToward(nowDx, nowDz))) <= FORWARD_FIRE_ARC_DEG;
+            float slamContactDist = Player.RADIUS + kind.radius + 0.24f;
+            boolean slamBlocked = nowDist > 1e-4f
+                && isSolidBlockingPath(worldBlockers, nowDx / nowDist, nowDz / nowDist, nowDist - slamContactDist);
+            if (facingPlayer && !slamBlocked && nowDist <= WARDEN_SLAM_TRIGGER_RANGE
+                && (preferSlamNext || nowDist <= 1.75f)) {
+                double rad = Math.toRadians(yaw);
+                lungeDirX = (float) Math.sin(rad);
+                lungeDirZ = (float) -Math.cos(rad);
                 windupIsSlam = true;
                 state = State.WINDUP;
                 stateDuration = WARDEN_SLAM_WINDUP_TIME / effectiveScale;
                 stateTimer = stateDuration;
                 return;
             }
-            if (dist <= WARDEN_VOLLEY_RANGE) {
+            if (facingPlayer && nowDist <= WARDEN_VOLLEY_RANGE) {
                 windupIsSlam = false;
                 state = State.WINDUP;
                 stateDuration = WARDEN_WINDUP_TIME / effectiveScale;
                 stateTimer = stateDuration;
-                preferSlamNext = dist <= WARDEN_SLAM_TRIGGER_RANGE * 1.5f;
+                preferSlamNext = nowDist <= WARDEN_SLAM_TRIGGER_RANGE * 1.5f;
             }
         }
     }
@@ -691,7 +724,8 @@ public final class Enemy implements Damageable {
         preferSlamNext = false;
     }
 
-    private void fireWardenFanVolley(float effectiveScale, Player player, List<EnemyProjectile> outProjectiles) {
+    private void fireWardenFanVolley(GameMap map, List<Door> doors, float effectiveScale, Player player,
+                                     List<EnemyProjectile> outProjectiles) {
         shootRecoil = 1f;
         if (outProjectiles == null) return;
         boolean overdrive = isOverdrive();
@@ -712,16 +746,24 @@ public final class Enemy implements Damageable {
             position.x + fx * fwd + rx * WorldModels.WARDEN_MUZZLE_X,
             WorldModels.WARDEN_MUZZLE_Y,
             position.y + fz * fwd + rz * WorldModels.WARDEN_MUZZLE_X);
-        Vector3 baseAim = new Vector3(
-            player.position.x - (position.x + fx * fwd),
-            (player.getAimTargetY() - 0.02f) - WorldModels.WARDEN_MUZZLE_Y,
-            player.position.y - (position.y + fz * fwd)).nor();
+        Vector3 chestOrigin = new Vector3(
+            position.x + fx * fwd,
+            WorldModels.WARDEN_MUZZLE_Y,
+            position.y + fz * fwd);
+        pullMuzzleClearOfWalls(map, doors, leftMuzzle);
+        pullMuzzleClearOfWalls(map, doors, rightMuzzle);
+        pullMuzzleClearOfWalls(map, doors, chestOrigin);
+        Vector3 baseAim = clampedAimVector(
+            chestOrigin.x, chestOrigin.y, chestOrigin.z,
+            player.position.x, player.getAimTargetY() - 0.02f, player.position.y,
+            FORWARD_FIRE_ARC_DEG, MAX_BOLT_PITCH_DEG);
 
         for (int i = 0; i < count; i++) {
             float offsetDeg = count <= 1 ? 0f : -spreadDeg * 0.5f + spreadDeg * i / (count - 1f);
-            Vector3 muzzle = Math.abs(offsetDeg) < 0.5f
+            Vector3 selectedMuzzle = Math.abs(offsetDeg) < 0.5f
                 ? (alternateBarrel ? rightMuzzle : leftMuzzle)
                 : (offsetDeg < 0f ? leftMuzzle : rightMuzzle);
+            Vector3 muzzle = new Vector3(selectedMuzzle);
             double aRad = Math.toRadians(offsetDeg);
             float cos = (float) Math.cos(aRad);
             float sin = (float) Math.sin(aRad);
@@ -729,6 +771,7 @@ public final class Enemy implements Damageable {
                 baseAim.x * cos - baseAim.z * sin,
                 baseAim.y,
                 baseAim.x * sin + baseAim.z * cos).nor();
+            ensureFirstStepClearOfWalls(map, doors, muzzle, aim);
             outProjectiles.add(new EnemyProjectile(
                 muzzle, aim, WARDEN_BOLT_SPEED * effectiveScale, WARDEN_BOLT_DAMAGE, this));
         }
@@ -867,12 +910,28 @@ public final class Enemy implements Damageable {
         }
         float beforeX = position.x;
         float beforeZ = position.y;
+        boolean avoidSlideOntoHazard = kind == Kind.GUARD && map != null
+            && !map.isHazardAt(beforeX, beforeZ)
+            && !probesHazardAhead(map, beforeX, beforeZ, dirX, dirZ, step);
         moveSolid(map, worldBlockers, doors, player, dirX * step, dirZ * step, true);
+        if (avoidSlideOntoHazard && map.isHazardAt(position.x, position.y)) {
+            position.set(beforeX, beforeZ);
+        }
         if (Vector2.dst(beforeX, beforeZ, position.x, position.y) >= step * STALL_RATIO) return;
         Damageable stopper = solidInTheWay(worldBlockers, dirX, dirZ);
         if (stopper == null) return;
         if (sidestepGaveUp && stopper == obstacle && dirX * gaveUpDir.x + dirZ * gaveUpDir.y > 0.7f
             && isWithin(obstacle, SIDESTEP_RETRY_DISTANCE)) {
+            float clearSign = findClearSidestepSign(map, worldBlockers, doors, player, stopper, dirX, dirZ, step);
+            if (clearSign == 0f) {
+                return;
+            }
+            obstacle = stopper;
+            sidestepping = true;
+            sidestepGaveUp = false;
+            sidestepFlips = 0;
+            sidestepSign = clearSign;
+            sidestep(map, worldBlockers, doors, player, dirX, dirZ, step);
             return;
         }
         obstacle = stopper;
@@ -893,12 +952,15 @@ public final class Enemy implements Damageable {
         float sideZ = dirX * sidestepSign;
         float fromX = position.x;
         float fromZ = position.y;
-        float ahead = kind.radius + 0.25f;
+        boolean currentlyOnHazard = kind == Kind.GUARD && map != null && map.isHazardAt(fromX, fromZ);
         // A grounded guard does not sidestep onto a shock grate.
-        boolean ontoHazard = kind == Kind.GUARD && !map.isHazardAt(fromX, fromZ)
-            && map.isHazardAt(fromX + sideX * ahead, fromZ + sideZ * ahead);
+        boolean ontoHazard = kind == Kind.GUARD && map != null && !currentlyOnHazard
+            && probesHazardAhead(map, fromX, fromZ, sideX, sideZ, step);
         if (!ontoHazard) {
             moveSolid(map, worldBlockers, doors, player, sideX * step, sideZ * step, true);
+            if (kind == Kind.GUARD && map != null && !currentlyOnHazard && map.isHazardAt(position.x, position.y)) {
+                position.set(fromX, fromZ);
+            }
         }
         if (Vector2.dst(fromX, fromZ, position.x, position.y) >= step * STALL_RATIO) return;
         sidestepSign = -sidestepSign;
@@ -908,6 +970,177 @@ public final class Enemy implements Damageable {
             sidestepGaveUp = true;
             gaveUpDir.set(dirX, dirZ);
         }
+    }
+
+    /**
+     * Checks non-mutatingly whether either perpendicular sidestep direction around {@code stopper} has opened up and
+     * can clear the obstacle without stalling, returning {@code +1f}, {@code -1f}, or {@code 0f} when still plugged.
+     */
+    private float findClearSidestepSign(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors,
+                                        Player player, Damageable stopper, float dirX, float dirZ, float step) {
+        List<Damageable> blockers = worldBlockers == otherBlockers
+            ? otherBlockers
+            : blockersExcludingSelf(worldBlockers);
+        float firstSign = Math.abs(obstacleSide) > 1e-3f
+            ? -Math.signum(obstacleSide)
+            : (sidestepSign >= 0f ? 1f : -1f);
+        if (canSidestepPastObstacle(map, blockers, doors, player, stopper, dirX, dirZ, step, firstSign)) {
+            return firstSign;
+        }
+        if (canSidestepPastObstacle(map, blockers, doors, player, stopper, dirX, dirZ, step, -firstSign)) {
+            return -firstSign;
+        }
+        return 0f;
+    }
+
+    private boolean canSidestepPastObstacle(GameMap map, List<Damageable> blockers, List<Door> doors, Player player,
+                                            Damageable stopper, float dirX, float dirZ, float step, float sign) {
+        if (step <= 0f) return false;
+        simPos.set(position.x, position.y);
+        boolean trackPlayer = false;
+        if (player != null && !player.isDead()) {
+            float pdx = player.position.x - position.x;
+            float pdz = player.position.y - position.y;
+            float pdist = (float) Math.hypot(pdx, pdz);
+            trackPlayer = pdist > 1e-4f && (pdx * dirX + pdz * dirZ) / pdist > 0.98f;
+        }
+        float curDirX = dirX;
+        float curDirZ = dirZ;
+        float simStep = Math.max(step, kind.radius * 0.5f);
+        for (int k = 0; k < 32; k++) {
+            if (k > 0 && trackPlayer) {
+                float pdx = player.position.x - simPos.x;
+                float pdz = player.position.y - simPos.y;
+                float pdist = (float) Math.hypot(pdx, pdz);
+                if (pdist <= Player.RADIUS + kind.radius + 0.05f) {
+                    return true;
+                }
+                curDirX = pdx / pdist;
+                curDirZ = pdz / pdist;
+            }
+            if (k > 0 && !isInTheWayAt(simPos.x, simPos.y, stopper, curDirX, curDirZ, SIDESTEP_RETRY_DISTANCE)) {
+                return canAdvancePastStopper(map, blockers, doors, player, stopper, curDirX, curDirZ,
+                    trackPlayer, simStep);
+            }
+            float stepLen = k == 0 ? step : simStep;
+            float sideX = -curDirZ * sign;
+            float sideZ = curDirX * sign;
+            float fromX = simPos.x;
+            float fromZ = simPos.y;
+            boolean fromOnHazard = kind == Kind.GUARD && map != null && map.isHazardAt(fromX, fromZ);
+            if (kind == Kind.GUARD && map != null && !fromOnHazard
+                && probesHazardAhead(map, fromX, fromZ, sideX, sideZ, stepLen)) {
+                return false;
+            }
+            if (map != null) {
+                Collision.move(map, blockers, doors, simPos, sideX * stepLen, sideZ * stepLen, kind.radius);
+            } else {
+                simPos.add(sideX * stepLen, sideZ * stepLen);
+                if (Collision.overlapsSolid(blockers, simPos, kind.radius)) {
+                    simPos.set(fromX, fromZ);
+                }
+            }
+            if (player != null && !player.isDead()) {
+                float minDist = Player.RADIUS + kind.radius;
+                if (Vector2.dst(simPos.x, simPos.y, player.position.x, player.position.y) < minDist) {
+                    if (k > 0) return true;
+                    resolveOutsidePlayer(map, blockers, doors, player, simPos, false);
+                }
+            }
+            if (kind == Kind.GUARD && map != null && !fromOnHazard && map.isHazardAt(simPos.x, simPos.y)) {
+                return false;
+            }
+            if (map != null && Collision.overlapsWall(map, doors, simPos.x, simPos.y, kind.radius)) {
+                return false;
+            }
+            float moved = Vector2.dst(fromX, fromZ, simPos.x, simPos.y);
+            if (k == 0 && moved < stepLen * STALL_RATIO) {
+                return false;
+            }
+            if (!isInTheWayAt(simPos.x, simPos.y, stopper, curDirX, curDirZ, SIDESTEP_RETRY_DISTANCE)) {
+                return canAdvancePastStopper(map, blockers, doors, player, stopper, curDirX, curDirZ,
+                    trackPlayer, simStep);
+            }
+            if (moved < stepLen * STALL_RATIO) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean canAdvancePastStopper(GameMap map, List<Damageable> blockers, List<Door> doors, Player player,
+                                          Damageable stopper, float curDirX, float curDirZ, boolean trackPlayer,
+                                          float simStep) {
+        for (int f = 0; f < 20; f++) {
+            if (trackPlayer && player != null && !player.isDead()) {
+                float pdx = player.position.x - simPos.x;
+                float pdz = player.position.y - simPos.y;
+                float pdist = (float) Math.hypot(pdx, pdz);
+                if (pdist <= Player.RADIUS + kind.radius + 0.05f) {
+                    return true;
+                }
+                curDirX = pdx / pdist;
+                curDirZ = pdz / pdist;
+            }
+            if ((stopper.getX() - simPos.x) * curDirX + (stopper.getZ() - simPos.y) * curDirZ <= 0f) {
+                return true;
+            }
+            float fromX = simPos.x;
+            float fromZ = simPos.y;
+            boolean fromOnHazard = kind == Kind.GUARD && map != null && map.isHazardAt(fromX, fromZ);
+            if (kind == Kind.GUARD && map != null && !fromOnHazard
+                && probesHazardAhead(map, fromX, fromZ, curDirX, curDirZ, simStep)) {
+                return false;
+            }
+            if (map != null) {
+                Collision.move(map, blockers, doors, simPos, curDirX * simStep, curDirZ * simStep, kind.radius);
+            } else {
+                simPos.add(curDirX * simStep, curDirZ * simStep);
+                if (Collision.overlapsSolid(blockers, simPos, kind.radius)) {
+                    simPos.set(fromX, fromZ);
+                }
+            }
+            if (kind == Kind.GUARD && map != null && !fromOnHazard && map.isHazardAt(simPos.x, simPos.y)) {
+                return false;
+            }
+            if (player != null && !player.isDead()
+                && Vector2.dst(simPos.x, simPos.y, player.position.x, player.position.y) < Player.RADIUS + kind.radius) {
+                return true;
+            }
+            if (map != null && Collision.overlapsWall(map, doors, simPos.x, simPos.y, kind.radius)) {
+                return false;
+            }
+            if ((stopper.getX() - simPos.x) * curDirX + (stopper.getZ() - simPos.y) * curDirZ <= 0f) {
+                return true;
+            }
+            if (Vector2.dst(fromX, fromZ, simPos.x, simPos.y) < simStep * STALL_RATIO) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @return whether any live solid blocker stops a circle of {@code kind.radius} travelling along
+     *     {@code (dirX, dirZ)} strictly before covering {@code maxTravel}
+     */
+    private boolean isSolidBlockingPath(List<? extends Damageable> worldBlockers, float dirX, float dirZ,
+                                        float maxTravel) {
+        if (maxTravel <= 0f || worldBlockers == null) return false;
+        for (int i = 0; i < worldBlockers.size(); i++) {
+            Damageable solid = worldBlockers.get(i);
+            if (solid == this || solid.isDestroyed()) continue;
+            float relX = solid.getX() - position.x;
+            float relZ = solid.getZ() - position.y;
+            float along = relX * dirX + relZ * dirZ;
+            if (along <= 0f) continue;
+            float sumR = solid.getRadius() + kind.radius - 1e-3f;
+            float perp = Math.abs(relZ * dirX - relX * dirZ);
+            if (perp >= sumR) continue;
+            float hitTravel = along - (float) Math.sqrt(sumR * sumR - perp * perp);
+            if (hitTravel < maxTravel) return true;
+        }
+        return false;
     }
 
     /** @return the live solid object the body touches, or all but touches, that lies across its way, or null */
@@ -931,6 +1164,17 @@ public final class Enemy implements Damageable {
         if (relX * dirX + relZ * dirZ <= 0f) return false;
         obstacleSide = relZ * dirX - relX * dirZ;
         return Math.abs(obstacleSide) < solid.getRadius() + kind.radius;
+    }
+
+    private boolean isInTheWayAt(float fromX, float fromZ, Damageable solid, float dirX, float dirZ, float slack) {
+        if (solid == null || solid.isDestroyed()) return false;
+        float near = solid.getRadius() + kind.radius + slack;
+        if (Vector2.dst2(fromX, fromZ, solid.getX(), solid.getZ()) >= near * near) return false;
+        float relX = solid.getX() - fromX;
+        float relZ = solid.getZ() - fromZ;
+        if (relX * dirX + relZ * dirZ <= 0f) return false;
+        float side = relZ * dirX - relX * dirZ;
+        return Math.abs(side) < solid.getRadius() + kind.radius;
     }
 
     /** @return whether the body is within {@code slack} of touching the object */
@@ -968,30 +1212,210 @@ public final class Enemy implements Damageable {
 
     private void keepOutsidePlayer(GameMap map, List<? extends Damageable> worldBlockers, List<Door> doors,
                                    Player player) {
+        if (player == null) return;
         List<? extends Damageable> blockers = worldBlockers == otherBlockers
             ? worldBlockers
             : blockersExcludingSelf(worldBlockers);
+        resolveOutsidePlayer(map, blockers, doors, player, position, state == State.LUNGING);
+    }
+
+    private void resolveOutsidePlayer(GameMap map, List<? extends Damageable> blockers, List<Door> doors,
+                                      Player player, Vector2 pos, boolean useLungeRetract) {
         float minDist = Player.RADIUS + kind.radius;
-        float dx = position.x - player.position.x;
-        float dz = position.y - player.position.y;
+        float dx = pos.x - player.position.x;
+        float dz = pos.y - player.position.y;
         float dist = (float) Math.hypot(dx, dz);
         if (dist >= minDist) return;
-        float beforeX = position.x;
-        float beforeZ = position.y;
-        if (dist < 1e-4f) {
+
+        float beforeX = pos.x;
+        float beforeZ = pos.y;
+        float lungeLen = useLungeRetract ? (float) Math.hypot(lungeDirX, lungeDirZ) : 0f;
+        boolean hasLungeDir = lungeLen > 1e-5f;
+        float retractX = hasLungeDir ? -lungeDirX / lungeLen : 0f;
+        float retractZ = hasLungeDir ? -lungeDirZ / lungeLen : 0f;
+
+        float radX;
+        float radZ;
+        if (dist >= 1e-4f) {
+            radX = dx / dist;
+            radZ = dz / dist;
+        } else if (hasLungeDir) {
+            radX = retractX;
+            radZ = retractZ;
+        } else {
             double rad = Math.toRadians(yaw);
-            dx = (float) -Math.sin(rad);
-            dz = (float) Math.cos(rad);
-            dist = 1f;
+            radX = (float) -Math.sin(rad);
+            radZ = (float) Math.cos(rad);
         }
-        float pushX = player.position.x + dx / dist * minDist;
-        float pushZ = player.position.y + dz / dist * minDist;
-        if (!Collision.overlapsWall(map, doors, pushX, pushZ, kind.radius)) {
-            position.set(pushX, pushZ);
-            if (Collision.overlapsSolid(blockers, position, kind.radius)) {
-                position.set(beforeX, beforeZ);
+
+        boolean avoidHazard = kind == Kind.GUARD && map != null && !map.isHazardAt(beforeX, beforeZ);
+        float pushX = player.position.x + radX * minDist;
+        float pushZ = player.position.y + radZ * minDist;
+        if (isClearSeparationSpot(map, blockers, doors, player, pushX, pushZ, avoidHazard)) {
+            pos.set(pushX, pushZ);
+            return;
+        }
+
+        float targetDist = minDist + 1e-4f;
+        if (hasLungeDir) {
+            float relX = beforeX - player.position.x;
+            float relZ = beforeZ - player.position.y;
+            float b = relX * retractX + relZ * retractZ;
+            float c = relX * relX + relZ * relZ - targetDist * targetDist;
+            float disc = b * b - c;
+            if (disc >= 0f) {
+                float tExit = -b + (float) Math.sqrt(disc);
+                if (tExit >= 0f) {
+                    float candX = beforeX + retractX * tExit;
+                    float candZ = beforeZ + retractZ * tExit;
+                    if (isClearSeparationSpot(map, blockers, doors, player, candX, candZ, avoidHazard)) {
+                        pos.set(candX, candZ);
+                        return;
+                    }
+                }
             }
         }
+
+        float baseX = hasLungeDir ? retractX : radX;
+        float baseZ = hasLungeDir ? retractZ : radZ;
+        float baseAngle = (float) Math.atan2(baseZ, baseX);
+        float cross = baseX * radZ - baseZ * radX;
+        float preferredSign = cross >= 0f ? 1f : -1f;
+
+        for (int pass = 0; pass < (avoidHazard ? 2 : 1); pass++) {
+            boolean checkHazard = avoidHazard && pass == 0;
+            for (int ring = 0; ring < 5; ring++) {
+                float ringDist = targetDist + ring * 0.15f;
+                if (hasLungeDir || ring > 0) {
+                    float candX = player.position.x + baseX * ringDist;
+                    float candZ = player.position.y + baseZ * ringDist;
+                    if (isClearSeparationSpot(map, blockers, doors, player, candX, candZ, checkHazard)) {
+                        pos.set(candX, candZ);
+                        return;
+                    }
+                }
+                for (int deg = 5; deg <= 180; deg += 5) {
+                    double deltaRad = Math.toRadians(deg);
+                    for (int s = 0; s < 2; s++) {
+                        if (deg == 180 && s == 1) break;
+                        double angle = baseAngle + (s == 0 ? preferredSign : -preferredSign) * deltaRad;
+                        float candX = player.position.x + (float) Math.cos(angle) * ringDist;
+                        float candZ = player.position.y + (float) Math.sin(angle) * ringDist;
+                        if (isClearSeparationSpot(map, blockers, doors, player, candX, candZ, checkHazard)) {
+                            pos.set(candX, candZ);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        pos.set(beforeX, beforeZ);
+    }
+
+    private boolean isClearSeparationSpot(GameMap map, List<? extends Damageable> blockers, List<Door> doors,
+                                          Player player, float x, float z, boolean avoidHazard) {
+        if (map != null) {
+            if (avoidHazard && map.isHazardAt(x, z)) return false;
+            if (Collision.overlapsWall(map, doors, x, z, kind.radius)) return false;
+            if (!Hitscan.hasLineOfSight(map, doors, player.position.x, player.position.y, x, z)) return false;
+        }
+        probePos.set(x, z);
+        return !Collision.overlapsSolid(blockers, probePos, kind.radius);
+    }
+
+    private boolean probesHazardAhead(GameMap map, float fromX, float fromZ, float dirX, float dirZ, float step) {
+        if (map == null) return false;
+        float ahead = kind.radius + 0.25f;
+        return map.isHazardAt(fromX + dirX * (0.5f * step), fromZ + dirZ * (0.5f * step))
+            || map.isHazardAt(fromX + dirX * step, fromZ + dirZ * step)
+            || map.isHazardAt(fromX + dirX * (0.25f * ahead), fromZ + dirZ * (0.25f * ahead))
+            || map.isHazardAt(fromX + dirX * (0.5f * ahead), fromZ + dirZ * (0.5f * ahead))
+            || map.isHazardAt(fromX + dirX * (0.75f * ahead), fromZ + dirZ * (0.75f * ahead))
+            || map.isHazardAt(fromX + dirX * ahead, fromZ + dirZ * ahead);
+    }
+
+    private Vector3 clampedAimVector(float originX, float originY, float originZ,
+                                     float targetX, float targetY, float targetZ,
+                                     float maxYawOffsetDeg, float maxPitchDeg) {
+        float rawDx = targetX - originX;
+        float rawDy = targetY - originY;
+        float rawDz = targetZ - originZ;
+        float horizDist = (float) Math.hypot(rawDx, rawDz);
+        float aimYawDeg;
+        if (horizDist > 1e-4f) {
+            float diff = angleDiff(yaw, yawToward(rawDx, rawDz));
+            float clampedDiff = Math.max(-maxYawOffsetDeg, Math.min(maxYawOffsetDeg, diff));
+            aimYawDeg = yaw + clampedDiff;
+        } else {
+            aimYawDeg = yaw;
+        }
+        float pitchDeg = (float) Math.toDegrees(Math.atan2(rawDy, Math.max(1e-4f, horizDist)));
+        pitchDeg = Math.max(-maxPitchDeg, Math.min(maxPitchDeg, pitchDeg));
+        double yawRad = Math.toRadians(aimYawDeg);
+        double pitchRad = Math.toRadians(pitchDeg);
+        float cosPitch = (float) Math.cos(pitchRad);
+        return new Vector3(
+            (float) Math.sin(yawRad) * cosPitch,
+            (float) Math.sin(pitchRad),
+            (float) -Math.cos(yawRad) * cosPitch);
+    }
+
+    private void pullMuzzleClearOfWalls(GameMap map, List<Door> doors, Vector3 muzzle) {
+        float clearance = EnemyProjectile.RADIUS + MUZZLE_WALL_MARGIN;
+        if (!isMuzzleBlocked(map, doors, muzzle.x, muzzle.y, muzzle.z, clearance)) {
+            return;
+        }
+        float startX = muzzle.x;
+        float startZ = muzzle.z;
+        for (int s = 1; s <= 8; s++) {
+            float t = s / 8f;
+            float candX = startX + (position.x - startX) * t;
+            float candZ = startZ + (position.y - startZ) * t;
+            if (!isMuzzleBlocked(map, doors, candX, muzzle.y, candZ, clearance)
+                && (map == null || Hitscan.hasLineOfSight(map, doors, position.x, position.y, candX, candZ))) {
+                muzzle.x = candX;
+                muzzle.z = candZ;
+                return;
+            }
+        }
+        muzzle.x = position.x;
+        muzzle.z = position.y;
+    }
+
+    private boolean ensureFirstStepClearOfWalls(GameMap map, List<Door> doors, Vector3 muzzle, Vector3 aim) {
+        if (!isMuzzleBlocked(map, doors,
+            muzzle.x + aim.x * PROJECTILE_FIRST_STEP,
+            muzzle.y + aim.y * PROJECTILE_FIRST_STEP,
+            muzzle.z + aim.z * PROJECTILE_FIRST_STEP,
+            EnemyProjectile.RADIUS)) {
+            return false;
+        }
+        if (!isMuzzleBlocked(map, doors,
+            position.x + aim.x * PROJECTILE_FIRST_STEP,
+            muzzle.y + aim.y * PROJECTILE_FIRST_STEP,
+            position.y + aim.z * PROJECTILE_FIRST_STEP,
+            EnemyProjectile.RADIUS)) {
+            muzzle.x = position.x;
+            muzzle.z = position.y;
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isMuzzleBlocked(GameMap map, List<Door> doors, float x, float y, float z, float radius) {
+        if (map != null && Collision.overlapsWall(map, doors, x, z, radius)) {
+            return true;
+        }
+        if (doors != null) {
+            for (int i = 0; i < doors.size(); i++) {
+                Door door = doors.get(i);
+                if (door != null && door.overlapsSphere(x, y, z, radius)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static float yawToward(float dx, float dz) {

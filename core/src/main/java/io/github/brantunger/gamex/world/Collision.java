@@ -12,6 +12,8 @@ public final class Collision {
     private static final int REFINE_STEPS = 8;
     /** How deep a circle may sit in a solid object before it counts as overlapping; absorbs float rounding. */
     private static final float SKIN = 1e-3f;
+    /** Maximum mid-step radial dip tolerated to absorb IEEE-754 float rounding on tangent escape steps. */
+    private static final double TANGENT_EPS = 1e-5;
 
     private Collision() {}
 
@@ -107,14 +109,98 @@ public final class Collision {
         for (int i = 0; i < steps; i++) {
             float beforeX = position.x;
             float beforeZ = position.y;
-            position.x += freeDistance(map, doors, position.x, position.y, stepX, 0f, radius);
-            position.y += freeDistance(map, doors, position.x, position.y, 0f, stepZ, radius);
+            float clampedX = beforeX + freeDistance(map, doors, beforeX, beforeZ, stepX, 0f, radius);
+            float clampedZ = beforeZ + freeDistance(map, doors, clampedX, beforeZ, 0f, stepZ, radius);
+            position.set(clampedX, clampedZ);
             if (!pushOut(solids, position, radius, stepX, stepZ)) continue;
-            // The push must not end in a wall, door or another object; if it does, this sub-step is not taken.
+            // The push must not end in a wall, door or another object; if it does, this sub-step is not taken
+            // unless the circle already overlapped a solid and the unpushed step moves cleanly away from it.
             if (overlapsWall(map, doors, position.x, position.y, radius) || overlapsSolid(solids, position, radius)) {
-                position.set(beforeX, beforeZ);
+                resolveBlockedPushOut(map, solids, doors, position, beforeX, beforeZ, clampedX, clampedZ,
+                    stepX, stepZ, radius);
             }
         }
+    }
+
+    private static void resolveBlockedPushOut(GameMap map, List<? extends Damageable> solids, List<Door> doors,
+                                              Vector2 position, float beforeX, float beforeZ,
+                                              float clampedX, float clampedZ, float stepX, float stepZ, float radius) {
+        if (!hasOverlappingSolid(solids, beforeX, beforeZ, radius)) {
+            position.set(beforeX, beforeZ);
+            return;
+        }
+        if (canEscapeStep(map, solids, doors, beforeX, beforeZ, clampedX, clampedZ, radius)) {
+            position.set(clampedX, clampedZ);
+            return;
+        }
+        if (stepX != 0f && stepZ != 0f) {
+            float onlyZ = beforeZ + freeDistance(map, doors, beforeX, beforeZ, 0f, stepZ, radius);
+            boolean preferX = Math.abs(clampedX - beforeX) >= Math.abs(onlyZ - beforeZ);
+            float firstX = preferX ? clampedX : beforeX;
+            float firstZ = preferX ? beforeZ : onlyZ;
+            if (canEscapeStep(map, solids, doors, beforeX, beforeZ, firstX, firstZ, radius)) {
+                position.set(firstX, firstZ);
+                return;
+            }
+            float secondX = preferX ? beforeX : clampedX;
+            float secondZ = preferX ? onlyZ : beforeZ;
+            if (canEscapeStep(map, solids, doors, beforeX, beforeZ, secondX, secondZ, radius)) {
+                position.set(secondX, secondZ);
+                return;
+            }
+        }
+        position.set(beforeX, beforeZ);
+    }
+
+    private static boolean hasOverlappingSolid(List<? extends Damageable> solids, float x, float z, float radius) {
+        if (solids == null) return false;
+        for (int i = 0; i < solids.size(); i++) {
+            Damageable solid = solids.get(i);
+            if (solid.isDestroyed()) continue;
+            double reach = (double) solid.getRadius() + radius;
+            double dx = (double) x - solid.getX();
+            double dz = (double) z - solid.getZ();
+            if (dx * dx + dz * dz < reach * reach) return true;
+        }
+        return false;
+    }
+
+    private static boolean canEscapeStep(GameMap map, List<? extends Damageable> solids, List<Door> doors,
+                                         float beforeX, float beforeZ, float candX, float candZ, float radius) {
+        double dxStep = (double) candX - beforeX;
+        double dzStep = (double) candZ - beforeZ;
+        double stepSq = dxStep * dxStep + dzStep * dzStep;
+        if (stepSq == 0.0) return false;
+        if (overlapsWall(map, doors, candX, candZ, radius)) return false;
+        if (solids == null) return true;
+
+        for (int i = 0; i < solids.size(); i++) {
+            Damageable solid = solids.get(i);
+            if (solid.isDestroyed()) continue;
+            double reach = (double) solid.getRadius() + radius;
+            double reachSq = reach * reach;
+            double bx = (double) beforeX - solid.getX();
+            double bz = (double) beforeZ - solid.getZ();
+            double distSqBefore = bx * bx + bz * bz;
+            double cx = (double) candX - solid.getX();
+            double cz = (double) candZ - solid.getZ();
+            double distSqCand = cx * cx + cz * cz;
+
+            if (distSqBefore < reachSq) {
+                if (distSqCand <= distSqBefore) return false;
+                double dot = bx * dxStep + bz * dzStep;
+                if (dot < 0.0) {
+                    // Prevent a sub-step from chording deeper through an overlapped solid to its far side.
+                    double minDistSq = distSqBefore - (dot * dot) / stepSq;
+                    double minAllowed = Math.max(0.0, Math.sqrt(distSqBefore) - TANGENT_EPS);
+                    if (minDistSq < minAllowed * minAllowed) return false;
+                }
+            } else {
+                // Never introduce a new overlap with a solid that was clear before this sub-step.
+                if (distSqCand < reachSq) return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -124,6 +210,7 @@ public final class Collision {
      * @return whether the circle overlaps any live object
      */
     public static boolean overlapsSolid(List<? extends Damageable> solids, Vector2 position, float radius) {
+        if (solids == null) return false;
         for (int i = 0; i < solids.size(); i++) {
             Damageable solid = solids.get(i);
             if (solid.isDestroyed()) continue;
@@ -139,6 +226,7 @@ public final class Collision {
      */
     private static boolean pushOut(List<? extends Damageable> solids, Vector2 position, float radius, float stepX,
                                    float stepZ) {
+        if (solids == null) return false;
         boolean pushed = false;
         for (int i = 0; i < solids.size(); i++) {
             Damageable solid = solids.get(i);

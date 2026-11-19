@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.player.Player;
@@ -27,10 +28,14 @@ import java.util.Locale;
  * health/armor/energy bars, pickup toasts, objective/timer) and interactive menu screens (Title, Difficulty, Briefing,
  * Pause, Settings, Death and Intermission Tally).
  *
- * <p>Sizes are in units of 1/720 of the window height, so the overlay scales cleanly with any window size.
+ * <p>Sizes are in units of 1/720 of the shorter window dimension, so the overlay scales cleanly without horizontal
+ * clipping at any aspect ratio.
  */
 public final class HudRenderer implements Disposable {
 
+    static final int DEFAULT_WIDTH = 1280;
+    static final int DEFAULT_HEIGHT = 720;
+    static final float HUD_REFERENCE_SPAN = 720f;
     private static final int ENERGY_SEGMENTS = 10;
     private static final float MENU_BOX_WIDTH = 520f;
     private static final float MENU_ROW_HEIGHT = 34f;
@@ -86,8 +91,17 @@ public final class HudRenderer implements Disposable {
     static final float OPTION_ROW_WIDTH = MENU_BOX_WIDTH;
     /** Font pixel size of a menu option row, in HUD units. */
     static final float OPTION_PIXEL = 2.8f;
+    /** Font pixel size of the centre-screen interaction prompt, in HUD units. */
+    static final float INTERACTION_PROMPT_PIXEL = 2.4f;
+    /** Horizontal padding inside the interaction prompt box, in HUD units. */
+    static final float INTERACTION_PROMPT_PAD_X = 10f;
+    /** Vertical padding inside the interaction prompt box, in HUD units. */
+    static final float INTERACTION_PROMPT_PAD_Y = 5f;
+    /** Minimum Rail Lance zoom fraction above which tactical rangefinder brackets are drawn. */
+    static final float RAIL_ZOOM_OPTIC_THRESHOLD = 0.05f;
 
-    private final SpriteBatch batch = new SpriteBatch();
+    private final SpriteBatch batch;
+    private final Matrix4 fallbackProjection = new Matrix4();
     private final ProceduralTextures textures;
     private float width;
     private float height;
@@ -96,20 +110,57 @@ public final class HudRenderer implements Disposable {
 
     /** @param textures the textures to draw with; the caller keeps ownership of them */
     public HudRenderer(ProceduralTextures textures) {
+        this(textures, new SpriteBatch());
+    }
+
+    HudRenderer(ProceduralTextures textures, SpriteBatch batch) {
         this.textures = textures;
-        resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        this.batch = batch;
+        int initialWidth = Gdx.graphics != null ? Gdx.graphics.getWidth() : 0;
+        int initialHeight = Gdx.graphics != null ? Gdx.graphics.getHeight() : 0;
+        if (initialWidth <= 0 || initialHeight <= 0) {
+            resize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        } else {
+            resize(initialWidth, initialHeight);
+        }
+    }
+
+    float getWidth() {
+        return width;
+    }
+
+    float getHeight() {
+        return height;
+    }
+
+    float getUnit() {
+        return unit;
+    }
+
+    Matrix4 getProjectionMatrix() {
+        return batch != null ? batch.getProjectionMatrix() : fallbackProjection;
     }
 
     /**
-     * Adapts the overlay to a new window size.
+     * @param windowWidth the window width in pixels
+     * @param windowHeight the window height in pixels
+     * @return one HUD unit in pixels, scaled from the shorter window dimension so at least 720 units fit on both axes
+     */
+    static float hudUnit(float windowWidth, float windowHeight) {
+        return Math.min(windowWidth / HUD_REFERENCE_SPAN, windowHeight / HUD_REFERENCE_SPAN);
+    }
+
+    /**
+     * Adapts the overlay to a new window size; non-positive dimensions (such as a minimised window) are ignored.
      * @param newWidth the new width in pixels
      * @param newHeight the new height in pixels
      */
     public void resize(int newWidth, int newHeight) {
+        if (newWidth <= 0 || newHeight <= 0) return;
         width = newWidth;
         height = newHeight;
-        unit = newHeight / 720f;
-        batch.getProjectionMatrix().setToOrtho2D(0f, 0f, newWidth, newHeight);
+        unit = hudUnit(newWidth, newHeight);
+        getProjectionMatrix().setToOrtho2D(0f, 0f, newWidth, newHeight);
     }
 
     /**
@@ -184,9 +235,10 @@ public final class HudRenderer implements Disposable {
      * Hit-tests which menu option row lies under OS window coordinates {@code (screenX, screenY)}, or -1 if none.
      */
     public static int optionAt(int windowWidth, int windowHeight, int screenX, int screenY, MenuState menuState) {
+        if (windowWidth <= 0 || windowHeight <= 0 || menuState == null) return -1;
         List<String> options = menuState.getOptions();
-        if (options.isEmpty() || windowHeight <= 0) return -1;
-        float u = windowHeight / 720f;
+        if (options.isEmpty()) return -1;
+        float u = hudUnit(windowWidth, windowHeight);
         float uiX = screenX;
         float uiY = windowHeight - screenY;
         float boxHalf = MENU_BOX_WIDTH * 0.5f * u;
@@ -241,7 +293,7 @@ public final class HudRenderer implements Disposable {
         if (!simulation.player.isDead()) {
             drawCrosshair(simulation);
             drawInteractionPrompt(simulation);
-            drawCharge(simulation.charger, simulation.player);
+            drawCharge(simulation);
         }
         drawVitalsAndEnergy(simulation);
         drawStatus(simulation);
@@ -249,17 +301,60 @@ public final class HudRenderer implements Disposable {
         drawToast(simulation);
     }
 
+    /**
+     * @param height the window height in pixels
+     * @param unit one HUD unit in pixels
+     * @param weapon the active weapon slot, or null
+     * @param zoom the normalized Rail Lance optic zoom
+     * @return the bottom edge of the interaction prompt box in pixels, shifted below the Rail Lance zoom optic
+     *     rangefinder brackets whenever those brackets are active
+     */
+    static float interactionPromptBottomY(float height, float unit, WeaponSlot weapon, float zoom) {
+        float clampedZoom = Float.isFinite(zoom) ? MathUtils.clamp(zoom, 0f, 1f) : 0f;
+        float offset = weapon == WeaponSlot.RAIL_LANCE && clampedZoom > RAIL_ZOOM_OPTIC_THRESHOLD ? 68f : 44f;
+        return height * 0.5f - offset * unit;
+    }
+
+    /** @return the full height of the interaction prompt box in pixels for {@code unit}. */
+    static float interactionPromptHeight(float unit) {
+        return PixelFont.height(INTERACTION_PROMPT_PIXEL * unit) + INTERACTION_PROMPT_PAD_Y * 2f * unit;
+    }
+
+    /**
+     * @param unit one HUD unit in pixels
+     * @param zoom the normalized Rail Lance optic zoom
+     * @return the half-span from screen centre to the outer edge of the Rail Lance rangefinder brackets in pixels
+     */
+    static float railZoomBracketSpan(float unit, float zoom) {
+        float clampedZoom = Float.isFinite(zoom) ? MathUtils.clamp(zoom, 0f, 1f) : 0f;
+        return MathUtils.lerp(42f, 34f, clampedZoom) * unit;
+    }
+
+    /**
+     * @param height the window height in pixels
+     * @param unit one HUD unit in pixels
+     * @param weapon the active weapon slot, or null
+     * @param zoom the normalized Rail Lance optic zoom
+     * @return the bottom baseline of the charge bar / low-energy warning in pixels, staying below the interaction
+     *     prompt box even when the Rail Lance zoom optic shifts that prompt downward
+     */
+    static float chargeBottomY(float height, float unit, WeaponSlot weapon, float zoom) {
+        float clampedZoom = Float.isFinite(zoom) ? MathUtils.clamp(zoom, 0f, 1f) : 0f;
+        float offset = weapon == WeaponSlot.RAIL_LANCE && clampedZoom > RAIL_ZOOM_OPTIC_THRESHOLD ? 90f : 70f;
+        return height * 0.5f - offset * unit;
+    }
+
     private void drawInteractionPrompt(GameSimulation simulation) {
         String prompt = simulation.getInteractionPrompt();
         if (prompt == null) return;
-        float pixel = 2.4f * unit;
+        float pixel = INTERACTION_PROMPT_PIXEL * unit;
         float textW = PixelFont.width(prompt, pixel);
-        float padX = 10f * unit;
-        float padY = 5f * unit;
+        float padX = INTERACTION_PROMPT_PAD_X * unit;
+        float padY = INTERACTION_PROMPT_PAD_Y * unit;
         float boxW = textW + padX * 2f;
-        float boxH = PixelFont.height(pixel) + padY * 2f;
+        float boxH = interactionPromptHeight(unit);
         float cx = width * 0.5f;
-        float bottom = height * 0.5f - 44f * unit;
+        float bottom = interactionPromptBottomY(height, unit, simulation.getActiveWeapon(), simulation.getZoom());
         batch.setColor(0.06f, 0.08f, 0.14f, 0.78f);
         rect(cx - boxW * 0.5f, bottom, boxW, boxH);
         if (prompt.startsWith("[E]")) batch.setColor(0.62f, 1f, 0.86f, 0.95f);
@@ -334,7 +429,7 @@ public final class HudRenderer implements Disposable {
             rect(centreX + spread - bracketArm, centreY - spread, bracketArm, thick);
             rect(centreX + spread - thick, centreY - spread, thick, bracketArm);
         } else if (simulation.getActiveWeapon() == WeaponSlot.RAIL_LANCE) {
-            float zoom = simulation.getZoom();
+            float zoom = MathUtils.clamp(simulation.getZoom(), 0f, 1f);
             float charge = simulation.railLance.getChargeProgress();
             boolean ready = charge >= 0.999f;
             float gap = MathUtils.lerp(5f, 3f, zoom) * unit;
@@ -347,8 +442,8 @@ public final class HudRenderer implements Disposable {
             rect(centreX - thick * 0.5f, centreY + gap, thick, arm * 0.7f);
 
             // Tactical zoom optic rangefinder brackets and horizontal tick ladder.
-            if (zoom > 0.05f) {
-                float span = MathUtils.lerp(42f, 34f, zoom) * unit;
+            if (zoom > RAIL_ZOOM_OPTIC_THRESHOLD) {
+                float span = railZoomBracketSpan(unit, zoom);
                 float corner = 12f * unit;
                 batch.setColor(0.24f, 0.92f, 1.00f, 0.80f * zoom);
                 rect(centreX - span, centreY + span - thick, corner, thick);
@@ -367,7 +462,7 @@ public final class HudRenderer implements Disposable {
                 }
             }
             // Flanking vertical capacitor charge gauge on right/left of optic without overlapping [E] prompt.
-            if (!ready || zoom > 0.05f) {
+            if (!ready || zoom > RAIL_ZOOM_OPTIC_THRESHOLD) {
                 float gaugeX = centreX + MathUtils.lerp(22f, 44f, zoom) * unit;
                 float gaugeH = 22f * unit;
                 float gaugeY = centreY - gaugeH * 0.5f;
@@ -408,12 +503,14 @@ public final class HudRenderer implements Disposable {
         }
     }
 
-    private void drawCharge(BlastCharger charger, Player player) {
+    private void drawCharge(GameSimulation simulation) {
+        BlastCharger charger = simulation.charger;
+        Player player = simulation.player;
         float centreX = width * 0.5f;
         float barWidth = 180f * unit;
         float barHeight = 10f * unit;
         float left = centreX - barWidth * 0.5f;
-        float bottom = height * 0.5f - 70f * unit;
+        float bottom = chargeBottomY(height, unit, simulation.getActiveWeapon(), simulation.getZoom());
         if (charger.isRefused() || player.isDashRefused()) {
             batch.setColor(1f, 0.35f, 0.3f, 0.95f);
             PixelFont.drawCentred(batch, textures.white, "LOW ENERGY", centreX, bottom, 3f * unit);
@@ -949,10 +1046,12 @@ public final class HudRenderer implements Disposable {
     }
 
     static String formatTime(float seconds) {
-        float clamped = Math.max(0f, seconds);
-        int mins = (int) (clamped / 60f);
-        float rem = clamped - mins * 60f;
-        return String.format(Locale.ROOT, "%02d:%04.1f", mins, rem);
+        float clamped = !Float.isFinite(seconds) || seconds < 0f ? 0f : seconds;
+        long totalTenths = (long) Math.floor(clamped * 10.0);
+        long mins = totalTenths / 600L;
+        int secs = (int) ((totalTenths % 600L) / 10L);
+        int tenths = (int) (totalTenths % 10L);
+        return String.format(Locale.ROOT, "%02d:%02d.%d", mins, secs, tenths);
     }
 
     private void rect(float x, float y, float rectWidth, float rectHeight) {
@@ -961,6 +1060,6 @@ public final class HudRenderer implements Disposable {
 
     @Override
     public void dispose() {
-        batch.dispose();
+        if (batch != null) batch.dispose();
     }
 }

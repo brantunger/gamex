@@ -158,4 +158,36 @@ class ViewmodelAnimationTest {
         animation.update(0.03f, false, 0f, 0f, 0f);
         assertTrue(animation.getRecoil() > 0.8f);
     }
+
+    @Test
+    void resetShotClearsHeavyRecoilAndSlideWithoutDisturbingWalkBobOrTurnSway() {
+        ViewmodelAnimation animation = new ViewmodelAnimation();
+        animation.update(FRAME, 2.6f, 1f, 12f, -8f);
+        animation.update(0.035f, 0f, 1f, 12f, -8f);
+
+        assertTrue(animation.getRecoil() > 2.4f, "heavy shot recoil active: " + animation.getRecoil());
+        assertTrue(animation.getSlide() > 0.7f, "slide racked back: " + animation.getSlide());
+        float bobXBefore = animation.getBobX();
+        float bobYBefore = animation.getBobY();
+        float swayYawBefore = animation.getSwayYaw();
+        float swayPitchBefore = animation.getSwayPitch();
+        assertTrue(Math.abs(bobXBefore) > 0f);
+        assertTrue(Math.abs(swayYawBefore) > 0f);
+
+        animation.resetShot();
+        assertEquals(0f, animation.getRecoil(), 0f);
+        assertEquals(0f, animation.getSlide(), 0f);
+        assertEquals(bobXBefore, animation.getBobX(), 0f);
+        assertEquals(bobYBefore, animation.getBobY(), 0f);
+        assertEquals(swayYawBefore, animation.getSwayYaw(), 0f);
+        assertEquals(swayPitchBefore, animation.getSwayPitch(), 0f);
+
+        // Subsequent idle updates stay at 0 recoil/slide, and a 1x pistol shot uses reset recoilScale = 1.
+        animation.update(FRAME, 0f, 0f, 0f, 0f);
+        assertEquals(0f, animation.getRecoil(), 0f);
+        assertEquals(0f, animation.getSlide(), 0f);
+        animation.update(FRAME, true, 0f, 0f, 0f);
+        animation.update(0.03f, false, 0f, 0f, 0f);
+        assertTrue(animation.getRecoil() <= 1f, "recoilScale reset to 1f: " + animation.getRecoil());
+    }
 }

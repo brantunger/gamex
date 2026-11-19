@@ -254,6 +254,11 @@ public final class Door {
      */
     public float intersectRay(float ox, float oy, float oz, float dx, float dy, float dz,
                               float maxDistance, float[] normalOut) {
+        if (maxDistance < 0f || Float.isNaN(maxDistance)
+            || Float.isNaN(ox) || Float.isNaN(oy) || Float.isNaN(oz)
+            || Float.isNaN(dx) || Float.isNaN(dy) || Float.isNaN(dz)) {
+            return Float.POSITIVE_INFINITY;
+        }
         float minX = x - getHalfExtentX();
         float maxX = x + getHalfExtentX();
         float minY = getBottomY();
@@ -261,8 +266,8 @@ public final class Door {
         float minZ = z - getHalfExtentZ();
         float maxZ = z + getHalfExtentZ();
 
-        float tMin = 0f;
-        float tMax = maxDistance;
+        float tEnter = Float.NEGATIVE_INFINITY;
+        float tExit = Float.POSITIVE_INFINITY;
         float hitNx = 0f;
         float hitNy = 0f;
         float hitNz = 0f;
@@ -274,21 +279,23 @@ public final class Door {
             float inv = 1f / dx;
             float t1 = (minX - ox) * inv;
             float t2 = (maxX - ox) * inv;
-            float nx = -Math.signum(dx);
+            float nx = -1f;
             if (t1 > t2) {
                 float tmp = t1;
                 t1 = t2;
                 t2 = tmp;
-                nx = -nx;
+                nx = 1f;
             }
-            if (t1 > tMin) {
-                tMin = t1;
+            if (t1 == 0f) t1 = 0f;
+            if (t2 == 0f) t2 = 0f;
+            if (t1 > tEnter) {
+                tEnter = t1;
                 hitNx = nx;
                 hitNy = 0f;
                 hitNz = 0f;
             }
-            tMax = Math.min(tMax, t2);
-            if (tMin > tMax) return Float.POSITIVE_INFINITY;
+            tExit = Math.min(tExit, t2);
+            if (tEnter > tExit) return Float.POSITIVE_INFINITY;
         }
 
         // Y slab
@@ -298,21 +305,23 @@ public final class Door {
             float inv = 1f / dy;
             float t1 = (minY - oy) * inv;
             float t2 = (maxY - oy) * inv;
-            float ny = -Math.signum(dy);
+            float ny = -1f;
             if (t1 > t2) {
                 float tmp = t1;
                 t1 = t2;
                 t2 = tmp;
-                ny = -ny;
+                ny = 1f;
             }
-            if (t1 > tMin) {
-                tMin = t1;
+            if (t1 == 0f) t1 = 0f;
+            if (t2 == 0f) t2 = 0f;
+            if (t1 > tEnter) {
+                tEnter = t1;
                 hitNx = 0f;
                 hitNy = ny;
                 hitNz = 0f;
             }
-            tMax = Math.min(tMax, t2);
-            if (tMin > tMax) return Float.POSITIVE_INFINITY;
+            tExit = Math.min(tExit, t2);
+            if (tEnter > tExit) return Float.POSITIVE_INFINITY;
         }
 
         // Z slab
@@ -322,29 +331,51 @@ public final class Door {
             float inv = 1f / dz;
             float t1 = (minZ - oz) * inv;
             float t2 = (maxZ - oz) * inv;
-            float nz = -Math.signum(dz);
+            float nz = -1f;
             if (t1 > t2) {
                 float tmp = t1;
                 t1 = t2;
                 t2 = tmp;
-                nz = -nz;
+                nz = 1f;
             }
-            if (t1 > tMin) {
-                tMin = t1;
+            if (t1 == 0f) t1 = 0f;
+            if (t2 == 0f) t2 = 0f;
+            if (t1 > tEnter) {
+                tEnter = t1;
                 hitNx = 0f;
                 hitNy = 0f;
                 hitNz = nz;
             }
-            tMax = Math.min(tMax, t2);
-            if (tMin > tMax) return Float.POSITIVE_INFINITY;
+            tExit = Math.min(tExit, t2);
+            if (tEnter > tExit) return Float.POSITIVE_INFINITY;
         }
 
-        if (tMin <= 0f) return Float.POSITIVE_INFINITY;
+        if (tEnter > tExit || tExit <= 0f || tEnter > maxDistance) {
+            return Float.POSITIVE_INFINITY;
+        }
+        if (tEnter < 0f) {
+            if (normalOut != null) {
+                float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (len > 1e-8f) {
+                    float rx = -dx / len;
+                    float ry = -dy / len;
+                    float rz = -dz / len;
+                    normalOut[0] = rx == 0f ? 0f : rx;
+                    normalOut[1] = ry == 0f ? 0f : ry;
+                    normalOut[2] = rz == 0f ? 0f : rz;
+                } else {
+                    normalOut[0] = 0f;
+                    normalOut[1] = 0f;
+                    normalOut[2] = 1f;
+                }
+            }
+            return 0f;
+        }
         if (normalOut != null) {
             normalOut[0] = hitNx;
             normalOut[1] = hitNy;
             normalOut[2] = hitNz;
         }
-        return tMin;
+        return tEnter == 0f ? 0f : tEnter;
     }
 }

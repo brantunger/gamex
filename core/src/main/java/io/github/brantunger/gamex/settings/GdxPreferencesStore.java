@@ -81,6 +81,10 @@ public final class GdxPreferencesStore implements KeyValueStore {
 
     @Override
     public void flush() {
-        prefs.flush();
+        try {
+            prefs.flush();
+        } catch (RuntimeException e) {
+            log.error("Failed to save preferences: {}", e.getMessage(), e);
+        }
     }
 }

@@ -506,4 +506,96 @@ class ObjModelTest {
         assertThrows(IllegalStateException.class,
             () -> new ModelRig(cyclic).evaluatePartTransform("a", null, new Matrix4(), new Matrix4()));
     }
+
+    @Test
+    void headerPartDeclarationsKeepRootActiveUntilAnExplicitPartSwitch() {
+        String text = ""
+            + "# @part base parent=root pivot=0,0,0\n"
+            + "# @part turret parent=base pivot=0,1,0\n"
+            + "# @part barrel parent=turret pivot=0,2,-0.5\n"
+            + SQUARE
+            + "f 1 2 3\n"
+            + "# @part turret\n"
+            + "f 1 3 4\n"
+            + "# @part root\n"
+            + "f 1 2 4\n";
+
+        ObjModel model = ObjModel.parse(text);
+
+        assertEquals(3, model.getTriangleCount());
+        assertEquals(ObjModel.ROOT_PART, model.getPart(0));
+        assertEquals("turret", model.getPart(1));
+        assertEquals(ObjModel.ROOT_PART, model.getPart(2));
+        assertEquals(null, model.getPartSpec(ObjModel.ROOT_PART).parent);
+        assertEquals("base", model.getPartSpec("turret").parent);
+        assertEquals("turret", model.getPartSpec("barrel").parent);
+    }
+
+    @Test
+    void partialPartAndSocketUpdatesPreservePreviouslyDeclaredMetadata() {
+        String text = ""
+            + "# @part base parent=root pivot=0,0.25,0\n"
+            + "# @part turret parent=base pivot=0,1,0\n"
+            + "# @part barrel pivot=0,2,-0.5\n"
+            + "# @socket muzzle part=barrel pos=0,2,-1.5\n"
+            + SQUARE
+            + "# @part turret\n"
+            + "# @part turret pivot=0,1.5,-0.25\n"
+            + "# @part barrel parent=turret\n"
+            + "# @socket muzzle pos=0,2,-2.0\n"
+            + "f 1 2 3\n";
+
+        ObjModel model = ObjModel.parse(text);
+
+        assertEquals("turret", model.getPart(0));
+        ObjModel.PartSpec turret = model.getPartSpec("turret");
+        assertEquals("base", turret.parent);
+        assertEquals(0f, turret.pivotX, EPSILON);
+        assertEquals(1.5f, turret.pivotY, EPSILON);
+        assertEquals(-0.25f, turret.pivotZ, EPSILON);
+
+        ObjModel.PartSpec barrel = model.getPartSpec("barrel");
+        assertEquals("turret", barrel.parent);
+        assertEquals(0f, barrel.pivotX, EPSILON);
+        assertEquals(2f, barrel.pivotY, EPSILON);
+        assertEquals(-0.5f, barrel.pivotZ, EPSILON);
+
+        ObjModel.SocketSpec muzzle = model.getSocket("muzzle");
+        assertEquals("barrel", muzzle.part);
+        assertEquals(0f, muzzle.x, EPSILON);
+        assertEquals(2f, muzzle.y, EPSILON);
+        assertEquals(-2f, muzzle.z, EPSILON);
+
+        ObjModel reparentedToRoot = ObjModel.parse(""
+            + "# @part arm parent=base pivot=1,2,3\n"
+            + "# @part arm parent=root\n");
+        assertEquals(null, reparentedToRoot.getPartSpec("arm").parent);
+        assertEquals(2f, reparentedToRoot.getPartSpec("arm").pivotY, EPSILON);
+    }
+
+    @Test
+    void rejectsUnknownDirectivesInvalidAttributesDuplicateAttributesAndRootRedefinitions() {
+        assertAll(
+            () -> rejectsSaying("# @unknown foo\n", "Line 1", "@unknown"),
+            () -> rejectsSaying("v 0 0 0\n# @bone pelvis\n", "Line 2", "@bone"),
+            () -> rejectsSaying("# @\n", "Line 1", "'@'"),
+            () -> rejectsSaying("#   @bogus\n", "Line 1", "@bogus"),
+            () -> rejectsSaying("# @part arm pivto=0,1,0\n", "Line 1", "pivto=0,1,0"),
+            () -> rejectsSaying("# @part arm parnet=root\n", "Line 1", "parnet=root"),
+            () -> rejectsSaying("# @part arm extra\n", "Line 1", "extra"),
+            () -> rejectsSaying("# @part pivot=0,1,0\n", "Line 1", "@part"),
+            () -> rejectsSaying("# @part arm parent=\n", "Line 1", "parent"),
+            () -> rejectsSaying("# @part arm parent=a parent=b\n", "Line 1", "duplicate 'parent'"),
+            () -> rejectsSaying("# @part arm pivot=0,0,0 pivot=0,1,0\n", "Line 1", "duplicate 'pivot'"),
+            () -> rejectsSaying("# @part root parent=root pivot=0,0,0\n", "Line 1", "root"),
+            () -> rejectsSaying("# @part root pivot=0,1,0\n", "Line 1", "root"),
+            () -> rejectsSaying("# @part root parent=pelvis\n", "Line 1", "root"),
+            () -> rejectsSaying("# @socket muzzle position=0,1,0\n", "Line 1", "position=0,1,0"),
+            () -> rejectsSaying("# @socket muzzle parent=arm\n", "Line 1", "parent=arm"),
+            () -> rejectsSaying("# @socket pos=0,1,0\n", "Line 1", "@socket"),
+            () -> rejectsSaying("# @socket muzzle part=\n", "Line 1", "part"),
+            () -> rejectsSaying("# @socket muzzle part=a part=b\n", "Line 1", "duplicate 'part'"),
+            () -> rejectsSaying("# @socket muzzle pos=0,0,0 pos=1,1,1\n", "Line 1", "duplicate 'pos'"),
+            () -> rejectsSaying("# @socket muzzle pos=1,2\n", "Line 1", "@socket pos"));
+    }
 }

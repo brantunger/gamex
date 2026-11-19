@@ -37,6 +37,7 @@ class TestLocations implements CommandLineArgumentProvider {
 
 test {
   useJUnitPlatform()
+  mustRunAfter(':tools:generateModels', ':tools:generateSounds')
   jvmArgumentProviders.add(new TestLocations(
     models: rootProject.file("assets/models"),
     sounds: rootProject.file("assets/sounds"),

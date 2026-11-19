@@ -13,6 +13,8 @@ import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.BlastCharger;
+import io.github.brantunger.gamex.weapon.BlastProjectile;
+import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import io.github.brantunger.gamex.weapon.Pistol;
 import io.github.brantunger.gamex.weapon.RailLance;
 import io.github.brantunger.gamex.weapon.Scattergun;
@@ -1464,5 +1466,591 @@ class GameSimulationTest {
             }
         }
         assertTrue(problems.isEmpty(), String.join("; ", problems));
+    }
+
+    @Test
+    void steppingAfterLevelClearedStopsEnemiesAndEnemyBoltsFromHurtingPlayer() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "##########",
+            "#>...XD..#",
+            "##########"));
+        sim.enemies.get(0).alert();
+        sim.player.position.set(5.3f, 1.5f);
+        sim.enemyProjectiles.add(new EnemyProjectile(
+            new Vector3(6.2f, 0.44f, 1.5f), new Vector3(-1f, 0f, 0f), 8f, 30f, sim.enemies.get(0)));
+
+        PlayerInput idle = new PlayerInput();
+        sim.update(FRAME, idle);
+        assertTrue(sim.isLevelCleared());
+        assertEquals(Player.MAX_HEALTH, sim.player.getHealth(), 1e-4f);
+
+        for (int i = 0; i < 120; i++) {
+            sim.update(FRAME, idle);
+        }
+        assertTrue(sim.isLevelCleared());
+        assertFalse(sim.player.isDead(), "enemies and bolts must not kill player after stage clear");
+        assertEquals(Player.MAX_HEALTH, sim.player.getHealth(), 1e-4f);
+        assertEquals(0f, sim.getDamageTaken(), 1e-4f);
+    }
+
+    @Test
+    void postMortemEnemyBoltsDoNotDamageTargetsOrMutateDestroyedTargetTally() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "##########",
+            "#>...o...#",
+            "##########"));
+        Target canister = sim.targets.get(0);
+        canister.damage(40f);
+        sim.enemyProjectiles.add(new EnemyProjectile(
+            new Vector3(3.5f, 0.30f, 1.5f), new Vector3(1f, 0f, 0f), 8f, 25f, null));
+        sim.player.damage(500f);
+        assertTrue(sim.player.isDead());
+        assertEquals(0, sim.getTargetsDestroyed());
+
+        PlayerInput idle = new PlayerInput();
+        for (int i = 0; i < 60; i++) {
+            sim.update(FRAME, idle);
+        }
+        assertFalse(canister.isDestroyed(), "post-mortem bolts must not silently destroy targets");
+        assertEquals(10f, canister.getHealth(), 1e-4f);
+        assertEquals(0, sim.getTargetsDestroyed());
+        assertTrue(sim.enemyProjectiles.isEmpty());
+    }
+
+    @Test
+    void stageClearAndPlayerDeathImmediatelyCancelRailZoomAndBlastCharge() {
+        // Stage clear via allDestroyed while at 1.8x Rail Lance zoom.
+        GameSimulation clearZoomSim = new GameSimulation(
+            GameMap.parse("#########", "#>....o.#", "#########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 3, WeaponSlot.RAIL_LANCE),
+            true);
+        PlayerInput zoomInput = new PlayerInput();
+        zoomInput.charge = true;
+        for (int i = 0; i < 12; i++) clearZoomSim.update(FRAME, zoomInput);
+        assertEquals(1f, clearZoomSim.getZoom(), 1e-4f);
+
+        zoomInput.fire = true;
+        clearZoomSim.update(FRAME, zoomInput);
+        assertTrue(clearZoomSim.isLevelCleared());
+        assertEquals(0f, clearZoomSim.getZoom(), 1e-6f, "zoom cancelled immediately on clear frame");
+        assertEquals(0f, clearZoomSim.railLance.getZoom(), 1e-6f);
+
+        // Stage clear via exit pad while holding Pistol Blast charge.
+        GameSimulation clearChargeSim = new GameSimulation(GameMap.parse("#########", "#>....X.#", "#########"));
+        PlayerInput chargeInput = new PlayerInput();
+        chargeInput.charge = true;
+        for (int i = 0; i < 20; i++) clearChargeSim.update(FRAME, chargeInput);
+        assertTrue(clearChargeSim.getBlastChargeProgress() > 0f);
+
+        clearChargeSim.player.position.set(6.2f, 1.5f);
+        clearChargeSim.update(FRAME, chargeInput);
+        assertTrue(clearChargeSim.isLevelCleared());
+        assertEquals(0f, clearChargeSim.getBlastChargeProgress(), 1e-6f);
+        assertFalse(clearChargeSim.isBlastChargingAudioActive());
+
+        // Lethal damage mid-step while zoomed at 1.8x cancels zoom on death frame 1.
+        GameSimulation deathZoomSim = new GameSimulation(
+            GameMap.parse("########", "#>.~...#", "########"),
+            new PlayerLoadout(5f, 0f, Difficulty.NORMAL, false, 0, true, 3, WeaponSlot.RAIL_LANCE),
+            false);
+        PlayerInput holdZoom = new PlayerInput();
+        holdZoom.charge = true;
+        for (int i = 0; i < 12; i++) deathZoomSim.update(FRAME, holdZoom);
+        assertEquals(1f, deathZoomSim.getZoom(), 1e-4f);
+
+        deathZoomSim.player.position.set(3.5f, 1.5f);
+        deathZoomSim.update(FRAME, holdZoom);
+        assertTrue(deathZoomSim.player.isDead());
+        assertEquals(0f, deathZoomSim.getZoom(), 1e-6f, "zoom cancelled immediately on death frame");
+        assertEquals(0f, deathZoomSim.railLance.getZoom(), 1e-6f);
+    }
+
+    @Test
+    void reversingWeaponSwapBeforeMidpointAndAtExactMidpointBehaveCleanly() {
+        // Reversing before SWAP_MIDPOINT preserves previousWeapon for Q quick-swap (#54).
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        PlayerInput input = new PlayerInput();
+        input.weaponSlot = 3;
+        sim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getTargetWeapon());
+
+        input.weaponSlot = 1;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 10; i++) sim.update(FRAME, input);
+        assertEquals(0f, sim.getSwapProgress(), 1e-6f);
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+
+        input.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
+        sim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getTargetWeapon(),
+            "Q quick-swap remembers Rail Lance after reversing back to Pistol");
+
+        // Reversing on exact SWAP_MIDPOINT updates activeWeapon immediately during raise (#55).
+        GameSimulation midSim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        PlayerInput midInput = new PlayerInput();
+        midInput.weaponSlot = 2;
+        midSim.update(0.045f, midInput);
+        midInput.weaponSlot = 0;
+        midSim.update(0.045f, midInput);
+        assertEquals(WeaponSlot.SCATTERGUN, midSim.getActiveWeapon());
+
+        midInput.weaponSlot = 1;
+        midSim.update(0.02f, midInput);
+        assertTrue(midSim.getSwapProgress() > 0f);
+        assertEquals(WeaponSlot.PISTOL, midSim.getActiveWeapon(),
+            "reversing at exact midpoint immediately shows target weapon during raise");
+    }
+
+    @Test
+    void initialPreviousWeaponAndDryFireSmartSwapPreferLoadedWeaponsForQuickSwap() {
+        // initialPreviousWeapon skips 0-slug Rail Lance in favor of loaded Scattergun.
+        GameSimulation initialSim = new GameSimulation(
+            GameMap.parse("##########", "#>.......#", "##########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 8, true, 0, WeaponSlot.PISTOL),
+            false);
+        PlayerInput input = new PlayerInput();
+        input.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
+        initialSim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, initialSim.getTargetWeapon());
+
+        // Dry-fire smart-swap from 0-shell Scattergun to Rail Lance sets previousWeapon to loaded Pistol.
+        GameSimulation swapSim = new GameSimulation(
+            GameMap.parse("##########", "#>.......#", "##########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 1, true, 5, WeaponSlot.RAIL_LANCE),
+            false);
+        input.weaponSlot = 2;
+        swapSim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 12; i++) swapSim.update(FRAME, input);
+        assertEquals(WeaponSlot.SCATTERGUN, swapSim.getActiveWeapon());
+
+        input.fire = true;
+        swapSim.update(FRAME, input);
+        input.fire = false;
+        assertEquals(0, swapSim.getShells());
+        for (int i = 0; i < 50; i++) swapSim.update(FRAME, input);
+
+        input.fire = true;
+        swapSim.update(FRAME, input);
+        input.fire = false;
+        assertEquals(WeaponSlot.RAIL_LANCE, swapSim.getTargetWeapon());
+        for (int i = 0; i < 12; i++) swapSim.update(FRAME, input);
+        assertEquals(WeaponSlot.RAIL_LANCE, swapSim.getActiveWeapon());
+
+        input.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
+        swapSim.update(FRAME, input);
+        assertEquals(WeaponSlot.PISTOL, swapSim.getTargetWeapon(),
+            "Q quick-swap equips loaded Pistol instead of empty 0-shell Scattergun");
+    }
+
+    @Test
+    void emptyScattergunAndRailLanceTriggerDryFireOnExactCooldownCompletionFrame() {
+        GameSimulation scatterSim = new GameSimulation(
+            GameMap.parse("##########", "#>.......#", "##########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 1, false, 0, WeaponSlot.SCATTERGUN),
+            false);
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+        scatterSim.update(FRAME, input);
+        input.fire = false;
+        for (int i = 0; i < 15; i++) scatterSim.update(0.049f, input);
+        assertFalse(scatterSim.scattergun.isReady());
+
+        scatterSim.drainSoundEvents();
+        input.fire = true;
+        scatterSim.update(FRAME, input);
+        assertEquals("OUT OF SHELLS", scatterSim.getToastMessage());
+        assertEquals(WeaponSlot.PISTOL, scatterSim.getTargetWeapon());
+        assertEquals(1, countSound(scatterSim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
+
+        GameSimulation railSim = new GameSimulation(
+            GameMap.parse("##########", "#>.......#", "##########"),
+            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 1, WeaponSlot.RAIL_LANCE),
+            false);
+        input.fire = true;
+        railSim.update(FRAME, input);
+        input.fire = false;
+        for (int i = 0; i < 22; i++) railSim.update(0.0495f, input);
+        assertFalse(railSim.railLance.isReady());
+
+        railSim.drainSoundEvents();
+        input.fire = true;
+        railSim.update(FRAME, input);
+        assertEquals("OUT OF SLUGS", railSim.getToastMessage());
+        assertEquals(WeaponSlot.PISTOL, railSim.getTargetWeapon());
+        assertEquals(1, countSound(railSim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
+    }
+
+    @Test
+    void weaponSwitchResetsViewmodelRecoilAndSlideAtSwapMidpoint() {
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.RAIL_LANCE);
+        PlayerInput input = new PlayerInput();
+        input.fire = true;
+        sim.update(FRAME, input);
+        input.fire = false;
+        sim.update(FRAME, input);
+        assertTrue(sim.viewmodel.getRecoil() > 1.1f);
+        assertTrue(sim.viewmodel.getSlide() > 0.8f);
+
+        input.weaponSlot = 1;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        for (int i = 0; i < 5; i++) sim.update(FRAME, input);
+
+        assertEquals(WeaponSlot.PISTOL, sim.getActiveWeapon());
+        assertEquals(0f, sim.viewmodel.getSlide(), 1e-6f);
+        assertEquals(0f, sim.viewmodel.getRecoil(), 1e-6f);
+    }
+
+    @Test
+    void dashingAfterShockGrateHitDoesNotResetHazardCooldownEarly() {
+        GameSimulation sim = new GameSimulation(GameMap.parse(
+            "############",
+            "#>~~~~.....#",
+            "############"));
+        sim.player.position.set(2.2f, 1.5f);
+        PlayerInput input = new PlayerInput();
+
+        sim.update(FRAME, input);
+        assertEquals(Player.MAX_HEALTH - GameSimulation.HAZARD_DAMAGE, sim.player.getHealth(), 1e-4f);
+
+        sim.drainSoundEvents();
+        input.dash = true;
+        input.moveForward = 1f;
+        sim.update(FRAME, input);
+        input.dash = false;
+        input.moveForward = 0f;
+        for (int i = 0; i < 8; i++) sim.update(FRAME, input);
+        assertFalse(sim.player.isDashing());
+        assertTrue(sim.map.isHazardAt(sim.player.position.x, sim.player.position.y));
+
+        // Still inside the 0.35s HAZARD_INTERVAL window (~0.17s elapsed): must not zap a second time yet.
+        sim.update(FRAME, input);
+        assertEquals(Player.MAX_HEALTH - GameSimulation.HAZARD_DAMAGE, sim.player.getHealth(), 1e-4f);
+        assertEquals(0, countSound(sim.drainSoundEvents(), SoundEvent.Type.HAZARD_ZAP));
+
+        // Once the remaining cooldown elapses while still standing on ~, the next zap fires normally.
+        for (int i = 0; i < 15; i++) sim.update(FRAME, input);
+        assertEquals(Player.MAX_HEALTH - 2f * GameSimulation.HAZARD_DAMAGE, sim.player.getHealth(), 1e-4f);
+    }
+
+    @Test
+    void refusedDashPreservesBlastChargeAndRailZoomAndSyncsLowEnergyWarningDuringCooldown() {
+        // Refused dash with 22 energy preserves active Pistol Blast charge (#126).
+        GameSimulation blastSim = emptyCorridor();
+        blastSim.energy.setEnergy(22f);
+        PlayerInput blastInput = new PlayerInput();
+        blastInput.charge = true;
+        for (int i = 0; i < 18; i++) blastSim.update(FRAME, blastInput);
+        assertTrue(blastSim.charger.isCharging());
+
+        blastSim.drainSoundEvents();
+        blastInput.dash = true;
+        blastSim.update(FRAME, blastInput);
+        blastInput.dash = false;
+        assertFalse(blastSim.player.isDashing());
+        assertTrue(blastSim.player.isDashRefused());
+        assertEquals(1, countSound(blastSim.drainSoundEvents(), SoundEvent.Type.LOW_ENERGY));
+        assertTrue(blastSim.charger.isCharging(), "refused dash must keep active Blast charge");
+
+        // Refused dash preserves Rail Lance 1.8x zoom, while accepted dash keeps suppression across dash (#126/#127).
+        GameSimulation railSim = emptyCorridorHolding(WeaponSlot.RAIL_LANCE);
+        railSim.energy.setEnergy(10f);
+        PlayerInput railInput = new PlayerInput();
+        railInput.charge = true;
+        for (int i = 0; i < 12; i++) railSim.update(FRAME, railInput);
+        assertEquals(1f, railSim.getZoom(), 1e-4f);
+
+        railInput.dash = true;
+        railSim.update(FRAME, railInput);
+        railInput.dash = false;
+        assertFalse(railSim.player.isDashing());
+        assertEquals(1f, railSim.getZoom(), 1e-4f, "refused dash must keep 1.8x optic zoom");
+
+        railSim.energy.setEnergy(100f);
+        railInput.dash = true;
+        railSim.update(FRAME, railInput);
+        railInput.dash = false;
+        for (int i = 0; i < 15; i++) railSim.update(FRAME, railInput);
+        assertFalse(railSim.player.isDashing());
+        assertEquals(0f, railSim.getZoom(), 1e-5f, "accepted dash suppresses zoom while RMB stays held");
+
+        // Post-dash cooldown with < 25 energy synchronizes LOW_ENERGY audio and HUD warning (#125).
+        GameSimulation cdSim = emptyCorridor();
+        cdSim.energy.setEnergy(35f);
+        PlayerInput cdInput = new PlayerInput();
+        cdInput.dash = true;
+        cdSim.update(FRAME, cdInput);
+        cdInput.dash = false;
+        for (int i = 0; i < 9; i++) cdSim.update(FRAME, cdInput);
+        assertFalse(cdSim.player.isDashing());
+
+        cdSim.drainSoundEvents();
+        cdInput.dash = true;
+        cdSim.update(FRAME, cdInput);
+        assertEquals(1, countSound(cdSim.drainSoundEvents(), SoundEvent.Type.LOW_ENERGY));
+        assertTrue(cdSim.player.isDashRefused());
+    }
+
+    @Test
+    void holdingRightMouseDuringSwapToRailLanceZoomsImmediatelyWhenDrawCompletes() {
+        GameSimulation sim = emptyCorridorHolding(WeaponSlot.PISTOL);
+        PlayerInput input = new PlayerInput();
+
+        input.weaponSlot = 3;
+        sim.update(FRAME, input);
+        input.weaponSlot = 0;
+        assertTrue(sim.getSwapProgress() > 0f);
+
+        sim.drainSoundEvents();
+        input.charge = true;
+        for (int i = 0; i < 12; i++) sim.update(FRAME, input);
+        assertEquals(0f, sim.getSwapProgress(), 1e-6f);
+        assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
+        assertTrue(sim.getZoom() > 0f, "holding RMB during draw zooms immediately once Rail Lance raises");
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.RAIL_ZOOM_IN));
+    }
+
+    @Test
+    void muzzleOriginUses3DBoundsOverShortTargetsAndRetractingDoorsAndCanisterUses3DSplash() {
+        // 1. Jumping beside a 0.55u Canister clears its top in 3D instead of snapping muzzle back (#136).
+        GameSimulation canisterMuzzleSim = new GameSimulation(GameMap.parse(
+            "############",
+            "#..........#",
+            "#>..o......#",
+            "#..........#",
+            "############"));
+        PlayerInput chargeJump = new PlayerInput();
+        chargeJump.charge = true;
+        for (int i = 0; i < 30; i++) canisterMuzzleSim.update(FRAME, chargeJump);
+        chargeJump.jump = true;
+        canisterMuzzleSim.update(FRAME, chargeJump);
+        chargeJump.jump = false;
+        while (canisterMuzzleSim.player.getVerticalVelocity() > 0.25f) {
+            canisterMuzzleSim.update(FRAME, chargeJump);
+        }
+        canisterMuzzleSim.player.position.set(3.98f, 2.39f);
+        chargeJump.charge = false;
+        canisterMuzzleSim.update(FRAME, chargeJump);
+        assertEquals(1, canisterMuzzleSim.projectiles.size());
+        Vector3 overCanisterOrigin = canisterMuzzleSim.projectiles.get(0).position;
+        assertTrue(overCanisterOrigin.x - canisterMuzzleSim.player.position.x > 0.45f,
+            "muzzle above 0.55u canister spawns forward at " + overCanisterOrigin);
+
+        // 2. Jumping in front of a retracting bulkhead (openProgress = 0.81 >= 0.75) pulls muzzle out of 3D slab (#136).
+        GameSimulation doorMuzzleSim = new GameSimulation(GameMap.parse(
+            "#########",
+            "#..#....#",
+            "#.>=....#",
+            "#..#....#",
+            "#########"));
+        Door door = doorMuzzleSim.doors.get(0);
+        door.open();
+        door.update(Door.OPEN_DURATION * 0.81f);
+        PlayerInput doorInput = new PlayerInput();
+        doorInput.charge = true;
+        for (int i = 0; i < 25; i++) {
+            doorMuzzleSim.player.updateTimers(0f);
+            doorMuzzleSim.charger.update(FRAME, true);
+        }
+        doorMuzzleSim.player.position.set(2.98f, 2.50f);
+        doorMuzzleSim.player.tryJump();
+        while (doorMuzzleSim.player.getVerticalVelocity() > 0.25f) {
+            doorMuzzleSim.player.move(doorMuzzleSim.map, FRAME * 0f, 0f, FRAME);
+        }
+        doorInput.charge = false;
+        doorMuzzleSim.update(FRAME, doorInput);
+        assertEquals(1, doorMuzzleSim.projectiles.size());
+        Vector3 doorBlastOrigin = doorMuzzleSim.projectiles.get(0).position;
+        assertTrue(doorBlastOrigin.x < 3.1f,
+            "muzzle pulled back from 3D retracting bulkhead slab (openProgress >= 0.75): " + doorBlastOrigin);
+        assertFalse(door.overlapsSphere(doorBlastOrigin.x, doorBlastOrigin.y, doorBlastOrigin.z,
+            BlastProjectile.RADIUS), "blast must not spawn inside 3D retracting bulkhead slab: " + doorBlastOrigin);
+
+        // 3. Canister detonation passes 3D blastY = height * 0.5f so jumping reduces splash damage (#140).
+        GameSimulation groundedSim = corridorWithCanister();
+        groundedSim.player.position.set(3.0f, 1.5f);
+        groundedSim.targets.get(0).damage(999f);
+        groundedSim.update(FRAME, new PlayerInput());
+
+        GameSimulation jumpingSim = corridorWithCanister();
+        jumpingSim.player.position.set(3.0f, 1.5f);
+        jumpingSim.player.tryJump();
+        while (jumpingSim.player.getVerticalVelocity() > 0.2f) {
+            jumpingSim.player.move(jumpingSim.map, 0f, 0f, FRAME);
+        }
+        assertTrue(jumpingSim.player.getFeetY() > jumpingSim.targets.get(0).getHeight() * 0.5f);
+        jumpingSim.targets.get(0).damage(999f);
+        jumpingSim.update(FRAME, new PlayerInput());
+
+        assertTrue(jumpingSim.getDamageTaken() > 0f);
+        assertTrue(jumpingSim.getDamageTaken() < groundedSim.getDamageTaken(),
+            "airborne player above canister midpoint takes less 3D splash (" + jumpingSim.getDamageTaken()
+                + " vs " + groundedSim.getDamageTaken() + ")");
+    }
+
+    @Test
+    void enemyBoltsAndShockGratesDoNotTriggerPlayerHitMarkersOnDestructionOrChainKills() {
+        PlayerInput idle = new PlayerInput();
+
+        // 1. Enemy plasma bolt breaking a Ring Board emits TARGET_DESTROYED and break VFX without a hit-marker (#53).
+        GameSimulation boardSim = new GameSimulation(GameMap.parse(
+            "##########",
+            "#>...O...#",
+            "##########"));
+        boardSim.targets.get(0).damage(100f);
+        boardSim.enemyProjectiles.add(new EnemyProjectile(
+            new Vector3(4.8f, 0.5f, 1.5f), new Vector3(1f, 0f, 0f), 10f, 30f, null));
+        for (int i = 0; i < 30 && !boardSim.enemyProjectiles.isEmpty(); i++) {
+            boardSim.update(FRAME, idle);
+            assertEquals(0f, boardSim.getHitMarker(), 1e-6f);
+            assertFalse(boardSim.isHitMarkerKill());
+        }
+        assertTrue(boardSim.targets.get(0).isDestroyed());
+        assertEquals(1, boardSim.getTargetsDestroyed());
+        assertTrue(count(boardSim, Effect.Type.EXPLOSION) >= 1);
+        assertEquals(1, countSound(boardSim.drainSoundEvents(), SoundEvent.Type.TARGET_DESTROYED));
+
+        // 2. Enemy plasma bolt breaking a Canister that chains a second Canister and kills a Drone clears stage
+        //    with normal explosions and sounds, but zero player hit-marker (#53).
+        GameSimulation chainSim = new GameSimulation(
+            GameMap.parse(
+                "############",
+                "#>....ooD..#",
+                "############"),
+            PlayerLoadout.fresh(),
+            true);
+        chainSim.enemyProjectiles.add(new EnemyProjectile(
+            new Vector3(5.8f, 0.30f, 1.5f), new Vector3(1f, 0f, 0f), 10f, 60f, null));
+        for (int i = 0; i < 30 && !chainSim.isLevelCleared(); i++) {
+            chainSim.update(FRAME, idle);
+            assertEquals(0f, chainSim.getHitMarker(), 1e-6f);
+            assertFalse(chainSim.isHitMarkerKill());
+        }
+        assertTrue(chainSim.targets.get(0).isDestroyed());
+        assertTrue(chainSim.targets.get(1).isDestroyed());
+        assertTrue(chainSim.enemies.get(0).isDestroyed());
+        assertEquals(2, chainSim.getTargetsDestroyed());
+        assertEquals(1, chainSim.getEnemiesDestroyed());
+        assertTrue(chainSim.isLevelCleared());
+        List<SoundEvent> chainEvents = chainSim.drainSoundEvents();
+        assertEquals(2, countSound(chainEvents, SoundEvent.Type.EXPLOSION));
+        assertEquals(1, countSound(chainEvents, SoundEvent.Type.ENEMY_DESTROYED));
+
+        // 3. Floor ~ Shock Grate killing a Guard Bot neither flashes a hit-marker nor upgrades an active non-lethal one.
+        GameSimulation grateSim = new GameSimulation(GameMap.parse(
+            "#######",
+            "#>O...#",
+            "#####~#",
+            "#....G#",
+            "#######"));
+        Enemy guard = grateSim.enemies.get(0);
+        guard.damage(95f);
+        for (int i = 0; i < 180 && !guard.isDestroyed(); i++) {
+            grateSim.update(FRAME, idle);
+            assertEquals(0f, grateSim.getHitMarker(), 1e-6f);
+            assertFalse(grateSim.isHitMarkerKill());
+        }
+        assertTrue(guard.isDestroyed());
+        assertEquals(1, grateSim.getEnemiesDestroyed());
+        List<SoundEvent> grateEvents = grateSim.drainSoundEvents();
+        assertEquals(1, countSound(grateEvents, SoundEvent.Type.HAZARD_ZAP));
+        assertEquals(1, countSound(grateEvents, SoundEvent.Type.ENEMY_DESTROYED));
+
+        GameSimulation activeHitSim = new GameSimulation(GameMap.parse(
+            "#######",
+            "#>O...#",
+            "#####~#",
+            "#....G#",
+            "#######"));
+        Enemy dyingGuard = activeHitSim.enemies.get(0);
+        dyingGuard.damage(95f);
+        for (int i = 0; i < 180 && !dyingGuard.isDestroyed() && dyingGuard.getZ() > 3.04f; i++) {
+            activeHitSim.update(FRAME, idle);
+        }
+        assertFalse(dyingGuard.isDestroyed());
+        PlayerInput oneShot = new PlayerInput();
+        oneShot.fire = true;
+        activeHitSim.update(FRAME, oneShot);
+        oneShot.fire = false;
+        assertTrue(activeHitSim.getHitMarker() > 0.9f);
+        assertFalse(activeHitSim.isHitMarkerKill());
+        for (int i = 0; i < 8 && !dyingGuard.isDestroyed(); i++) {
+            activeHitSim.update(FRAME, oneShot);
+        }
+        assertTrue(dyingGuard.isDestroyed());
+        assertTrue(activeHitSim.getHitMarker() > 0f, "player non-lethal hit-marker still decaying");
+        assertFalse(activeHitSim.isHitMarkerKill(), "grate kill must not upgrade non-lethal hit-marker to kill");
+    }
+
+    @Test
+    void playerCanisterChainAndMidFlightBlastKillsStillTriggerKillHitMarker() {
+        // 1. Player shooting a Canister that chains into a second Canister and kills a Drone triggers kill hit-marker.
+        GameSimulation pistolChainSim = new GameSimulation(GameMap.parse(
+            "############",
+            "#>.ooD.....#",
+            "############"));
+        PlayerInput fireInput = new PlayerInput();
+        fireInput.fire = true;
+        for (int i = 0; i < 45 && !pistolChainSim.enemies.get(0).isDestroyed(); i++) {
+            pistolChainSim.update(FRAME, fireInput);
+        }
+        assertTrue(pistolChainSim.targets.get(0).isDestroyed());
+        assertTrue(pistolChainSim.targets.get(1).isDestroyed());
+        assertTrue(pistolChainSim.enemies.get(0).isDestroyed());
+        assertEquals(1f, pistolChainSim.getHitMarker(), 1e-5f);
+        assertTrue(pistolChainSim.isHitMarkerKill());
+
+        // 2. Player BlastProjectile detonating in flight on a Canister and chaining a Drone around a wall corner
+        //    triggers kill hit-marker.
+        GameSimulation blastChainSim = new GameSimulation(GameMap.parse(
+            "#########",
+            "#>.oo...#",
+            "####D####",
+            "#########"));
+        PlayerInput chargeInput = new PlayerInput();
+        chargeInput.charge = true;
+        for (int i = 0; i < 40; i++) blastChainSim.update(FRAME, chargeInput);
+        chargeInput.charge = false;
+        blastChainSim.update(FRAME, chargeInput);
+        assertEquals(1, blastChainSim.projectiles.size());
+        assertEquals(0f, blastChainSim.getHitMarker(), 1e-6f);
+
+        for (int i = 0; i < 60 && !blastChainSim.projectiles.isEmpty(); i++) {
+            blastChainSim.update(FRAME, chargeInput);
+        }
+        assertTrue(blastChainSim.projectiles.isEmpty());
+        assertTrue(blastChainSim.targets.get(0).isDestroyed());
+        assertTrue(blastChainSim.targets.get(1).isDestroyed());
+        assertTrue(blastChainSim.enemies.get(0).isDestroyed());
+        assertEquals(1f, blastChainSim.getHitMarker(), 1e-5f);
+        assertTrue(blastChainSim.isHitMarkerKill());
+    }
+
+    @Test
+    void blastChargeFizzlesWhenEnergyDropsBelowMinimumMidHoldStoppingAudioAndEmittingLowEnergy() {
+        GameSimulation sim = emptyCorridor();
+        PlayerInput input = new PlayerInput();
+        input.charge = true;
+        for (int i = 0; i < 25; i++) sim.update(FRAME, input);
+        assertTrue(sim.charger.isCharging());
+        assertTrue(sim.charger.isReadyToFire());
+        assertTrue(sim.isBlastChargingAudioActive());
+
+        sim.energy.setEnergy(5f);
+        sim.drainSoundEvents();
+        for (int i = 0; i < 10; i++) sim.update(FRAME, input);
+        assertFalse(sim.charger.isCharging());
+        assertFalse(sim.isBlastChargingAudioActive());
+        assertEquals(0f, sim.getBlastChargeProgress(), 1e-6f);
+        assertTrue(sim.projectiles.isEmpty());
+        assertEquals(1, countSound(sim.drainSoundEvents(), SoundEvent.Type.LOW_ENERGY));
+
+        input.charge = false;
+        sim.update(FRAME, input);
+        assertTrue(sim.projectiles.isEmpty());
+        assertEquals(0, countSound(sim.drainSoundEvents(), SoundEvent.Type.BLAST_RELEASE));
     }
 }

@@ -73,4 +73,47 @@ class RailLanceTest {
         assertTrue(rail.consumeZoomInTriggered());
         assertTrue(rail.getZoom() > 0f);
     }
+
+    @Test
+    void cancelZoomWhenUnzoomedAllowsPreHeldZoomDuringSwapWhilePreservingDashSuppression() {
+        RailLance rail = new RailLance();
+
+        // Weapon-switch cancelZoom while RMB is up must not suppress a fresh RMB hold initiated during draw.
+        rail.updateIdle(DT, false);
+        rail.cancelZoom();
+        for (int i = 0; i < 5; i++) {
+            rail.updateIdle(DT, true);
+        }
+        rail.update(DT, false, true, 5);
+        assertTrue(rail.consumeZoomInTriggered(), "fresh RMB press held during draw engages zoom on completion");
+        assertTrue(rail.getZoom() > 0f);
+
+        // Accepted dash cancels zoom and keeps suppression latched across zoomBlocked frames until RMB release.
+        rail.cancelZoom();
+        for (int i = 0; i < 9; i++) {
+            rail.update(DT, false, true, true, 5);
+            assertEquals(0f, rail.getZoom(), 1e-6f);
+        }
+        for (int i = 0; i < 6; i++) {
+            rail.update(DT, false, true, false, 5);
+            assertEquals(0f, rail.getZoom(), 1e-6f, "stays suppressed after dash ends while RMB remains held");
+        }
+        rail.updateIdle(DT, false);
+        rail.update(DT, false, true, false, 5);
+        assertTrue(rail.getZoom() > 0f);
+    }
+
+    @Test
+    void isReadyAfterMatchesExactCapacitorCompletionStep() {
+        RailLance rail = new RailLance();
+        assertTrue(rail.update(DT, true, false, 1));
+        rail.updateIdle(RailLance.FIRE_INTERVAL - 0.01f);
+
+        assertFalse(rail.isReady());
+        assertFalse(rail.isReadyAfter(0.005f));
+        assertTrue(rail.isReadyAfter(DT));
+
+        rail.updateIdle(DT);
+        assertTrue(rail.isReady());
+    }
 }

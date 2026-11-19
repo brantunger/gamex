@@ -116,6 +116,10 @@ public final class MenuState {
         return campaignCompleted;
     }
 
+    boolean isInTrainingRange() {
+        return inTrainingRange;
+    }
+
     public SaveData.CompletionSummary getLastSummary() {
         return lastSummary;
     }
@@ -631,6 +635,10 @@ public final class MenuState {
         this.screen = next;
         this.selectedIndex = 0;
         this.quitConfirmTimer = 0f;
+        if (next == Screen.TITLE) {
+            this.activeStage = campaign.get(0);
+            this.inTrainingRange = false;
+        }
     }
 
     private void emitUiSound(SoundEvent.Type type) {

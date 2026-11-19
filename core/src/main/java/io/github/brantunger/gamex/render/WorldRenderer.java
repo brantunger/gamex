@@ -1,6 +1,7 @@
 package io.github.brantunger.gamex.render;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Mesh;
@@ -23,6 +24,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.model.ModelRig;
+import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -41,6 +43,7 @@ import io.github.brantunger.gamex.world.WorldModels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,12 +56,14 @@ public final class WorldRenderer implements Disposable {
 
     private static final Logger log = LoggerFactory.getLogger(WorldRenderer.class);
 
+    static final int DEFAULT_VIEWPORT_WIDTH = 1280;
+    static final int DEFAULT_VIEWPORT_HEIGHT = 720;
     private static final float FIELD_OF_VIEW = 70f;
     private static final float NEAR = 0.1f;
     private static final float FAR = 60f;
     private static final Color FOG_COLOUR = new Color(0.035f, 0.035f, 0.055f, 1f);
-    private static final float FOG_START = 3.5f;
-    private static final float FOG_END = 20f;
+    static final float FOG_START = 3.5f;
+    static final float FOG_END = 20f;
     /** How far the view rises and falls with each step, in world units. */
     private static final float BOB_HEIGHT = 0.012f;
     /** How long the spark of a pistol impact shows over its scorch mark, in seconds. */
@@ -67,8 +72,8 @@ public final class WorldRenderer implements Disposable {
     private static final float MAX_FIREBALL_SIZE = 0.8f;
     /** Explosions with at least this radius also light up the floor they cover. */
     private static final float MIN_FLOOR_GLOW_RADIUS = 1f;
-    /** How far the floor glow sits above the floor. */
-    private static final float FLOOR_GLOW_HEIGHT = 0.02f;
+    /** How far horizontal floor-glow decals sit above the floor (above the 0.024f top of shock grates). */
+    static final float FLOOR_GLOW_HEIGHT = 0.028f;
 
     private static final String VERTEX_SHADER =
         "attribute vec3 a_position;\n"
@@ -227,6 +232,9 @@ public final class WorldRenderer implements Disposable {
     private final Map<String, Matrix4> guardRotations = new HashMap<>();
     private final Vector3 direction = new Vector3();
     private final Vector3 scratch = new Vector3();
+    private final Vector3 billboardDir = new Vector3();
+    private final Vector3 billboardUp = new Vector3();
+    private final Color scratchColor = new Color();
 
     /**
      * @param map the initial map to build the static meshes from
@@ -235,9 +243,7 @@ public final class WorldRenderer implements Disposable {
     public WorldRenderer(GameMap map, ProceduralTextures textures) {
         this.textures = textures;
         int modelsBefore = ModelMesh.getLoadedCount();
-        camera = new PerspectiveCamera(FIELD_OF_VIEW, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        camera.near = NEAR;
-        camera.far = FAR;
+        camera = createWorldCamera(Gdx.graphics);
 
         shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
         if (!shader.isCompiled()) {
@@ -270,31 +276,32 @@ public final class WorldRenderer implements Disposable {
 
         ObjModel turretObj = ModelMesh.loadModel(WorldModels.TURRET_PATH, "turret");
         turretRig = new ModelRig(turretObj);
-        turretBaseMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(turretObj, "base"));
-        turretHeadMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(turretObj, "head"));
-        turretBarrelsMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(turretObj, "barrels"));
+        turretBaseMesh = buildWorldPartMesh(turretObj, WorldModels.TURRET_PATH, "turret", "base");
+        turretHeadMesh = buildWorldPartMesh(turretObj, WorldModels.TURRET_PATH, "turret", "head");
+        turretBarrelsMesh = buildWorldPartMesh(turretObj, WorldModels.TURRET_PATH, "turret", "barrels");
 
         ObjModel droneObj = ModelMesh.loadModel(WorldModels.DRONE_PATH, "drone");
         droneRig = new ModelRig(droneObj);
-        droneMesh = ModelMesh.buildIndexed(WorldModels.packIndexed(droneObj));
+        droneMesh = ModelMesh.buildIndexed(
+            unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone"), WorldModels.DRONE_PATH, "drone");
 
         ObjModel guardObj = ModelMesh.loadModel(WorldModels.GUARD_PATH, "guard");
         guardRig = new ModelRig(guardObj);
-        guardPelvisMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "pelvis"));
-        guardLegLeftMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "leg_l"));
-        guardLegRightMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "leg_r"));
-        guardTorsoMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "torso"));
-        guardArmLeftMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "arm_l"));
-        guardArmRightMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(guardObj, "arm_r"));
+        guardPelvisMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "pelvis");
+        guardLegLeftMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "leg_l");
+        guardLegRightMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "leg_r");
+        guardTorsoMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "torso");
+        guardArmLeftMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "arm_l");
+        guardArmRightMesh = buildWorldPartMesh(guardObj, WorldModels.GUARD_PATH, "guard", "arm_r");
 
         ObjModel wardenObj = ModelMesh.loadModel(WorldModels.WARDEN_PATH, "warden");
         wardenRig = new ModelRig(wardenObj);
-        wardenPelvisMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(wardenObj, "pelvis"));
-        wardenLegLeftMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(wardenObj, "leg_l"));
-        wardenLegRightMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(wardenObj, "leg_r"));
-        wardenTorsoMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(wardenObj, "torso"));
-        wardenArmLeftMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(wardenObj, "arm_l"));
-        wardenArmRightMesh = ModelMesh.buildIndexed(WorldModels.packPartIndexed(wardenObj, "arm_r"));
+        wardenPelvisMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "pelvis");
+        wardenLegLeftMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "leg_l");
+        wardenLegRightMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "leg_r");
+        wardenTorsoMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "torso");
+        wardenArmLeftMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "arm_l");
+        wardenArmRightMesh = buildWorldPartMesh(wardenObj, WorldModels.WARDEN_PATH, "warden", "arm_r");
 
         enemyBoltMesh = ModelMesh.loadIndexedMesh(WorldModels.ENEMY_BOLT_PATH, "enemy bolt", WorldModels::packIndexed);
         doorMesh = ModelMesh.loadIndexedMesh(WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead", WorldModels::packIndexed);
@@ -337,6 +344,21 @@ public final class WorldRenderer implements Disposable {
         surfaces.add(new Surface(buildMesh(geometry.ceiling), textures.ceiling));
     }
 
+    static ModelVertices.IndexedMesh unpackWorldPart(ObjModel model, String assetPath, String modelLabel,
+                                                     String partName) {
+        String label = modelLabel + " " + partName;
+        return ModelMesh.convertMesh(model, assetPath, label, obj -> WorldModels.packPartIndexed(obj, partName));
+    }
+
+    static ModelVertices.IndexedMesh unpackWorldModel(ObjModel model, String assetPath, String modelLabel) {
+        return ModelMesh.convertMesh(model, assetPath, modelLabel, WorldModels::packIndexed);
+    }
+
+    private static Mesh buildWorldPartMesh(ObjModel model, String assetPath, String modelLabel, String partName) {
+        String label = modelLabel + " " + partName;
+        return ModelMesh.buildIndexed(unpackWorldPart(model, assetPath, modelLabel, partName), assetPath, label);
+    }
+
     /** Turns quads from {@link MapGeometry} into an indexed mesh of two triangles per quad. */
     private static Mesh buildMesh(float[] quads) {
         int quadCount = quads.length / MapGeometry.QUAD_SIZE;
@@ -363,14 +385,45 @@ public final class WorldRenderer implements Disposable {
         return mesh;
     }
 
+    static int initialViewportWidth(Graphics graphics) {
+        return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
+            ? graphics.getWidth()
+            : DEFAULT_VIEWPORT_WIDTH;
+    }
+
+    static int initialViewportHeight(Graphics graphics) {
+        return graphics != null && graphics.getWidth() > 0 && graphics.getHeight() > 0
+            ? graphics.getHeight()
+            : DEFAULT_VIEWPORT_HEIGHT;
+    }
+
+    static PerspectiveCamera createWorldCamera(Graphics graphics) {
+        PerspectiveCamera cam = new PerspectiveCamera();
+        cam.fieldOfView = FIELD_OF_VIEW;
+        cam.viewportWidth = initialViewportWidth(graphics);
+        cam.viewportHeight = initialViewportHeight(graphics);
+        cam.near = NEAR;
+        cam.far = FAR;
+        cam.update(Gdx.app != null && Gdx.gl != null);
+        return cam;
+    }
+
+    static boolean applyViewportResize(PerspectiveCamera camera, int width, int height) {
+        if (width <= 0 || height <= 0) return false;
+        camera.viewportWidth = width;
+        camera.viewportHeight = height;
+        camera.update(Gdx.app != null && Gdx.gl != null);
+        return true;
+    }
+
     /**
      * Adapts the camera to a new window size.
      * @param width the new width in pixels
      * @param height the new height in pixels
      */
     public void resize(int width, int height) {
-        camera.viewportWidth = width;
-        camera.viewportHeight = height;
+        if (width <= 0 || height <= 0) return;
+        applyViewportResize(camera, width, height);
     }
 
     /**
@@ -392,21 +445,27 @@ public final class WorldRenderer implements Disposable {
         camera.up.set(Vector3.Y);
         camera.update();
 
+        float animTime = resolveAnimationTime(simulation, 0f, false);
         float roomLight = simulation.isMuzzleFlashVisible() ? 1.3f : 1f;
         beginWorldPass(roomLight);
-        renderWorldModels(simulation, roomLight);
+        renderWorldModels(simulation, roomLight, animTime, false);
 
         // Billboards are seen from both sides.
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         decalsUsed = 0;
-        addExitPad(simulation.map, simulation.getTime());
+        addExitPad(simulation.map, animTime);
         addPickupGlows(simulation);
         addConsoleGlows(simulation);
-        addProjectiles(simulation);
-        addEnemyTelegraphsAndBolts(simulation);
+        addProjectiles(simulation, animTime);
+        addEnemyTelegraphsAndBolts(simulation, animTime, false);
         addRailBeamDecals(simulation);
         addEffects(simulation);
-        decalBatch.flush();
+        Gdx.gl.glDepthMask(false);
+        try {
+            decalBatch.flush();
+        } finally {
+            Gdx.gl.glDepthMask(true);
+        }
 
         endWorldPass();
     }
@@ -428,15 +487,21 @@ public final class WorldRenderer implements Disposable {
         camera.up.set(Vector3.Y);
         camera.update();
 
+        float animTime = resolveAnimationTime(simulation, previewTime, true);
         beginWorldPass(0.92f);
-        renderWorldModels(simulation, 0.92f);
+        renderWorldModels(simulation, 0.92f, animTime, true);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         decalsUsed = 0;
-        addExitPad(simulation.map, previewTime);
+        addExitPad(simulation.map, animTime);
         addPickupGlows(simulation);
         addConsoleGlows(simulation);
-        addEnemyTelegraphsAndBolts(simulation);
-        decalBatch.flush();
+        addEnemyTelegraphsAndBolts(simulation, animTime, true);
+        Gdx.gl.glDepthMask(false);
+        try {
+            decalBatch.flush();
+        } finally {
+            Gdx.gl.glDepthMask(true);
+        }
         endWorldPass();
     }
 
@@ -468,7 +533,39 @@ public final class WorldRenderer implements Disposable {
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }
 
-    private void renderWorldModels(GameSimulation simulation, float roomLight) {
+    static float resolveAnimationTime(GameSimulation simulation, float previewTime, boolean backdrop) {
+        return backdrop ? previewTime : simulation.getTime();
+    }
+
+    static float hazardGratePulse(float animTime, int col, int row) {
+        return 0.5f + 0.5f * MathUtils.sin(animTime * 7.5f + col * 1.1f + row * 0.7f);
+    }
+
+    static float pickupHoverY(float animTime, float x, float z) {
+        return 0.08f + 0.035f * MathUtils.sin(animTime * 3.5f + x + z);
+    }
+
+    static float pickupSpinDegrees(float animTime, float x, float z) {
+        return animTime * 95f + (x + z) * 45f;
+    }
+
+    static float droneHoverY(float animTime, float x) {
+        return 0.03f * MathUtils.sin(animTime * 5.5f + x * 2f);
+    }
+
+    static List<BlastProjectile> visibleProjectiles(GameSimulation simulation, boolean backdrop) {
+        return backdrop ? Collections.emptyList() : simulation.projectiles;
+    }
+
+    static List<EnemyProjectile> visibleEnemyProjectiles(GameSimulation simulation, boolean backdrop) {
+        return backdrop ? Collections.emptyList() : simulation.enemyProjectiles;
+    }
+
+    static List<GameSimulation.RailBeam> visibleRailBeams(GameSimulation simulation, boolean backdrop) {
+        return backdrop ? Collections.emptyList() : simulation.railBeams;
+    }
+
+    private void renderWorldModels(GameSimulation simulation, float roomLight, float animTime, boolean backdrop) {
         modelShader.bind();
         modelShader.setUniformMatrix("u_projViewTrans", camera.combined);
         modelShader.setUniformf("u_cameraPosition", camera.position);
@@ -480,10 +577,9 @@ public final class WorldRenderer implements Disposable {
         List<GameMap.HazardCell> hazardCells = simulation.map.getHazardCells();
         if (!hazardCells.isEmpty()) {
             modelShader.setUniformf("u_hitFlash", 0f);
-            float t = simulation.getTime();
             for (int i = 0; i < hazardCells.size(); i++) {
                 GameMap.HazardCell cell = hazardCells.get(i);
-                float pulse = 0.5f + 0.5f * MathUtils.sin(t * 7.5f + cell.col * 1.1f + cell.row * 0.7f);
+                float pulse = hazardGratePulse(animTime, cell.col, cell.row);
                 modelShader.setUniformf("u_light", Math.max(roomLight, 0.92f + 0.34f * pulse));
                 modelShader.setUniformf("u_accentColour",
                     WorldModels.ACCENT_HAZARD_LIVE[0] * (0.72f + 0.28f * pulse),
@@ -545,7 +641,7 @@ public final class WorldRenderer implements Disposable {
                         guardRig.evaluatePartTransform("arm_r", guardRotations, rootTransform, modelTransform));
                     break;
                 case WARDEN:
-                    setWardenAccent(enemy, windup, simulation.getTime());
+                    setWardenAccent(enemy, windup, animTime);
                     prepareWardenPose(enemy);
                     drawModelMesh(wardenPelvisMesh,
                         wardenRig.evaluatePartTransform("pelvis", guardRotations, rootTransform, modelTransform));
@@ -563,7 +659,7 @@ public final class WorldRenderer implements Disposable {
                 case DRONE:
                 default:
                     setAccent(null);
-                    prepareDronePose(enemy, simulation.getTime());
+                    prepareDronePose(enemy, animTime);
                     drawModelMesh(droneMesh, rootTransform);
                     break;
             }
@@ -572,39 +668,45 @@ public final class WorldRenderer implements Disposable {
         // Hovering and spinning 3D pickups.
         modelShader.setUniformf("u_light", 1.2f);
         modelShader.setUniformf("u_hitFlash", 0f);
-        float pickupSpin = simulation.getTime() * 95f;
         for (Pickup pickup : simulation.pickups) {
             if (pickup.isCollected()) continue;
-            float hover = 0.08f + 0.035f * MathUtils.sin(simulation.getTime() * 3.5f + pickup.getX() + pickup.getZ());
+            float hover = pickupHoverY(animTime, pickup.getX(), pickup.getZ());
             modelTransform.idt()
                 .translate(pickup.getX(), hover, pickup.getZ())
-                .rotate(Vector3.Y, pickupSpin + (pickup.getX() + pickup.getZ()) * 45f);
+                .rotate(Vector3.Y, pickupSpinDegrees(animTime, pickup.getX(), pickup.getZ()));
             setAccent(pickupAccent(pickup.getKind()));
             drawModelMesh(pickupMesh(pickup.getKind()), modelTransform);
         }
 
         setAccent(null);
-        modelShader.setUniformf("u_light", 1.35f);
-        modelShader.setUniformf("u_hitFlash", 0f);
-        float spin = simulation.getTime() * 180f;
-        for (BlastProjectile projectile : simulation.projectiles) {
-            float scale = 0.85f + 0.55f * projectile.getCharge();
-            modelTransform.idt()
-                .translate(projectile.position)
-                .rotate(Vector3.Z, 26f)
-                .rotate(Vector3.Y, spin)
-                .scale(scale, scale, scale);
-            drawModelMesh(blastOrbMesh, modelTransform);
+        List<BlastProjectile> projectiles = visibleProjectiles(simulation, backdrop);
+        if (!projectiles.isEmpty()) {
+            modelShader.setUniformf("u_light", 1.35f);
+            modelShader.setUniformf("u_hitFlash", 0f);
+            float spin = animTime * 180f;
+            for (BlastProjectile projectile : projectiles) {
+                float scale = 0.85f + 0.55f * projectile.getCharge();
+                modelTransform.idt()
+                    .translate(projectile.position)
+                    .rotate(Vector3.Z, 26f)
+                    .rotate(Vector3.Y, spin)
+                    .scale(scale, scale, scale);
+                drawModelMesh(blastOrbMesh, modelTransform);
+            }
         }
 
-        modelShader.setUniformf("u_light", 1.4f);
-        float boltSpin = simulation.getTime() * 220f;
-        for (EnemyProjectile bolt : simulation.enemyProjectiles) {
-            modelTransform.idt()
-                .translate(bolt.position)
-                .rotate(Vector3.Z, 26f)
-                .rotate(Vector3.Y, boltSpin);
-            drawModelMesh(enemyBoltMesh, modelTransform);
+        List<EnemyProjectile> enemyBolts = visibleEnemyProjectiles(simulation, backdrop);
+        if (!enemyBolts.isEmpty()) {
+            modelShader.setUniformf("u_light", 1.4f);
+            modelShader.setUniformf("u_hitFlash", 0f);
+            float boltSpin = animTime * 220f;
+            for (EnemyProjectile bolt : enemyBolts) {
+                modelTransform.idt()
+                    .translate(bolt.position)
+                    .rotate(Vector3.Z, 26f)
+                    .rotate(Vector3.Y, boltSpin);
+                drawModelMesh(enemyBoltMesh, modelTransform);
+            }
         }
 
         // Sliding 3D bulkhead doors and security console pedestals (single shared mesh each with u_accentColour).
@@ -626,9 +728,10 @@ public final class WorldRenderer implements Disposable {
             drawModelMesh(consoleMesh, modelTransform);
         }
 
-        if (!simulation.railBeams.isEmpty()) {
+        List<GameSimulation.RailBeam> railBeams = visibleRailBeams(simulation, backdrop);
+        if (!railBeams.isEmpty()) {
             modelShader.setUniformf("u_hitFlash", 0f);
-            for (GameSimulation.RailBeam beam : simulation.railBeams) {
+            for (GameSimulation.RailBeam beam : railBeams) {
                 scratch.set(beam.end).sub(beam.start);
                 float length = scratch.len();
                 if (length < 1e-4f) continue;
@@ -735,7 +838,7 @@ public final class WorldRenderer implements Disposable {
     }
 
     private void prepareDronePose(Enemy enemy, float time) {
-        float hoverY = 0.03f * MathUtils.sin(time * 5.5f + enemy.getX() * 2f);
+        float hoverY = droneHoverY(time, enemy.getX());
         float tiltPitch = (enemy.getState() == Enemy.State.WINDUP
             || enemy.getState() == Enemy.State.LUNGING)
             ? -16f
@@ -811,7 +914,7 @@ public final class WorldRenderer implements Disposable {
 
         Decal beacon = nextDecal(orb, 0.42f * pulse, 0.62f, true);
         beacon.setPosition(map.getExitX(), 0.36f, map.getExitZ());
-        beacon.lookAt(camera.position, camera.up);
+        faceCamera(beacon);
         beacon.setColor(0.45f, 1f, 0.92f, 0.55f * pulse);
         decalBatch.add(beacon);
     }
@@ -867,7 +970,7 @@ public final class WorldRenderer implements Disposable {
         }
     }
 
-    private void addProjectiles(GameSimulation simulation) {
+    private void addProjectiles(GameSimulation simulation, float animTime) {
         for (BlastProjectile projectile : simulation.projectiles) {
             float meshScale = 0.85f + 0.55f * projectile.getCharge();
             float meshOuterRadius = BlastProjectile.RADIUS * meshScale;
@@ -884,15 +987,15 @@ public final class WorldRenderer implements Disposable {
             else scratch.set(projectile.position);
             Decal decal = nextDecal(orb, size, size, true);
             decal.setPosition(scratch);
-            decal.lookAt(camera.position, camera.up);
+            faceCamera(decal);
             float visible = 1f - fogAt(projectile.position);
-            float shimmer = 0.92f + 0.08f * MathUtils.sin(simulation.getTime() * 14f);
+            float shimmer = 0.92f + 0.08f * MathUtils.sin(animTime * 14f);
             decal.setColor(visible, visible, visible, visible * shimmer * 0.82f);
             decalBatch.add(decal);
         }
     }
 
-    private void addEnemyTelegraphsAndBolts(GameSimulation simulation) {
+    private void addEnemyTelegraphsAndBolts(GameSimulation simulation, float animTime, boolean backdrop) {
         for (Enemy enemy : simulation.enemies) {
             if (enemy.isDestroyed()) continue;
             float windup = enemy.getWindupProgress();
@@ -912,7 +1015,7 @@ public final class WorldRenderer implements Disposable {
                     break;
                 case DRONE:
                 default:
-                    prepareDronePose(enemy, simulation.getTime());
+                    prepareDronePose(enemy, animTime);
                     droneRig.evaluateSocketWorld("telegraph", null, rootTransform, scratch);
                     break;
             }
@@ -920,7 +1023,7 @@ public final class WorldRenderer implements Disposable {
                 + (enemy.getKind() == Enemy.Kind.WARDEN ? 0.24f : 0.18f) * windup;
             Decal flare = nextDecal(orb, size, size, true);
             flare.setPosition(scratch);
-            flare.lookAt(camera.position, camera.up);
+            faceCamera(flare);
             if (enemy.getKind() == Enemy.Kind.WARDEN && enemy.isOverdrive()) {
                 flare.setColor(0.36f, 0.72f + 0.25f * windup, 1f, 0.55f + 0.40f * windup);
             } else {
@@ -928,10 +1031,10 @@ public final class WorldRenderer implements Disposable {
             }
             decalBatch.add(flare);
         }
-        for (EnemyProjectile bolt : simulation.enemyProjectiles) {
+        for (EnemyProjectile bolt : visibleEnemyProjectiles(simulation, backdrop)) {
             Decal halo = nextDecal(orb, 0.24f, 0.24f, true);
             halo.setPosition(bolt.position);
-            halo.lookAt(camera.position, camera.up);
+            faceCamera(halo);
             halo.setColor(1f, 0.28f, 0.32f, 0.95f);
             decalBatch.add(halo);
         }
@@ -953,10 +1056,10 @@ public final class WorldRenderer implements Disposable {
                 float pz = beam.start.z + scratch.z * s;
                 float dist = (float) Math.hypot(px - camera.position.x,
                     Math.hypot(py - camera.position.y, pz - camera.position.z));
-                float fog = MathUtils.clamp((dist - FOG_START) / (FOG_END - FOG_START), 0f, 1f);
+                float fog = fogFactor(dist);
                 Decal ring = nextDecal(orb, size, size, true);
                 ring.setPosition(px, py, pz);
-                ring.lookAt(camera.position, camera.up);
+                faceCamera(ring);
                 ring.setColor(0.24f, 0.94f, 1.00f, (1f - fog) * fade * 0.78f);
                 decalBatch.add(ring);
             }
@@ -972,8 +1075,8 @@ public final class WorldRenderer implements Disposable {
                     mark.setPosition(effect.position);
                     // Lie flat on the surface; a floor or ceiling mark needs an up vector that is not its normal.
                     mark.setRotation(effect.normal, Math.abs(effect.normal.y) > 0.5f ? Vector3.Z : Vector3.Y);
-                    float visible = 1f - fogAt(effect.position);
-                    mark.setColor(visible, visible, visible, Math.min(1f, (1f - progress) * 5f));
+                    scorchColor(effect.position, camera.position, progress, scratchColor);
+                    mark.setColor(scratchColor.r, scratchColor.g, scratchColor.b, scratchColor.a);
                     decalBatch.add(mark);
                     if (effect.getAge() < IMPACT_SPARK_TIME) {
                         float fade = 1f - effect.getAge() / IMPACT_SPARK_TIME;
@@ -1007,9 +1110,55 @@ public final class WorldRenderer implements Disposable {
     private void addGlow(TextureRegion region, Vector3 position, float size, float alpha) {
         Decal decal = nextDecal(region, size, size, true);
         decal.setPosition(position);
-        decal.lookAt(camera.position, camera.up);
+        faceCamera(decal);
         decal.setColor(1f, 1f, 1f, alpha);
         decalBatch.add(decal);
+    }
+
+    private void faceCamera(Decal decal) {
+        faceCamera(decal, camera.position, camera.direction, camera.up, billboardDir, billboardUp);
+    }
+
+    static void faceCamera(Decal decal, Vector3 camPos, Vector3 camDir, Vector3 camUp) {
+        faceCamera(decal, camPos, camDir, camUp, new Vector3(), new Vector3());
+    }
+
+    private static void faceCamera(Decal decal, Vector3 camPos, Vector3 camDir, Vector3 camUp,
+                                   Vector3 dirScratch, Vector3 upScratch) {
+        Vector3 decalPos = decal.getPosition();
+        dirScratch.set(camPos).sub(decalPos);
+        if (dirScratch.len2() < 1e-8f) {
+            if (camDir != null && camDir.len2() >= 1e-8f) {
+                dirScratch.set(camDir).scl(-1f).nor();
+            } else {
+                dirScratch.set(Vector3.Z);
+            }
+        } else {
+            dirScratch.nor();
+        }
+
+        boolean resolvedUp = false;
+        float camUpDot = 1f;
+        if (camUp != null && camUp.len2() >= 1e-8f) {
+            upScratch.set(camUp).nor();
+            camUpDot = dirScratch.dot(upScratch);
+            if (Math.abs(camUpDot) <= 0.999f) {
+                resolvedUp = true;
+            }
+        }
+        if (!resolvedUp && camDir != null && camDir.len2() >= 1e-8f) {
+            upScratch.set(camDir).nor();
+            if (camUpDot < 0f) upScratch.scl(-1f);
+            if (Math.abs(dirScratch.dot(upScratch)) <= 0.999f) {
+                resolvedUp = true;
+            }
+        }
+        if (!resolvedUp) {
+            upScratch.set(Math.abs(dirScratch.y) > 0.9f ? Vector3.Z : Vector3.Y);
+        }
+
+        decal.setRotation(dirScratch, upScratch);
+        decal.getRotation().nor();
     }
 
     private Decal nextDecal(TextureRegion region, float width, float height, boolean additive) {
@@ -1021,8 +1170,18 @@ public final class WorldRenderer implements Disposable {
         return decal;
     }
 
+    static float fogFactor(float distance) {
+        return MathUtils.clamp((distance - FOG_START) / (FOG_END - FOG_START), 0f, 1f);
+    }
+
+    static Color scorchColor(Vector3 position, Vector3 cameraPosition, float progress, Color out) {
+        float visible = 1f - fogFactor(position.dst(cameraPosition));
+        float alpha = visible * MathUtils.clamp((1f - progress) * 5f, 0f, 1f);
+        return out.set(1f, 1f, 1f, alpha);
+    }
+
     private float fogAt(Vector3 position) {
-        return MathUtils.clamp((position.dst(camera.position) - FOG_START) / (FOG_END - FOG_START), 0f, 1f);
+        return fogFactor(position.dst(camera.position));
     }
 
     @Override

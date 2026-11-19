@@ -314,4 +314,64 @@ class PlayerTest {
         // step that lands begins.
         assertFalse(bufferedPressFiresOnTouchdown(0.03f, 12), "0.1186 s early at 33 fps");
     }
+
+    @Test
+    void midAirDashCrossingApexMidStepHoldsExactApexAltitudeWithoutFalling() {
+        Player singleStep = new Player(3.5f, 3.5f, 90f);
+        EnergyMeter energy = new EnergyMeter(100f, 0f);
+        assertTrue(singleStep.tryJump());
+        while (singleStep.getVerticalVelocity() > 0.45f) {
+            singleStep.move(ROOM, 0f, 0f, 1f / 60f);
+        }
+        float h0 = singleStep.getJumpHeight();
+        float v0 = singleStep.getVerticalVelocity();
+        assertTrue(v0 > 0f && v0 < Player.GRAVITY * Player.DASH_DURATION,
+            "upward velocity crosses zero mid-dash: " + v0);
+        float expectedApex = Math.min(Player.MAX_JUMP_HEIGHT, h0 + (v0 * v0) / (2f * Player.GRAVITY));
+
+        assertTrue(singleStep.tryDash(1f, 0f, energy));
+        singleStep.move(ROOM, 1f, 0f, Player.DASH_DURATION);
+        assertEquals(expectedApex, singleStep.getJumpHeight(), 1e-5f,
+            "dash integrates rise to apex and holds altitude without integrating downward fall");
+        assertEquals(0f, singleStep.getVerticalVelocity(), EPSILON);
+
+        // Also verify coarse 0.05s frame steps crossing apex mid-frame hold apex height.
+        Player coarseStep = new Player(3.5f, 3.5f, 90f);
+        EnergyMeter coarseEnergy = new EnergyMeter(100f, 0f);
+        assertTrue(coarseStep.tryJump());
+        while (coarseStep.getVerticalVelocity() > 0.20f) {
+            coarseStep.move(ROOM, 0f, 0f, 1f / 60f);
+        }
+        float ch0 = coarseStep.getJumpHeight();
+        float cv0 = coarseStep.getVerticalVelocity();
+        assertTrue(cv0 > 0f && cv0 < Player.GRAVITY * 0.05f);
+        float coarseApex = Math.min(Player.MAX_JUMP_HEIGHT, ch0 + (cv0 * cv0) / (2f * Player.GRAVITY));
+
+        assertTrue(coarseStep.tryDash(1f, 0f, coarseEnergy));
+        coarseStep.move(ROOM, 1f, 0f, 0.05f);
+        assertEquals(coarseApex, coarseStep.getJumpHeight(), 1e-5f);
+        assertEquals(0f, coarseStep.getVerticalVelocity(), EPSILON);
+    }
+
+    @Test
+    void dashRefusedDuringPostDashCooldownWithLowEnergyFlagsDashRefused() {
+        Player player = new Player(3.5f, 3.5f, 90f);
+        EnergyMeter energy = new EnergyMeter(100f, 0f);
+        energy.setEnergy(40f);
+
+        assertTrue(player.tryDash(1f, 0f, energy));
+        assertEquals(15f, energy.getEnergy(), EPSILON);
+
+        // While actively mid-dash, pressing dash again is not a low-energy refusal.
+        assertFalse(player.tryDash(1f, 0f, energy));
+        assertFalse(player.isDashRefused());
+
+        // Finish the 0.14s dash burst while dashCooldown (0.35s) still has remaining time.
+        player.move(ROOM, 1f, 0f, Player.DASH_DURATION);
+        player.updateTimers(0.16f);
+        assertFalse(player.isDashing());
+
+        assertFalse(player.tryDash(1f, 0f, energy), "cannot dash with 15 energy during post-dash cooldown");
+        assertTrue(player.isDashRefused(), "low-energy HUD warning must trigger even while dashCooldown > 0");
+    }
 }

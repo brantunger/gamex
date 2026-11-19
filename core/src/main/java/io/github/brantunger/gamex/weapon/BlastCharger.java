@@ -21,6 +21,7 @@ public final class BlastCharger {
     private final EnergyMeter energy;
     private boolean charging;
     private boolean refused;
+    private boolean suppressUntilRelease;
     private float charge;
 
     /** @param energy the meter that pays for the blasts */
@@ -37,8 +38,9 @@ public final class BlastCharger {
         return MIN_COST + (MAX_COST - MIN_COST) * t;
     }
 
-    /** @return the biggest charge the meter can pay for now; meaningful once it can pay for the smallest blast. */
+    /** @return the biggest charge the meter can pay for now, or 0 when it cannot pay for the smallest blast. */
     public float affordableCharge() {
+        if (!energy.canSpend(MIN_COST)) return 0f;
         float t = (energy.getEnergy() - MIN_COST) / (MAX_COST - MIN_COST);
         return MIN_CHARGE + (1f - MIN_CHARGE) * Math.max(0f, Math.min(1f, t));
     }
@@ -50,30 +52,42 @@ public final class BlastCharger {
      * @return the charge of the blast fired during this step, or 0 if none was fired
      */
     public float update(float dt, boolean held) {
+        float stepDt = Float.isFinite(dt) && dt > 0f ? dt : 0f;
         refused = false;
         if (held) {
+            if (charging && !energy.canSpend(MIN_COST)) {
+                charging = false;
+                charge = 0f;
+                suppressUntilRelease = true;
+            }
+            if (suppressUntilRelease) {
+                refused = !energy.canSpend(MIN_COST);
+                energy.regenerate(stepDt);
+                return 0f;
+            }
             if (!charging) {
                 if (!energy.canSpend(MIN_COST)) {
                     refused = true;
-                    energy.regenerate(dt);
+                    energy.regenerate(stepDt);
                     return 0f;
                 }
                 charging = true;
                 charge = 0f;
             }
-            charge = Math.min(charge + dt / FULL_CHARGE_TIME, affordableCharge());
+            charge = Math.min(charge + stepDt / FULL_CHARGE_TIME, affordableCharge());
             return 0f;
         }
+        suppressUntilRelease = false;
         if (charging) {
-            float released = charge;
+            float released = Math.min(charge, affordableCharge());
             charging = false;
             charge = 0f;
-            if (released < MIN_CHARGE) return 0f;
+            if (released < MIN_CHARGE || !energy.canSpend(MIN_COST)) return 0f;
             // The charge was capped at what the meter can pay; the min() only absorbs float rounding.
             energy.spend(Math.min(costFor(released), energy.getEnergy()));
             return released;
         }
-        energy.regenerate(dt);
+        energy.regenerate(stepDt);
         return 0f;
     }
 
@@ -84,6 +98,7 @@ public final class BlastCharger {
     public void cancel() {
         charging = false;
         refused = false;
+        suppressUntilRelease = false;
         charge = 0f;
     }
 
@@ -104,6 +119,6 @@ public final class BlastCharger {
 
     /** @return whether the charge built so far would fire on release. */
     public boolean isReadyToFire() {
-        return charging && charge >= MIN_CHARGE;
+        return charging && charge >= MIN_CHARGE && energy.canSpend(MIN_COST);
     }
 }

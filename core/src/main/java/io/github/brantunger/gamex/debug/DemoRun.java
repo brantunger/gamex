@@ -3,12 +3,15 @@ package io.github.brantunger.gamex.debug;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
+import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.player.PlayerInput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.Locale;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.zip.Deflater;
 
 /**
@@ -58,10 +61,11 @@ public final class DemoRun {
     private final String script;
     private final float[] orbit = parseOrbit(System.getenv("GAMEX_VIEWMODEL_ORBIT"));
     private int frame;
+    private boolean captured;
 
-    private DemoRun(String path, int captureFrame, String script) {
+    DemoRun(String path, int captureFrame, String script) {
         this.path = path;
-        this.captureFrame = captureFrame;
+        this.captureFrame = Math.max(1, captureFrame);
         this.script = script == null ? "" : script.toLowerCase(Locale.ROOT);
     }
 
@@ -160,19 +164,51 @@ public final class DemoRun {
         }
     }
 
+    @FunctionalInterface
+    interface FrameCapture<P extends Disposable> {
+        P capture(int width, int height);
+    }
+
     /** Call once the frame is fully drawn: saves it and asks the application to exit when its turn has come. */
     public void frameRendered() {
-        if (frame != captureFrame) return;
-        int width = Gdx.graphics.getBackBufferWidth();
-        int height = Gdx.graphics.getBackBufferHeight();
-        Pixmap pixmap = Pixmap.createFromFrameBuffer(0, 0, width, height);
-        // The back buffer's alpha is whatever blending left there; a screenshot is opaque.
-        ByteBuffer pixels = pixmap.getPixels();
-        for (int i = 3; i < width * height * 4; i += 4) pixels.put(i, (byte) 0xFF);
-        // The frame buffer's first row is the bottom of the picture, so the rows are flipped on the way out.
-        PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, Deflater.DEFAULT_COMPRESSION, true);
-        pixmap.dispose();
-        log.info("Saved frame {} to {}", frame, path);
-        Gdx.app.exit();
+        if (captured || frame < captureFrame || Gdx.graphics == null) return;
+        frameRendered(
+            Gdx.graphics.getBackBufferWidth(),
+            Gdx.graphics.getBackBufferHeight(),
+            (width, height) -> Pixmap.createFromFrameBuffer(0, 0, width, height),
+            Pixmap::getPixels,
+            pixmap -> PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, Deflater.DEFAULT_COMPRESSION, true),
+            () -> {
+                log.info("Saved frame {} to {}", frame, path);
+                Gdx.app.exit();
+            });
+    }
+
+    <P extends Disposable> boolean frameRendered(int width, int height,
+                                                 FrameCapture<P> capture,
+                                                 Function<P, ByteBuffer> pixelsOf,
+                                                 Consumer<P> writer,
+                                                 Runnable onComplete) {
+        if (captured || frame < captureFrame) return false;
+        if (width <= 0 || height <= 0) return false;
+        P pixmap = capture.capture(width, height);
+        try {
+            // The back buffer's alpha is whatever blending left there; a screenshot is opaque.
+            makeOpaque(pixelsOf.apply(pixmap), width, height);
+            // The frame buffer's first row is the bottom of the picture, so the rows are flipped on the way out.
+            writer.accept(pixmap);
+        } finally {
+            pixmap.dispose();
+        }
+        captured = true;
+        onComplete.run();
+        return true;
+    }
+
+    static void makeOpaque(ByteBuffer pixels, int width, int height) {
+        int limit = Math.min(pixels.capacity(), width * height * 4);
+        for (int i = 3; i < limit; i += 4) {
+            pixels.put(i, (byte) 0xFF);
+        }
     }
 }

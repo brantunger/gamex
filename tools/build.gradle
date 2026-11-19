@@ -27,6 +27,7 @@ tasks.register('generateModels', JavaExec) {
   classpath = sourceSets.main.runtimeClasspath
   mainClass = 'io.github.brantunger.gamex.tools.GenerateAllModels'
   args = [rootProject.file('assets/models').path]
+  outputs.dir(rootProject.file('assets/models'))
 }
 
 tasks.register('generateSounds', JavaExec) {
@@ -35,6 +36,7 @@ tasks.register('generateSounds', JavaExec) {
   classpath = sourceSets.main.runtimeClasspath
   mainClass = 'io.github.brantunger.gamex.tools.GenerateAllSounds'
   args = [rootProject.file('assets/sounds').path]
+  outputs.dir(rootProject.file('assets/sounds'))
 }
 
 def previewJvmArgs = [
@@ -72,6 +74,12 @@ class ToolsAssetsLocation implements CommandLineArgumentProvider {
 
 test {
   useJUnitPlatform()
+  mustRunAfter(':tools:generateModels', ':tools:generateSounds')
+  inputs.files(
+    rootProject.file('tools/build.gradle'),
+    rootProject.file('core/build.gradle'),
+    rootProject.file('desktop/build.gradle')
+  ).withPathSensitivity(PathSensitivity.NONE)
   jvmArgumentProviders.add(new ToolsAssetsLocation(
     models: rootProject.file('assets/models'),
     sounds: rootProject.file('assets/sounds')

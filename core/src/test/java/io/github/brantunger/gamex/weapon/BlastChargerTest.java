@@ -157,4 +157,96 @@ class BlastChargerTest {
         assertTrue(charger.update(0.01f, false) > 0f);
         assertEquals(0f, charger.update(0.01f, false));
     }
+
+    @Test
+    void affordableChargeReturnsZeroBelowMinimumCostAndScalesFromMinCostToMaxCost() {
+        energy.setEnergy(0f);
+        assertEquals(0f, charger.affordableCharge(), 0f);
+
+        energy.setEnergy(10f);
+        assertEquals(0f, charger.affordableCharge(), 0f);
+
+        energy.setEnergy(BlastCharger.MIN_COST - 0.01f);
+        assertEquals(0f, charger.affordableCharge(), 0f);
+
+        energy.setEnergy(BlastCharger.MIN_COST);
+        assertEquals(BlastCharger.MIN_CHARGE, charger.affordableCharge(), EPSILON);
+
+        energy.setEnergy(40f);
+        assertEquals(0.625f, charger.affordableCharge(), EPSILON);
+
+        energy.setEnergy(BlastCharger.MAX_COST);
+        assertEquals(1f, charger.affordableCharge(), EPSILON);
+
+        energy.setEnergy(100f);
+        assertEquals(1f, charger.affordableCharge(), EPSILON);
+    }
+
+    @Test
+    void energyDroppingBelowMinimumCostMidChargeFizzlesPreventsZeroCostBlastAndSuppressesUntilRelease() {
+        energy.setEnergy(50f);
+        hold(BlastCharger.FULL_CHARGE_TIME / 2f);
+        assertTrue(charger.isCharging());
+        assertTrue(charger.isReadyToFire());
+        assertEquals(0.5f, charger.getCharge(), EPSILON);
+
+        // Drain energy below MIN_COST (20) while the charge button remains held.
+        energy.setEnergy(0f);
+        assertEquals(0f, charger.affordableCharge(), 0f);
+        assertFalse(charger.isReadyToFire());
+
+        assertEquals(0f, charger.update(0.01f, true));
+        assertFalse(charger.isCharging(), "charge fizzles immediately when energy drops below MIN_COST");
+        assertEquals(0f, charger.getCharge(), 0f);
+        assertTrue(charger.isRefused());
+        assertEquals(REGEN * 0.01f, energy.getEnergy(), 1e-4f, "meter regenerates once charge has fizzled");
+
+        // Keep holding past 20 energy (2.5s at 10/s -> ~25.1 energy): must not auto-restart charge mid-hold.
+        for (int i = 0; i < 250; i++) {
+            assertEquals(0f, charger.update(0.01f, true));
+            assertFalse(charger.isCharging(), "fizzled hold stays suppressed until button release");
+        }
+        assertTrue(energy.getEnergy() > 25f, "meter keeps refilling instead of freezing at 20");
+        assertFalse(charger.isRefused());
+
+        // Releasing after fizzle fires nothing and spends zero energy.
+        float energyBeforeRelease = energy.getEnergy();
+        assertEquals(0f, charger.update(0.01f, false));
+        assertTrue(energy.getEnergy() >= energyBeforeRelease);
+
+        // Fresh press after release charges normally again.
+        charger.update(BlastCharger.FULL_CHARGE_TIME * BlastCharger.MIN_CHARGE + 0.02f, true);
+        assertTrue(charger.isCharging());
+        assertTrue(charger.isReadyToFire());
+    }
+
+    @Test
+    void energyDroppingBelowMinimumCostOnExactReleaseFrameDoesNotFireFreeBlast() {
+        hold(BlastCharger.FULL_CHARGE_TIME);
+        assertTrue(charger.isReadyToFire());
+
+        energy.setEnergy(0f);
+        assertEquals(0f, charger.update(0.01f, false), "must not fire a 0.25 blast for 0 energy");
+        assertFalse(charger.isCharging());
+        assertEquals(0f, charger.getCharge(), 0f);
+        assertEquals(0f, energy.getEnergy(), 0f);
+
+        energy.setEnergy(100f);
+        hold(BlastCharger.FULL_CHARGE_TIME);
+        energy.setEnergy(BlastCharger.MIN_COST - 0.1f);
+        assertEquals(0f, charger.update(0.01f, false), "must not fire when just under MIN_COST on release");
+        assertEquals(BlastCharger.MIN_COST - 0.1f, energy.getEnergy(), 1e-4f);
+    }
+
+    @Test
+    void energyReducedAboveMinimumCostBeforeReleaseClampsBlastToRemainingEnergy() {
+        hold(BlastCharger.FULL_CHARGE_TIME);
+        assertEquals(1f, charger.getCharge(), EPSILON);
+
+        energy.setEnergy(BlastCharger.MIN_COST);
+        float fired = charger.update(0.01f, false);
+
+        assertEquals(BlastCharger.MIN_CHARGE, fired, EPSILON);
+        assertEquals(0f, energy.getEnergy(), EPSILON);
+    }
 }

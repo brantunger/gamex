@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector3;
 import io.github.brantunger.gamex.player.Player;
+import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Target;
 import org.junit.jupiter.api.Test;
@@ -209,5 +210,101 @@ class BlastProjectileTest {
         assertTrue(targetBlast.position.x <= targetContact, "outside canister");
         assertTrue(targetContact - targetBlast.position.x < 0.002f,
             "gap was " + (targetContact - targetBlast.position.x));
+    }
+
+    @Test
+    void constructorNormalizesDirectionAndFallsBackWhenDegenerate() {
+        Door closedDoor = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 1);
+        List<Door> doors = Collections.singletonList(closedDoor);
+
+        // Unnormalized direction of length 5 would previously step 0.40u > 0.18u door slab thickness and tunnel.
+        BlastProjectile scaled = new BlastProjectile(
+            new Vector3(1.5f, 0.5f, 1.5f), new Vector3(5f, 0f, 0f), 1f);
+        assertFalse(scaled.update(0.25f, CORRIDOR, NO_TARGETS, doors, null, 0f));
+        assertEquals(1.5f + BlastProjectile.SPEED * 0.25f, scaled.position.x, EPSILON);
+
+        assertTrue(scaled.update(1f, CORRIDOR, NO_TARGETS, doors, null, 0f));
+        float doorFace = closedDoor.getX() - Door.HALF_THICKNESS - BlastProjectile.RADIUS;
+        assertTrue(scaled.position.x <= doorFace + 1e-4f, "stopped by closed bulkhead: " + scaled.position.x);
+
+        GameMap northHall = GameMap.parse(
+            "###",
+            "#.#",
+            "#.#",
+            "#>#",
+            "###");
+        for (Vector3 badDir : Arrays.asList(
+            null,
+            new Vector3(0f, 0f, 0f),
+            new Vector3(1e-8f, 0f, 0f),
+            new Vector3(Float.NaN, 0f, 0f),
+            new Vector3(Float.POSITIVE_INFINITY, 0f, 0f))) {
+            BlastProjectile fallback = new BlastProjectile(new Vector3(1.5f, 0.5f, 3.5f), badDir, 0.5f);
+            assertFalse(fallback.update(0.25f, northHall, NO_TARGETS));
+            assertEquals(1.5f, fallback.position.x, EPSILON);
+            assertEquals(0.5f, fallback.position.y, EPSILON);
+            assertEquals(3.5f - BlastProjectile.SPEED * 0.25f, fallback.position.z, EPSILON);
+        }
+    }
+
+    @Test
+    void ignoresNonPositiveAndNonFiniteTimeSteps() {
+        Target adjacent = new Target(Target.Kind.CANISTER, 1.5f, 1.5f);
+        BlastProjectile projectile = eastwards(1f);
+
+        for (float badDt : new float[]{0f, -0.1f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            assertFalse(projectile.update(badDt, CORRIDOR, Collections.singletonList(adjacent)));
+            assertFalse(projectile.isExploded());
+            assertEquals(1.5f, projectile.position.x, 1e-6f);
+            assertEquals(Target.Kind.CANISTER.maxHealth, adjacent.getHealth(), 1e-6f);
+        }
+    }
+
+    @Test
+    void detonatesImmediatelyWhenSpawnedOverlappingRetractingDoorWallOrTarget() {
+        Door retracting = new Door(Door.LockKind.NONE, Door.Orientation.SPAN_Z, 3, 1);
+        retracting.open();
+        retracting.update(0.82f * Door.OPEN_DURATION);
+        assertFalse(retracting.isBlockingPassage(), "2D passage is already clear above 0.75 progress");
+        assertFalse(retracting.isOpen(), "3D slab is still retracting near ceiling");
+
+        // Spawn grazing the east face of the retracting upper slab so a 0.08u first step would exit the slab.
+        float spawnX = retracting.getX() + Door.HALF_THICKNESS + 0.04f;
+        float spawnY = Math.min(0.88f, retracting.getBottomY() + 0.02f);
+        assertTrue(retracting.overlapsSphere(spawnX, spawnY, 1.5f, BlastProjectile.RADIUS));
+
+        BlastProjectile doorSpawn = new BlastProjectile(
+            new Vector3(spawnX, spawnY, 1.5f), new Vector3(1f, 0f, 0f), 1f);
+        assertTrue(doorSpawn.update(1f / 60f, CORRIDOR, NO_TARGETS,
+            Collections.singletonList(retracting), null, 0f));
+        assertTrue(doorSpawn.isExploded());
+        assertEquals(spawnX, doorSpawn.position.x, 1e-6f, "detonated at t=0 without tunneling out");
+
+        Target canister = new Target(Target.Kind.CANISTER, 4.0f, 1.5f);
+        float targetSpawnX = 4.0f + canister.getRadius() + 0.05f;
+        BlastProjectile targetSpawn = new BlastProjectile(
+            new Vector3(targetSpawnX, 0.4f, 1.5f), new Vector3(1f, 0f, 0f), 1f);
+        assertTrue(targetSpawn.update(1f / 60f, CORRIDOR, Collections.singletonList(canister)));
+        assertEquals(targetSpawnX, targetSpawn.position.x, 1e-6f);
+        assertTrue(canister.isDestroyed());
+    }
+
+    @Test
+    void ceilingAndFloorImpactsApplyThreeDimensionalVerticalSplashFalloff() {
+        Player grounded = new Player(2.5f, 1.5f, 0f);
+        BlastProjectile ceilingBlast = new BlastProjectile(
+            new Vector3(2.5f, 0.80f, 1.5f), new Vector3(0f, 1f, 0f), BlastCharger.MIN_CHARGE);
+
+        assertTrue(ceilingBlast.update(1f, CORRIDOR, NO_TARGETS, grounded, BlastProjectile.SELF_DAMAGE_SCALE));
+        assertEquals(GameMap.WALL_HEIGHT - BlastProjectile.RADIUS, ceilingBlast.position.y, 0.002f);
+
+        float radius = BlastProjectile.blastRadius(BlastCharger.MIN_CHARGE);
+        float maxDamage = BlastProjectile.blastDamage(BlastCharger.MIN_CHARGE);
+        float vertGap = ceilingBlast.position.y - grounded.getTopY();
+        assertTrue(vertGap > 0.2f);
+        float expectedLoss = Explosion.damageAt(vertGap, radius, maxDamage) * BlastProjectile.SELF_DAMAGE_SCALE;
+        assertEquals(Player.MAX_HEALTH - expectedLoss, grounded.getHealth(), 0.1f);
+        assertTrue(grounded.getHealth() > Player.MAX_HEALTH - maxDamage * BlastProjectile.SELF_DAMAGE_SCALE + 2f,
+            "vertical separation reduces ceiling self-damage below 100% center damage");
     }
 }

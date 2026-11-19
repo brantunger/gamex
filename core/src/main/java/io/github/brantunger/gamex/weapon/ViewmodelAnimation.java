@@ -77,6 +77,12 @@ public final class ViewmodelAnimation {
         swayPitch += (clampSway(-pitchDelta / dt * SWAY_PER_RATE) - swayPitch) * follow;
     }
 
+    /** Clears any active shot recoil and slide travel so weapon switches start cleanly at rest. */
+    public void resetShot() {
+        sinceShot = Float.POSITIVE_INFINITY;
+        recoilScale = 1f;
+    }
+
     private static float clampSway(float degrees) {
         return Math.max(-MAX_SWAY, Math.min(MAX_SWAY, degrees));
     }

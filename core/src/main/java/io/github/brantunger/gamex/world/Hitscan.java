@@ -67,11 +67,19 @@ public final class Hitscan {
         if (doors != null && !doors.isEmpty()) {
             float[] doorNormal = new float[3];
             for (int i = 0; i < doors.size(); i++) {
-                castDoor(doors.get(i), origin, direction, maxDistance, hit, doorNormal);
+                Door door = doors.get(i);
+                if (door != null) {
+                    castDoor(door, origin, direction, maxDistance, hit, doorNormal);
+                }
             }
         }
-        for (int i = 0; i < targets.size(); i++) {
-            castTarget(targets.get(i), origin, direction, maxDistance, hit);
+        if (targets != null) {
+            for (int i = 0; i < targets.size(); i++) {
+                Damageable target = targets.get(i);
+                if (target != null) {
+                    castTarget(target, origin, direction, maxDistance, hit);
+                }
+            }
         }
         if (hit.isHit()) hit.point.set(direction).scl(hit.distance).add(origin);
         return hit;
@@ -96,7 +104,10 @@ public final class Hitscan {
         if (doors != null && !doors.isEmpty()) {
             float[] doorNormal = new float[3];
             for (int i = 0; i < doors.size(); i++) {
-                castDoor(doors.get(i), origin, direction, maxDistance, terminal, doorNormal);
+                Door door = doors.get(i);
+                if (door != null) {
+                    castDoor(door, origin, direction, maxDistance, terminal, doorNormal);
+                }
             }
         }
         if (targets != null) {
@@ -117,7 +128,7 @@ public final class Hitscan {
         if (targets != null) {
             for (int i = 0; i < targets.size(); i++) {
                 Damageable target = targets.get(i);
-                if (target.isDestroyed() || target instanceof SecurityConsole) continue;
+                if (target == null || target.isDestroyed() || target instanceof SecurityConsole) continue;
                 RayHit hit = new RayHit();
                 castTarget(target, origin, direction, stopDistance, hit);
                 if (hit.isHit() && hit.distance < stopDistance) {
@@ -140,18 +151,66 @@ public final class Hitscan {
      * @return true if no solid wall cell blocks the straight segment from (x0, z0) to (x1, z1)
      */
     public static boolean hasLineOfSight(GameMap map, float x0, float z0, float x1, float z1) {
-        int startCol = (int) Math.floor(x0);
-        int startRow = (int) Math.floor(z0);
-        if (map.isSolid(startCol, startRow)) return false;
-        float dx = x1 - x0;
-        float dz = z1 - z0;
-        float length = (float) Math.hypot(dx, dz);
-        if (length < 1e-6f) return true;
-        Vector3 origin = new Vector3(x0, 0.5f, z0);
-        Vector3 dir = new Vector3(dx / length, 0f, dz / length);
-        RayHit hit = new RayHit();
-        castGrid(map, origin, dir, length - 1e-4f, hit);
-        return hit.kind != RayHit.Kind.WALL;
+        if (map == null || !Float.isFinite(x0) || !Float.isFinite(z0)
+            || !Float.isFinite(x1) || !Float.isFinite(z1)) {
+            return false;
+        }
+        if (x0 < 0f || z0 < 0f || x0 > map.getWidth() || z0 > map.getHeight()
+            || x1 < 0f || z1 < 0f || x1 > map.getWidth() || z1 > map.getHeight()) {
+            return false;
+        }
+        if (x0 > x1 || (x0 == x1 && z0 > z1)) {
+            float tx = x0;
+            x0 = x1;
+            x1 = tx;
+            float tz = z0;
+            z0 = z1;
+            z1 = tz;
+        }
+        double dx = (double) x1 - (double) x0;
+        double dz = (double) z1 - (double) z0;
+        if (dx == 0.0 && dz == 0.0) {
+            return isPointOpen(map, x0, z0);
+        }
+        if (dx == 0.0) {
+            return isVerticalSegmentOpen(map, x0, Math.min(z0, z1), Math.max(z0, z1));
+        }
+        if (dz == 0.0) {
+            return isHorizontalSegmentOpen(map, Math.min(x0, x1), Math.max(x0, x1), z0);
+        }
+
+        int stepCol = dx > 0.0 ? 1 : -1;
+        int col = dx > 0.0 ? (int) Math.floor(x0) : (int) Math.ceil(x0) - 1;
+        int endCol = dx > 0.0 ? (int) Math.ceil(x1) - 1 : (int) Math.floor(x1);
+        int nextGridX = dx > 0.0 ? col + 1 : col;
+
+        int stepRow = dz > 0.0 ? 1 : -1;
+        int row = dz > 0.0 ? (int) Math.floor(z0) : (int) Math.ceil(z0) - 1;
+        int endRow = dz > 0.0 ? (int) Math.ceil(z1) - 1 : (int) Math.floor(z1);
+        int nextGridZ = dz > 0.0 ? row + 1 : row;
+
+        if (map.isSolid(col, row)) return false;
+        while (col != endCol || row != endRow) {
+            double tNextX = col == endCol ? Double.POSITIVE_INFINITY : (nextGridX - (double) x0) / dx;
+            double tNextZ = row == endRow ? Double.POSITIVE_INFINITY : (nextGridZ - (double) z0) / dz;
+            if (Math.abs(tNextX - tNextZ) <= 1e-12) {
+                if (map.isSolid(col + stepCol, row) || map.isSolid(col, row + stepRow)) {
+                    return false;
+                }
+                col += stepCol;
+                nextGridX += stepCol;
+                row += stepRow;
+                nextGridZ += stepRow;
+            } else if (tNextX < tNextZ) {
+                col += stepCol;
+                nextGridX += stepCol;
+            } else {
+                row += stepRow;
+                nextGridZ += stepRow;
+            }
+            if (map.isSolid(col, row)) return false;
+        }
+        return true;
     }
 
     /**
@@ -166,12 +225,82 @@ public final class Hitscan {
      */
     public static boolean hasLineOfSight(GameMap map, List<Door> doors, float x0, float z0, float x1, float z1) {
         if (!hasLineOfSight(map, x0, z0, x1, z1)) return false;
+        if (x0 > x1 || (x0 == x1 && z0 > z1)) {
+            float tx = x0;
+            x0 = x1;
+            x1 = tx;
+            float tz = z0;
+            z0 = z1;
+            z1 = tz;
+        }
         if (doors != null) {
             for (int i = 0; i < doors.size(); i++) {
-                if (doors.get(i).intersectsSegment2D(x0, z0, x1, z1)) return false;
+                Door door = doors.get(i);
+                if (door != null && door.intersectsSegment2D(x0, z0, x1, z1)) return false;
             }
         }
         return true;
+    }
+
+    private static boolean isPointOpen(GameMap map, float x, float z) {
+        int colMin = (int) Math.ceil(x) - 1;
+        int colMax = (int) Math.floor(x);
+        int rowMin = (int) Math.ceil(z) - 1;
+        int rowMax = (int) Math.floor(z);
+        for (int r = rowMin; r <= rowMax; r++) {
+            for (int c = colMin; c <= colMax; c++) {
+                if (!map.isSolid(c, r)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isVerticalSegmentOpen(GameMap map, float x, float zMin, float zMax) {
+        int colMin = (int) Math.ceil(x) - 1;
+        int colMax = (int) Math.floor(x);
+        int rStart = (int) Math.floor(zMin);
+        int rEnd = (int) Math.ceil(zMax) - 1;
+        if (colMin == colMax) {
+            for (int r = rStart; r <= rEnd; r++) {
+                if (map.isSolid(colMin, r)) return false;
+            }
+            return true;
+        }
+        for (int r = rStart; r <= rEnd; r++) {
+            if (map.isSolid(colMin, r) && map.isSolid(colMax, r)) return false;
+            if (r < rEnd
+                && (map.isSolid(colMin, r) || map.isSolid(colMin, r + 1))
+                && (map.isSolid(colMax, r) || map.isSolid(colMax, r + 1))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isHorizontalSegmentOpen(GameMap map, float xMin, float xMax, float z) {
+        int rowMin = (int) Math.ceil(z) - 1;
+        int rowMax = (int) Math.floor(z);
+        int cStart = (int) Math.floor(xMin);
+        int cEnd = (int) Math.ceil(xMax) - 1;
+        if (rowMin == rowMax) {
+            for (int c = cStart; c <= cEnd; c++) {
+                if (map.isSolid(c, rowMin)) return false;
+            }
+            return true;
+        }
+        for (int c = cStart; c <= cEnd; c++) {
+            if (map.isSolid(c, rowMin) && map.isSolid(c, rowMax)) return false;
+            if (c < cEnd
+                && (map.isSolid(c, rowMin) || map.isSolid(c + 1, rowMin))
+                && (map.isSolid(c, rowMax) || map.isSolid(c + 1, rowMax))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static float zeroClean(float v) {
+        return v == 0f ? 0f : v;
     }
 
     private static void castDoor(Door door, Vector3 origin, Vector3 direction, float maxDistance,
@@ -192,8 +321,25 @@ public final class Hitscan {
      * is a unit vector in 3D, the crossing parameters are distances along the ray itself.
      */
     private static void castGrid(GameMap map, Vector3 origin, Vector3 direction, float maxDistance, RayHit hit) {
+        if (map == null || Float.isNaN(origin.x) || Float.isNaN(origin.z)
+            || Float.isNaN(maxDistance) || maxDistance < 0f) {
+            return;
+        }
         int col = (int) Math.floor(origin.x);
         int row = (int) Math.floor(origin.z);
+        if (map.isSolid(col, row)) {
+            hit.kind = RayHit.Kind.WALL;
+            hit.distance = 0f;
+            hit.wallType = map.wallAt(col, row);
+            float horizLen = (float) Math.hypot(direction.x, direction.z);
+            if (horizLen > 1e-8f) {
+                hit.normal.set(zeroClean(-direction.x / horizLen), 0f, zeroClean(-direction.z / horizLen));
+            } else {
+                hit.normal.set(0f, 0f, 1f);
+            }
+            return;
+        }
+        if (direction.x == 0f && direction.z == 0f) return;
         int stepCol = direction.x > 0f ? 1 : -1;
         int stepRow = direction.z > 0f ? 1 : -1;
         float deltaX = direction.x == 0f ? Float.POSITIVE_INFINITY : Math.abs(1f / direction.x);
@@ -214,10 +360,11 @@ public final class Hitscan {
                 nextZ += deltaZ;
                 row += stepRow;
             }
-            if (distance > maxDistance) return;
+            if (!Float.isFinite(distance) || distance > maxDistance) return;
+            if (distance < 0f) distance = 0f;
             if (map.isSolid(col, row)) {
                 hit.kind = RayHit.Kind.WALL;
-                hit.distance = distance;
+                hit.distance = distance == 0f ? 0f : distance;
                 hit.wallType = map.wallAt(col, row);
                 if (crossedX) hit.normal.set(-stepCol, 0f, 0f);
                 else hit.normal.set(0f, 0f, -stepRow);
@@ -230,9 +377,11 @@ public final class Hitscan {
         if (direction.y == 0f) return;
         boolean down = direction.y < 0f;
         float distance = down ? -origin.y / direction.y : (GameMap.WALL_HEIGHT - origin.y) / direction.y;
-        if (distance > maxDistance || distance >= hit.distance) return;
+        if (!Float.isFinite(distance) || distance < 0f || distance > maxDistance || distance >= hit.distance) return;
         hit.kind = down ? RayHit.Kind.FLOOR : RayHit.Kind.CEILING;
-        hit.distance = distance;
+        hit.distance = distance == 0f ? 0f : distance;
+        hit.door = null;
+        hit.target = null;
         hit.normal.set(0f, down ? 1f : -1f, 0f);
     }
 
@@ -243,7 +392,7 @@ public final class Hitscan {
      */
     private static void castTarget(Damageable target, Vector3 origin, Vector3 direction, float maxDistance,
                                    RayHit hit) {
-        if (target.isDestroyed()) return;
+        if (target == null || target.isDestroyed() || Float.isNaN(maxDistance) || maxDistance < 0f) return;
         float offsetX = origin.x - target.getX();
         float offsetZ = origin.z - target.getZ();
         float radius2 = target.getRadius() * target.getRadius();
@@ -253,28 +402,52 @@ public final class Hitscan {
             float topX = offsetX + direction.x * topDistance;
             float topZ = offsetZ + direction.z * topDistance;
             if (topX * topX + topZ * topZ <= radius2) {
-                if (topDistance > maxDistance || topDistance >= hit.distance) return;
+                if (!Float.isFinite(topDistance) || topDistance < 0f
+                    || topDistance > maxDistance || topDistance >= hit.distance) {
+                    return;
+                }
                 hit.kind = RayHit.Kind.TARGET;
-                hit.distance = topDistance;
+                hit.distance = topDistance == 0f ? 0f : topDistance;
                 hit.door = null;
                 hit.target = target;
                 hit.normal.set(0f, 1f, 0f);
                 return;
             }
         }
+        float c = offsetX * offsetX + offsetZ * offsetZ - radius2;
         float a = direction.x * direction.x + direction.z * direction.z;
+        if (c <= 0f && origin.y >= 0f && origin.y <= target.getHeight()) {
+            if (0f >= hit.distance) return;
+            hit.kind = RayHit.Kind.TARGET;
+            hit.distance = 0f;
+            hit.door = null;
+            hit.target = target;
+            if (a >= 1e-8f) {
+                float invHoriz = 1f / (float) Math.sqrt(a);
+                hit.normal.set(zeroClean(-direction.x * invHoriz), 0f, zeroClean(-direction.z * invHoriz));
+            } else {
+                float len = direction.len();
+                if (len > 1e-8f) {
+                    hit.normal.set(zeroClean(-direction.x / len),
+                        zeroClean(-direction.y / len),
+                        zeroClean(-direction.z / len));
+                } else {
+                    hit.normal.set(0f, 1f, 0f);
+                }
+            }
+            return;
+        }
         if (a < 1e-8f) return;
         float b = offsetX * direction.x + offsetZ * direction.z;
-        float c = offsetX * offsetX + offsetZ * offsetZ - radius2;
         float discriminant = b * b - a * c;
         if (discriminant < 0f) return;
         // A ray that starts inside the cylinder hits it at once.
         float distance = c <= 0f ? 0f : (-b - (float) Math.sqrt(discriminant)) / a;
-        if (distance < 0f || distance > maxDistance || distance >= hit.distance) return;
+        if (!Float.isFinite(distance) || distance < 0f || distance > maxDistance || distance >= hit.distance) return;
         float y = origin.y + direction.y * distance;
         if (y < 0f || y > target.getHeight()) return;
         hit.kind = RayHit.Kind.TARGET;
-        hit.distance = distance;
+        hit.distance = distance == 0f ? 0f : distance;
         hit.door = null;
         hit.target = target;
         if (distance > 0f) {

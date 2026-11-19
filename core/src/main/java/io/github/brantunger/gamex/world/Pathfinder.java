@@ -79,8 +79,15 @@ public final class Pathfinder {
         Arrays.fill(distances, 0, total, UNREACHABLE);
         Arrays.fill(inQueue, 0, total, false);
 
+        if (!Float.isFinite(goalX) || !Float.isFinite(goalZ)) return;
         int goalCol = (int) Math.floor(goalX);
         int goalRow = (int) Math.floor(goalZ);
+        if (map.isSolid(goalCol, goalRow)) return;
+        Door goalDoor = blockingDoorAt(doors, goalCol, goalRow);
+        if (goalDoor != null) {
+            goalCol = stepOffDoorCol(goalDoor, goalX);
+            goalRow = stepOffDoorRow(goalDoor, goalZ);
+        }
         if (isBlocked(map, doors, goalCol, goalRow)) return;
 
         int startIdx = goalRow * width + goalCol;
@@ -106,7 +113,7 @@ public final class Pathfinder {
                 int nc = col + DIRS[d];
                 int nr = row + DIRS[d + 1];
                 if (isBlocked(map, doors, nc, nr)) continue;
-                int stepCost = (avoidHazards && map.isHazard(nc, nr)) ? HAZARD_COST : FLOOR_COST;
+                int stepCost = (avoidHazards && map.isHazard(col, row)) ? HAZARD_COST : FLOOR_COST;
                 int nextDist = currentDist + stepCost;
                 int nIdx = nr * width + nc;
                 if (distances[nIdx] <= nextDist) continue;
@@ -161,15 +168,37 @@ public final class Pathfinder {
      */
     public boolean nextDirection(GameMap map, List<Door> doors, boolean avoidHazards, float fromX, float fromZ,
                                  Vector2 outDirection) {
+        if (map == null || !Float.isFinite(fromX) || !Float.isFinite(fromZ)) return false;
         int col = (int) Math.floor(fromX);
         int row = (int) Math.floor(fromZ);
         if (col < 0 || row < 0 || col >= width || row >= height) return false;
+        if (map.isSolid(col, row)) return false;
+
+        Door originDoor = blockingDoorAt(doors, col, row);
+        if (originDoor != null) {
+            int sideCol = stepOffDoorCol(originDoor, fromX);
+            int sideRow = stepOffDoorRow(originDoor, fromZ);
+            if (sideCol < 0 || sideRow < 0 || sideCol >= width || sideRow >= height) return false;
+            if (isBlocked(map, doors, sideCol, sideRow)) return false;
+            int sideDist = distances[sideRow * width + sideCol];
+            if (sideDist == UNREACHABLE) return false;
+            if (sideDist == 0 && (int) Math.floor(goalX) == col && (int) Math.floor(goalZ) == row) {
+                return false;
+            }
+            float dx = (sideCol + 0.5f) - fromX;
+            float dz = (sideRow + 0.5f) - fromZ;
+            float len = (float) Math.hypot(dx, dz);
+            if (len < 1e-6f) return false;
+            outDirection.set(dx / len, dz / len);
+            return true;
+        }
+
         int currentDist = distances[row * width + col];
         if (currentDist == UNREACHABLE || currentDist == 0) return false;
 
         int bestCol = -1;
         int bestRow = -1;
-        int bestDist = currentDist;
+        int bestCost = UNREACHABLE;
         float bestGoalDist2 = Float.POSITIVE_INFINITY;
 
         for (int i = 0; i < DIRS.length; i += 2) {
@@ -177,23 +206,26 @@ public final class Pathfinder {
             int dr = DIRS[i + 1];
             int nc = col + dc;
             int nr = row + dr;
+            if (nc < 0 || nr < 0 || nc >= width || nr >= height) continue;
             if (isBlocked(map, doors, nc, nr)) continue;
             if (dc != 0 && dr != 0
                 && (isBlocked(map, doors, col + dc, row) || isBlocked(map, doors, col, row + dr))) {
                 continue;
             }
             if (avoidHazards && dc != 0 && dr != 0
-                && (map.isHazard(col + dc, row) || map.isHazard(col, row + dr))
-                && !map.isHazard(nc, nr)) {
+                && (map.isHazard(nc, nr) || map.isHazard(col + dc, row) || map.isHazard(col, row + dr))) {
                 continue;
             }
             int d = distances[nr * width + nc];
-            if (d >= currentDist) continue;
+            if (d == UNREACHABLE) continue;
+            int stepCost = (avoidHazards && map.isHazard(nc, nr)) ? HAZARD_COST : FLOOR_COST;
+            int candCost = d + stepCost;
+            if (candCost > currentDist) continue;
             float cx = nc + 0.5f;
             float cz = nr + 0.5f;
             float goalDist2 = (cx - goalX) * (cx - goalX) + (cz - goalZ) * (cz - goalZ);
-            if (d < bestDist || (d == bestDist && goalDist2 < bestGoalDist2)) {
-                bestDist = d;
+            if (candCost < bestCost || (candCost == bestCost && goalDist2 < bestGoalDist2)) {
+                bestCost = candCost;
                 bestGoalDist2 = goalDist2;
                 bestCol = nc;
                 bestRow = nr;
@@ -210,12 +242,31 @@ public final class Pathfinder {
     }
 
     private static boolean isBlocked(GameMap map, List<Door> doors, int col, int row) {
-        if (map.isSolid(col, row)) return true;
-        if (doors == null) return false;
+        return map.isSolid(col, row) || blockingDoorAt(doors, col, row) != null;
+    }
+
+    private static Door blockingDoorAt(List<Door> doors, int col, int row) {
+        if (doors == null) return null;
         for (int i = 0; i < doors.size(); i++) {
             Door door = doors.get(i);
-            if (door.isBlockingPassage() && door.getCol() == col && door.getRow() == row) return true;
+            if (door != null && door.isBlockingPassage() && door.getCol() == col && door.getRow() == row) {
+                return door;
+            }
         }
-        return false;
+        return null;
+    }
+
+    private static int stepOffDoorCol(Door door, float worldX) {
+        if (door.getOrientation() == Door.Orientation.SPAN_Z) {
+            return door.getCol() + (worldX < door.getX() ? -1 : 1);
+        }
+        return door.getCol();
+    }
+
+    private static int stepOffDoorRow(Door door, float worldZ) {
+        if (door.getOrientation() == Door.Orientation.SPAN_X) {
+            return door.getRow() + (worldZ < door.getZ() ? -1 : 1);
+        }
+        return door.getRow();
     }
 }

@@ -33,7 +33,9 @@ public final class InputController extends InputAdapter {
     private boolean swallowCharge;
     /** The same for Space, so confirming DEPLOY or RESUME does not jump on the first frame of play. */
     private boolean swallowJump;
-    private int pendingScrollSwap;
+    private static final float SCROLL_EPSILON = 1e-4f;
+    /** Net vertical scroll wheel / trackpad delta accumulated since the last polled gameplay frame. */
+    private float pendingScrollY;
     /** Keys whose key-down event arrived since the last poll; menu screens act on these. */
     private final IntSet pressedKeys = new IntSet();
     /** Set when a left-button-down event arrived since the last poll, at ({@link #clickX}, {@link #clickY}). */
@@ -54,19 +56,23 @@ public final class InputController extends InputAdapter {
 
     /** Releases the cursor and pauses active gameplay when the window loses focus or is minimised. */
     public void pause() {
+        clearPresses();
+        pendingScrollY = 0f;
         menuState.onWindowPaused();
         syncCursorCapture();
     }
 
     @Override
     public boolean keyDown(int keycode) {
-        pressedKeys.add(keycode);
+        if (!menuState.isPlaying()) {
+            pressedKeys.add(keycode);
+        }
         return true;
     }
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        if (button == Input.Buttons.LEFT) {
+        if (!menuState.isPlaying() && button == Input.Buttons.LEFT) {
             clickPending = true;
             clickX = screenX;
             clickY = screenY;
@@ -94,8 +100,8 @@ public final class InputController extends InputAdapter {
 
     @Override
     public boolean scrolled(float amountX, float amountY) {
-        if (captured && Math.abs(amountY) > 0f) {
-            pendingScrollSwap = amountY > 0f ? PlayerInput.WEAPON_CYCLE_NEXT : PlayerInput.WEAPON_CYCLE_PREV;
+        if (captured && Float.isFinite(amountY) && amountY != 0f) {
+            pendingScrollY += amountY;
             return true;
         }
         return false;
@@ -111,9 +117,14 @@ public final class InputController extends InputAdapter {
         syncCursorCapture();
 
         if (!menuState.isPlaying()) {
+            pendingScrollY = 0f;
             MenuState.Command cmd = pollMenu();
             clearPresses();
-            syncCursorCapture();
+            if (cmd == MenuState.Command.LAUNCH_STAGE) {
+                resetCaptureForStageLaunch();
+            } else {
+                syncCursorCapture();
+            }
             return cmd;
         }
         // A press made during play must not act on a menu that opens later.
@@ -125,7 +136,13 @@ public final class InputController extends InputAdapter {
             return cmd;
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.R)) {
-            return menuState.quickRestart();
+            MenuState.Command cmd = menuState.quickRestart();
+            if (cmd == MenuState.Command.LAUNCH_STAGE) {
+                resetCaptureForStageLaunch();
+            } else {
+                syncCursorCapture();
+            }
+            return cmd;
         }
 
         float sensitivity = settings.getMouseSensitivity();
@@ -149,8 +166,10 @@ public final class InputController extends InputAdapter {
         else if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) out.weaponSlot = 2;
         else if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) out.weaponSlot = 3;
         else if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) out.weaponSlot = PlayerInput.WEAPON_QUICK_SWAP;
-        else if (pendingScrollSwap != 0) out.weaponSlot = pendingScrollSwap;
-        pendingScrollSwap = 0;
+        else if (Math.abs(pendingScrollY) > SCROLL_EPSILON) {
+            out.weaponSlot = pendingScrollY > 0f ? PlayerInput.WEAPON_CYCLE_NEXT : PlayerInput.WEAPON_CYCLE_PREV;
+        }
+        pendingScrollY = 0f;
 
         boolean leftButton = Gdx.input.isButtonPressed(Input.Buttons.LEFT);
         boolean rightButton = Gdx.input.isButtonPressed(Input.Buttons.RIGHT);
@@ -182,17 +201,19 @@ public final class InputController extends InputAdapter {
             && pressedKeys.contains(Input.Keys.Q)) {
             return menuState.requestQuit();
         }
-        if (pressedKeys.contains(Input.Keys.UP) || pressedKeys.contains(Input.Keys.W)) {
-            menuState.moveSelection(-1);
+        boolean up = pressedKeys.contains(Input.Keys.UP) || pressedKeys.contains(Input.Keys.W);
+        boolean down = pressedKeys.contains(Input.Keys.DOWN) || pressedKeys.contains(Input.Keys.S);
+        int vStep = (up ? -1 : 0) + (down ? 1 : 0);
+        if (vStep != 0) {
+            menuState.moveSelection(vStep);
         }
-        if (pressedKeys.contains(Input.Keys.DOWN) || pressedKeys.contains(Input.Keys.S)) {
-            menuState.moveSelection(1);
-        }
-        if (pressedKeys.contains(Input.Keys.LEFT) || pressedKeys.contains(Input.Keys.A)) {
-            return menuState.adjustHorizontal(-1);
-        }
-        if (pressedKeys.contains(Input.Keys.RIGHT) || pressedKeys.contains(Input.Keys.D)) {
-            return menuState.adjustHorizontal(1);
+        if (menuState.getScreen() == MenuState.Screen.SETTINGS) {
+            boolean left = pressedKeys.contains(Input.Keys.LEFT) || pressedKeys.contains(Input.Keys.A);
+            boolean right = pressedKeys.contains(Input.Keys.RIGHT) || pressedKeys.contains(Input.Keys.D);
+            int hStep = (left ? -1 : 0) + (right ? 1 : 0);
+            if (hStep != 0) {
+                return menuState.adjustHorizontal(hStep);
+            }
         }
         if (pressedKeys.contains(Input.Keys.ENTER) || pressedKeys.contains(Input.Keys.SPACE)) {
             return menuState.confirm();
@@ -213,6 +234,20 @@ public final class InputController extends InputAdapter {
         return MenuState.Command.NONE;
     }
 
+    /**
+     * Synchronises cursor capture and resets accumulated look deltas, scroll weapon swaps, menu presses and held-input
+     * swallow latches for a newly launched or quick-restarted stage, even when the cursor was already captured.
+     */
+    public void resetCaptureForStageLaunch() {
+        syncCursorCapture();
+        clearPresses();
+        pendingScrollY = 0f;
+        if (captured) {
+            look.capture();
+            refreshHeldSwallows();
+        }
+    }
+
     /** Ensures OS cursor capture always matches whether {@link MenuState#isPlaying()} is active. */
     public void syncCursorCapture() {
         boolean shouldCapture = menuState.isPlaying();
@@ -222,14 +257,20 @@ public final class InputController extends InputAdapter {
         Gdx.input.setCursorCatched(captured);
         if (captured) {
             look.capture();
-            swallowFire = true;
-            swallowCharge = true;
-            swallowJump = Gdx.input.isKeyPressed(Input.Keys.SPACE);
-            pendingScrollSwap = 0;
+            refreshHeldSwallows();
+            pendingScrollY = 0f;
         } else {
             look.release();
+            swallowFire = false;
+            swallowCharge = false;
             swallowJump = false;
-            pendingScrollSwap = 0;
+            pendingScrollY = 0f;
         }
+    }
+
+    private void refreshHeldSwallows() {
+        swallowFire = Gdx.input.isButtonPressed(Input.Buttons.LEFT);
+        swallowCharge = Gdx.input.isButtonPressed(Input.Buttons.RIGHT);
+        swallowJump = Gdx.input.isKeyPressed(Input.Keys.SPACE);
     }
 }

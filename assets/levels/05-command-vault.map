@@ -2,9 +2,9 @@ id: 05_command_vault
 title: 05: COMMAND VAULT
 par: 95
 complete_on_all_targets: false
-briefing: FINAL OBJECTIVE: BREACH THE DEEP COMMAND VAULT.
+briefing: SECTOR 05 OBJECTIVE: BREACH THE DEEP COMMAND VAULT.
 briefing: CHAIN AMBER AND CYAN CLEARANCES TO REACH OVERWATCH.
-briefing: OVERRIDE VAULT LOCKDOWN AND REACH THE FINAL EXTRACTION.
+briefing: OVERRIDE VAULT LOCKDOWN AND EXTRACT TO THE WARDEN CORE.
 
 ######&&&&&&&&&&&&&&#&&&&&&&&&&&
 #....#......o.......#.....o....&

@@ -222,7 +222,7 @@ public final class ObjModel {
         for (int number = 1; number <= lines.length; number++) {
             String rawLine = lines[number - 1];
             String trimmedRaw = rawLine.trim();
-            if (trimmedRaw.startsWith("# @")) {
+            if (isDirectiveComment(trimmedRaw)) {
                 currentPart = parseDirective(trimmedRaw, number, currentPart, partSpecs, socketSpecs, accentMaterials);
                 continue;
             }
@@ -269,10 +269,15 @@ public final class ObjModel {
             partSpecs, socketSpecs, accentMaterials);
     }
 
+    private static boolean isDirectiveComment(String trimmedLine) {
+        if (!trimmedLine.startsWith("#")) return false;
+        return trimmedLine.substring(1).trim().startsWith("@");
+    }
+
     private static String parseDirective(String trimmedComment, int number, String currentPart,
                                          Map<String, PartSpec> partSpecs, Map<String, SocketSpec> socketSpecs,
                                          Set<String> accentMaterials) {
-        String body = trimmedComment.substring(2).trim();
+        String body = trimmedComment.substring(1).trim();
         String[] tokens = body.split("\\s+");
         if (tokens.length == 0) return currentPart;
         switch (tokens[0]) {
@@ -281,49 +286,102 @@ public final class ObjModel {
                     throw new IllegalArgumentException("Line " + number + ": '@part' requires a part name");
                 }
                 String name = tokens[1];
+                if (name.indexOf('=') >= 0) {
+                    throw new IllegalArgumentException(
+                        "Line " + number + ": '@part' requires a part name before '" + name + "'");
+                }
                 if (tokens.length == 2) {
                     if (!partSpecs.containsKey(name)) {
                         partSpecs.put(name, new PartSpec(name, null, 0f, 0f, 0f));
                     }
                     return name;
                 }
-                String parent = null;
-                float px = 0f;
-                float py = 0f;
-                float pz = 0f;
+                if (ROOT_PART.equals(name)) {
+                    throw new IllegalArgumentException(
+                        "Line " + number + ": '@part' cannot redefine '" + ROOT_PART + "'");
+                }
+                PartSpec existing = partSpecs.get(name);
+                String parent = existing != null ? existing.parent : null;
+                float px = existing != null ? existing.pivotX : 0f;
+                float py = existing != null ? existing.pivotY : 0f;
+                float pz = existing != null ? existing.pivotZ : 0f;
+                boolean seenParent = false;
+                boolean seenPivot = false;
                 for (int i = 2; i < tokens.length; i++) {
                     String tok = tokens[i];
                     if (tok.startsWith("parent=")) {
+                        if (seenParent) {
+                            throw new IllegalArgumentException(
+                                "Line " + number + ": duplicate 'parent' attribute in @part");
+                        }
+                        seenParent = true;
                         String val = tok.substring("parent=".length());
-                        parent = ROOT_PART.equals(val) || val.isEmpty() ? null : val;
+                        if (val.isEmpty()) {
+                            throw new IllegalArgumentException(
+                                "Line " + number + ": '@part' parent requires a part name");
+                        }
+                        parent = ROOT_PART.equals(val) ? null : val;
                     } else if (tok.startsWith("pivot=")) {
+                        if (seenPivot) {
+                            throw new IllegalArgumentException(
+                                "Line " + number + ": duplicate 'pivot' attribute in @part");
+                        }
+                        seenPivot = true;
                         float[] p = parseTriplet(tok.substring("pivot=".length()), number, "@part pivot");
                         px = p[0];
                         py = p[1];
                         pz = p[2];
+                    } else {
+                        throw new IllegalArgumentException(
+                            "Line " + number + ": unknown @part attribute '" + tok + "'");
                     }
                 }
                 partSpecs.put(name, new PartSpec(name, parent, px, py, pz));
-                return name;
+                return currentPart;
             }
             case "@socket": {
                 if (tokens.length < 2) {
                     throw new IllegalArgumentException("Line " + number + ": '@socket' requires a socket name");
                 }
                 String name = tokens[1];
-                String part = ROOT_PART;
-                float sx = 0f;
-                float sy = 0f;
-                float sz = 0f;
+                if (name.indexOf('=') >= 0) {
+                    throw new IllegalArgumentException(
+                        "Line " + number + ": '@socket' requires a socket name before '" + name + "'");
+                }
+                SocketSpec existing = socketSpecs.get(name);
+                String part = existing != null ? existing.part : ROOT_PART;
+                float sx = existing != null ? existing.x : 0f;
+                float sy = existing != null ? existing.y : 0f;
+                float sz = existing != null ? existing.z : 0f;
+                boolean seenPart = false;
+                boolean seenPos = false;
                 for (int i = 2; i < tokens.length; i++) {
                     String tok = tokens[i];
                     if (tok.startsWith("part=")) {
-                        part = tok.substring("part=".length());
+                        if (seenPart) {
+                            throw new IllegalArgumentException(
+                                "Line " + number + ": duplicate 'part' attribute in @socket");
+                        }
+                        seenPart = true;
+                        String val = tok.substring("part=".length());
+                        if (val.isEmpty()) {
+                            throw new IllegalArgumentException(
+                                "Line " + number + ": '@socket' part requires a part name");
+                        }
+                        part = val;
                     } else if (tok.startsWith("pos=")) {
+                        if (seenPos) {
+                            throw new IllegalArgumentException(
+                                "Line " + number + ": duplicate 'pos' attribute in @socket");
+                        }
+                        seenPos = true;
                         float[] p = parseTriplet(tok.substring("pos=".length()), number, "@socket pos");
                         sx = p[0];
                         sy = p[1];
                         sz = p[2];
+                    } else {
+                        throw new IllegalArgumentException(
+                            "Line " + number + ": unknown @socket attribute '" + tok + "'");
                     }
                 }
                 socketSpecs.put(name, new SocketSpec(name, part, sx, sy, sz));
@@ -336,7 +394,7 @@ public final class ObjModel {
                 accentMaterials.add(body.substring("@accent".length()).trim());
                 return currentPart;
             default:
-                return currentPart;
+                throw new IllegalArgumentException("Line " + number + ": unsupported directive '" + tokens[0] + "'");
         }
     }
 

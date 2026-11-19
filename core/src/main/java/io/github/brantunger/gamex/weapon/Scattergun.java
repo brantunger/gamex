@@ -123,6 +123,15 @@ public final class Scattergun {
         return cooldown <= 0f;
     }
 
+    /**
+     * @param dt upcoming frame duration in seconds
+     * @return whether the scattergun will be off cooldown once {@code dt} elapses
+     */
+    public boolean isReadyAfter(float dt) {
+        float step = Float.isFinite(dt) && dt > 0f ? dt : 0f;
+        return cooldown - step <= 0f;
+    }
+
     /** @return whether the muzzle flash decal should currently be drawn. */
     public boolean isFlashVisible() {
         return sinceShot < FLASH_TIME;
