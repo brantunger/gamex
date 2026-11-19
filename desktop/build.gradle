@@ -33,6 +33,7 @@ application {
 // This only runs when a file is added to, removed from or changed in the assets folder.
 tasks.register('generateAssetList') {
   mustRunAfter(':tools:generateModels', ':tools:generateSounds')
+  mustRunAfter(':tools:generateTextures')
   // projectFolder/assets
   File assetsFolder = rootProject.file('assets')
   // projectFolder/assets/assets.txt
@@ -50,6 +51,7 @@ tasks.register('generateAssetList') {
 }
 processResources.dependsOn 'generateAssetList'
 processResources.mustRunAfter(':tools:generateModels', ':tools:generateSounds')
+processResources.mustRunAfter(':tools:generateTextures')
 
 dependencies {
   implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"

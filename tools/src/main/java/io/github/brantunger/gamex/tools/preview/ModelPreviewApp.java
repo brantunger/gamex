@@ -31,6 +31,7 @@ import io.github.brantunger.gamex.model.ModelRig;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
 import io.github.brantunger.gamex.render.ModelMesh;
+import io.github.brantunger.gamex.render.Shaders;
 import io.github.brantunger.gamex.tools.GenerateAllModels;
 import io.github.brantunger.gamex.weapon.BlastProjectile;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
@@ -72,43 +73,16 @@ import java.util.zip.Deflater;
  */
 public final class ModelPreviewApp extends ApplicationAdapter {
 
-    private static final String VERTEX_SHADER =
-        "attribute vec3 a_position;\n"
-            + "attribute vec3 a_normal;\n"
-            + "attribute vec3 a_colour;\n"
-            + "attribute float a_gloss;\n"
-            + "attribute float a_accent;\n"
-            + "uniform mat4 u_projViewTrans;\n"
-            + "uniform mat4 u_model;\n"
-            + "uniform mat3 u_normalMatrix;\n"
-            + "uniform vec4 u_accentColour;\n"
-            + "uniform vec3 u_cameraPosition;\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    vec4 worldPos = u_model * vec4(a_position, 1.0);\n"
-            + "    vec3 n = normalize(u_normalMatrix * a_normal);\n"
-            + "    vec3 weight = n * n;\n"
-            + "    float shade = weight.z + weight.x * 0.72 + weight.y * (n.y > 0.0 ? 0.9 : 0.62);\n"
-            + "    vec3 lightDir = normalize(vec3(0.35, 0.85, -0.45));\n"
-            + "    float key = 0.65 + 0.55 * max(dot(n, lightDir), 0.0);\n"
-            + "    vec3 toCam = normalize(u_cameraPosition - worldPos.xyz);\n"
-            + "    vec3 halfVec = normalize(lightDir + toCam);\n"
-            + "    vec3 col = mix(a_colour, u_accentColour.rgb, a_accent);\n"
-            + "    float gloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
-            + "    float sheen = gloss * pow(max(dot(n, halfVec), 0.0), 12.0) * 0.35;\n"
-            + "    float rim = pow(1.0 - max(dot(n, toCam), 0.0), 2.5) * 0.12;\n"
-            + "    v_colour = col * shade * key + vec3(sheen + rim);\n"
-            + "    gl_Position = u_projViewTrans * worldPos;\n"
-            + "}\n";
-
-    private static final String FRAGMENT_SHADER =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    gl_FragColor = vec4(v_colour, 1.0);\n"
-            + "}\n";
+    /**
+     * The previewer draws with the game's world-model shader ({@link Shaders#MODEL_VERTEX} and
+     * {@link Shaders#MODEL_FRAGMENT}), so a model is lit here as it is in the game. These are the values of the
+     * uniforms the game changes from room to room and hit to hit: the fog starts and ends far beyond anything the
+     * previewer shows, which turns it off, the room is at full light and nothing flashes from a hit.
+     */
+    private static final float PREVIEW_FOG_START = 1e6f;
+    private static final float PREVIEW_FOG_END = 2e6f;
+    private static final float PREVIEW_LIGHT = 1f;
+    private static final float PREVIEW_HIT_FLASH = 0f;
 
     private static final float[][] DOOR_ACCENTS = {
         WorldModels.ACCENT_DOOR_UNLOCKED,
@@ -223,9 +197,11 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             camera = createPreviewCamera(Gdx.graphics);
             applyBackBufferViewport();
 
-            shader = new ShaderProgram(VERTEX_SHADER, FRAGMENT_SHADER);
+            // The game's own model shader, read from assets/shaders/; a missing file stops the start, by name.
+            shader = new ShaderProgram(Shaders.load(Shaders.MODEL_VERTEX), Shaders.load(Shaders.MODEL_FRAGMENT));
             if (!shader.isCompiled()) {
-                throw new GdxRuntimeException("Preview shader failed: " + shader.getLog());
+                throw new GdxRuntimeException("Preview shader failed: " + shader.getLog()
+                    + " (" + Shaders.MODEL_VERTEX + ", " + Shaders.MODEL_FRAGMENT + ")");
             }
             shapes = new ShapeRenderer();
             batch = new SpriteBatch();
@@ -688,6 +664,10 @@ public final class ModelPreviewApp extends ApplicationAdapter {
             shader.bind();
             shader.setUniformMatrix("u_projViewTrans", camera.combined);
             shader.setUniformf("u_cameraPosition", camera.position);
+            shader.setUniformf("u_fogRange", PREVIEW_FOG_START, PREVIEW_FOG_END);
+            shader.setUniformf("u_fogColour", 0f, 0f, 0f);
+            shader.setUniformf("u_light", PREVIEW_LIGHT);
+            shader.setUniformf("u_hitFlash", PREVIEW_HIT_FLASH);
             if (accent == null) shader.setUniformf("u_accentColour", 0f, 0f, 0f, 0f);
             else shader.setUniformf("u_accentColour", accent[0], accent[1], accent[2], accent[3]);
         }

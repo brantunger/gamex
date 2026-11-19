@@ -54,6 +54,7 @@ class TestLocations implements CommandLineArgumentProvider {
 test {
   useJUnitPlatform()
   mustRunAfter(':tools:generateModels', ':tools:generateSounds')
+  mustRunAfter(':tools:generateTextures')
   jvmArgumentProviders.add(new TestLocations(
     models: rootProject.file("assets/models"),
     sounds: rootProject.file("assets/sounds"),
@@ -62,6 +63,10 @@ test {
     shaders: rootProject.fileTree("assets/shaders"),
     textures: rootProject.fileTree("assets/textures")
   ))
+  // TunedSimulationTest reads the sources of desktop and tools to see that neither calls a test-only constructor.
+  inputs.files(rootProject.fileTree("desktop/src/main/java"), rootProject.fileTree("tools/src/main/java"))
+    .withPropertyName("otherModulesSources")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 jar {

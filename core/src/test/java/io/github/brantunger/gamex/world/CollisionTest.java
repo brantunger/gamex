@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector2;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnergyMeter;
 import org.junit.jupiter.api.Test;
@@ -178,7 +179,7 @@ class CollisionTest {
 
     @Test
     void overlappingPlayerInNarrowCorridorWalksAwayAtHighRefreshRateUntilSeparated() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
         List<Enemy> solids = Collections.singletonList(drone);
         Player player = new Player(1.40f, 3.00f, 180f);
         float reach = Player.RADIUS + drone.getRadius();
@@ -202,7 +203,7 @@ class CollisionTest {
 
     @Test
     void overlappingPlayerInNarrowCorridorDashesAwayStraightAndAngledUntilSeparated() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
         List<Enemy> solids = Collections.singletonList(drone);
         float reach = Player.RADIUS + drone.getRadius();
 
@@ -236,7 +237,7 @@ class CollisionTest {
     @Test
     void overlappingPlayerEscapesFromRoomCornerAndBesideClosedBulkheadDoor() {
         // 1. Pinned in the north-west corner of ROOM while overlapping an enemy to the east.
-        Enemy cornerDrone = new Enemy(Enemy.Kind.DRONE, 1.48f, 1.26f, 270f);
+        Enemy cornerDrone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.48f, 1.26f, 270f);
         List<Enemy> cornerSolids = Collections.singletonList(cornerDrone);
         float reach = Player.RADIUS + cornerDrone.getRadius();
         Player cornerPlayer = new Player(1.26f, 1.26f, 180f);
@@ -251,7 +252,7 @@ class CollisionTest {
         // 2. Overlapping an enemy right beside a closed SPAN_X bulkhead door in CORRIDOR.
         Door lockedDoor = new Door(Door.LockKind.AMBER_KEY, Door.Orientation.SPAN_X, 1, 1);
         List<Door> doors = Collections.singletonList(lockedDoor);
-        Enemy doorDrone = new Enemy(Enemy.Kind.DRONE, 1.58f, 1.85f, 180f);
+        Enemy doorDrone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 1.85f, 180f);
         List<Enemy> doorSolids = Collections.singletonList(doorDrone);
 
         // Trying to dash north (-z) into the closed door stops at the slab face without clipping.
@@ -264,7 +265,7 @@ class CollisionTest {
         assertTrue(intoDoorPlayer.position.y >= 1.5f + Door.HALF_THICKNESS + Player.RADIUS - 1e-4f);
 
         // Starting right against the closed door face while overlapping the enemy, walking south (+z) separates cleanly.
-        Enemy flushDoorDrone = new Enemy(Enemy.Kind.DRONE, 1.58f, 1.84f, 180f);
+        Enemy flushDoorDrone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 1.84f, 180f);
         List<Enemy> flushDoorSolids = Collections.singletonList(flushDoorDrone);
         Player awayFromDoorPlayer = new Player(1.40f, 1.841f, 180f);
         assertFalse(Collision.overlapsWall(CORRIDOR, doors, awayFromDoorPlayer.position.x,
@@ -281,7 +282,7 @@ class CollisionTest {
 
     @Test
     void movingDeeperOrChordingThroughOverlappingSolidDoesNotWorsenPenetration() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
         List<Enemy> solids = Collections.singletonList(drone);
         float reach = RADIUS + drone.getRadius();
 
@@ -310,7 +311,7 @@ class CollisionTest {
 
     @Test
     void escapingOverlapWithSolidACannotClipIntoAdjacentSolidBOrWall() {
-        Enemy droneA = new Enemy(Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
+        Enemy droneA = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
         Target canisterB = new Target(Target.Kind.CANISTER, 1.50f, 3.60f);
         List<Damageable> solids = Arrays.asList(droneA, canisterB);
 
@@ -335,7 +336,7 @@ class CollisionTest {
 
     @Test
     void nonOverlappingCircleRemainsBlockedBySolidInNarrowCorridorAndBesideClosedDoor() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 3.00f, 0f);
         List<Enemy> corridorSolids = Collections.singletonList(drone);
         Vector2 position = new Vector2(1.40f, 2.00f);
 
@@ -366,7 +367,7 @@ class CollisionTest {
 
     @Test
     void coincidentDeadCentreOverlapNearCornerEscapesAlongOpenAxis() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 1.26f, 1.26f, 180f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.26f, 1.26f, 180f);
         List<Enemy> solids = Collections.singletonList(drone);
         Vector2 position = new Vector2(1.26f, 1.26f);
 

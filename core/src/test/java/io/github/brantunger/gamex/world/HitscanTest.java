@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import com.badlogic.gdx.math.Vector3;
 import org.junit.jupiter.api.Test;
 
@@ -287,7 +288,7 @@ class HitscanTest {
 
     @Test
     void rayFromAboveEntersAShortEnemyThroughItsTop() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 4.5f, 1.5f, 0f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 4.5f, 1.5f, 0f);
         List<Enemy> drones = Collections.singletonList(drone);
         // An eye at the top of a jump, 0.25 from the drone's side, looking 30 degrees down: the ray is still above
         // the drone where it crosses the side, and comes down through the top 0.044 short of the axis.
@@ -322,7 +323,7 @@ class HitscanTest {
 
     @Test
     void rayThatLeavesAShortEnemysOutlineAboveItsTopStillMisses() {
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 4.5f, 1.5f, 0f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 4.5f, 1.5f, 0f);
         List<Enemy> drones = Collections.singletonList(drone);
         Vector3 eye = new Vector3(4.5f - drone.getRadius() - 0.25f, 0.82f, 1.5f);
         // Five degrees down, the ray is still 0.76 up where it leaves the outline, and lands on the floor beyond.

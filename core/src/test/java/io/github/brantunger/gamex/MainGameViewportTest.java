@@ -16,6 +16,7 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.audio.SoundManager;
+import io.github.brantunger.gamex.audio.SoundVolumes;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -338,11 +339,13 @@ class MainGameViewportTest {
         assertEquals("01_outer_breach", outerBreach.id);
 
         GameSimulation cleanPreview = new GameSimulation(outerBreach.map);
-        assertSame(cleanPreview, MainGame.backdropSimulation(cleanPreview, menu, false),
+        assertSame(cleanPreview,
+            MainGame.backdropSimulation(cleanPreview, menu, false, TestTuning.ENEMIES, TestTuning.DIFFICULTY),
             "clean unplayed preview of active stage is reused without reallocating");
 
         // Even if map matches, a simulation flagged as played replaces the instance.
-        GameSimulation afterFlaggedPlay = MainGame.backdropSimulation(cleanPreview, menu, true);
+        GameSimulation afterFlaggedPlay = MainGame.backdropSimulation(cleanPreview, menu, true, TestTuning.ENEMIES,
+            TestTuning.DIFFICULTY);
         assertNotSame(cleanPreview, afterFlaggedPlay);
         assertEquals(0f, afterFlaggedPlay.getTime(), 1e-6f);
 
@@ -354,7 +357,8 @@ class MainGameViewportTest {
         assertTrue(mutated.getTime() > 0f);
         assertTrue(mutated.getShotsFired() > 0);
 
-        GameSimulation rebuilt = MainGame.backdropSimulation(mutated, menu, false);
+        GameSimulation rebuilt = MainGame.backdropSimulation(mutated, menu, false, TestTuning.ENEMIES,
+            TestTuning.DIFFICULTY);
         assertNotSame(mutated, rebuilt, "mutated gameplay simulation must not leak into menu backdrop");
         assertSame(outerBreach.map, rebuilt.map);
         assertEquals(0f, rebuilt.getTime(), 1e-6f);
@@ -472,7 +476,7 @@ class MainGameViewportTest {
         MainGame game = new MainGame();
         game.settings = new GameSettings();
         game.settingsStore = failingStore;
-        game.soundManager = new SoundManager(true);
+        game.soundManager = new SoundManager(true, SoundVolumes.load());
 
         try (LogCapture capture = LogCapture.of(MainGame.class, Level.INFO)) {
             assertDoesNotThrow(game::dispose);

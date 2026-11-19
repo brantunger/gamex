@@ -9,7 +9,8 @@ tactical zoom optic, a free physical jump, and a horizontal energy dash. Battle 
 keycards, override Security Consoles, collect 3D health, armor, energy, weapon, shell and slug pickups, and clear the 6-stage campaign
 (**01: Outer Breach**, **02: Coolant Core**, **03: Security Hub**, **04: Lockdown Wing**, **05: Command Vault**, **06: Warden Core**) across
 Easy, Normal or Hard difficulty — or unlock and replay stages from **Select Stage** and practise in the **Training
-Range**. Surface and effect textures are synthesised in code at start-up, while every map and campaign stage is loaded from
+Range**. Surface and effect textures are loaded from `.png` files in `assets/textures/` and the world, model and viewmodel shaders from `.glsl` files in
+`assets/shaders/`, while every map and campaign stage is loaded from
 `assets/levels/`, every weapon, combat and menu sound is loaded from a 16-bit mono PCM `.wav` file in `assets/sounds/`, and
 every 3D graphical object — the pistol, combat scattergun, rail lance, gloved hand holding them, targets, enemies, projectiles, beam trails,
 pickups, bulkheads, shock grates, keycards and security consoles — is loaded from a Wavefront `.obj` model in `assets/models/`. The Warden is the exception: a skinned, animated binary glTF model (`enemy-warden.glb`, stored with Git LFS) drawn with [gdx-gltf](https://github.com/mgsx-dev/gdx-gltf); it is loaded the first time a stage with a Warden is shown.
@@ -327,7 +328,7 @@ followed by the exception's stack trace:
 | Value | What is logged |
 | --- | --- |
 | unset, blank, or `info` | Startup and shutdown, the screens shown, the assets loaded (one line for each batch, and one for the Warden model when it is first loaded), settings read, saved progress read and written, levels started and cleared, deaths, boss phases, best times and medals, display mode switches; and every warning. |
-| `debug` | All of that, plus each model, sound and stage file loaded, the meshes, textures and animations of the Warden model, hostiles spawned and killed, the Warden's punches and its changes of animation, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
+| `debug` | All of that, plus each model, sound, stage, tuning and shader file loaded and which copy of a tuning or shader file was read, the meshes, textures and animations of the Warden model, hostiles spawned and killed, the Warden's punches and its changes of animation, targets destroyed, pickups, console overrides, objective changes, menu navigation, settings changes, settings saved and window resizes. |
 | `warn`, `error` | Only warnings and errors, or only errors. |
 | `trace` | The same as `debug`; the game logs nothing at that level. |
 
@@ -362,12 +363,14 @@ The `tools` programs print their own output and show only the warnings and error
   - `GameSimulation`: the whole game state and its rules. It uses neither graphics nor audio types, so it runs without
     a window.
   - `audio`: headless sound-event cues (`SoundEvent`) and internal `.wav` asset loading with 3D distance/pan OpenAL
-    playback (`SoundManager`).
+    playback (`SoundManager`), at the volume `assets/data/sound-volumes.txt` gives each cue (`SoundVolumes`).
   - `world`: the level grid (`GameMap`), `.map` and `campaign.txt` level/stage asset loading (`Levels`), collision with walls, targets and enemies,
     hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
-    (`Pickup`), world object models (`WorldModels`) and effects.
+    (`Pickup`), world object models (`WorldModels`), effects, and the enemy and Warden values read from
+    `assets/data/enemies.txt` and `assets/data/warden.txt` (`EnemyTuning`, `WardenTuning`).
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
-    the difficulty levels (`Difficulty`) and the health and armor a stage is entered with (`PlayerLoadout`).
+    the difficulty levels (`Difficulty`), their multipliers read from `assets/data/difficulty.txt`
+    (`DifficultyTuning`) and the health and armor a stage is entered with (`PlayerLoadout`).
   - `weapon`: the pistol, the combat scattergun (`Scattergun`), the rail lance (`RailLance`), weapon slot switching (`WeaponSlot`), the energy meter, the blast's charge logic, player and enemy projectiles (`BlastProjectile`,
     `EnemyProjectile`), explosion damage, the pistol, scattergun & rail lance 3D models (`PistolModel`, `ScattergunModel`, `RailLanceModel`), the colours for the
     hand's mesh (`HandModel`) and the numbers that animate them.
@@ -377,7 +380,7 @@ The `tools` programs print their own output and show only the warnings and error
   - `model`: a parser for Wavefront OBJ model files including `# @part` / `# @socket` / `# @accent` directives (`ObjModel`),
     a headless forward-kinematics rig evaluator (`ModelRig`), and vertex packing (`ModelVertices`, including 16-bit
     indexed deduplication). None use graphics types.
-  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), and the textures painted in code.
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), the reading of the shader files in `assets/shaders/` (`Shaders`), and the textures read from `assets/textures/` (`ProceduralTextures`, with the wall types' textures named by `assets/data/walls.txt` through `WallTextures`).
   - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
     the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
     or input types), the built-in pixel font and the check that text read from a file can be drawn with it
@@ -390,13 +393,17 @@ The `tools` programs print their own output and show only the warnings and error
   - `debug`: the debug screenshot mode.
 - `desktop`: the LWJGL3 launcher (`DesktopLauncher`), the window settings, the window icons, and the log level and
   console log configuration (`LogLevel`, `logback.xml`).
-- `tools`: the Gradle model and audio authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
+- `tools`: the Gradle model, audio and texture authoring and inspection subproject (see [tools/README.md](tools/README.md)): `MeshBuilder`
   DSL, `PropSculpt`, `EnemySculpt`, `PistolSculpt`, `ScattergunSculpt`, `RailLanceSculpt`, `HandSculpt`, `GenerateAllModels`,
-  `SoundSynth`, `GenerateAllSounds`, and the interactive LWJGL3 previewer (`ModelPreviewApp`).
+  `SoundSynth`, `GenerateAllSounds`, `TexturePainter`, `GenerateAllTextures`, and the interactive LWJGL3 previewer
+  (`ModelPreviewApp`).
 - `assets`: the files the game loads, at start-up except where noted:
   - `levels/*.map`, `levels/campaign.txt`: plain-text map layouts, stage metadata/briefings, and ordered campaign manifest.
-  - `data/*.txt`: `key: value` tuning files (see [Tuning files](#tuning-files)). The folder does not exist until the
-    first tuning file is added.
+  - `data/*.txt`: `key: value` tuning files (see [Tuning files](#tuning-files)): `enemies.txt`, `warden.txt`,
+    `difficulty.txt`, `sound-volumes.txt` and `walls.txt`.
+  - `shaders/*.glsl`: the vertex and fragment shaders of the map (`world`), the world models (`model`) and the
+    first-person weapon and hand (`viewmodel`).
+  - `textures/*.png`: the wall, floor, ceiling and effect textures, generated by `./gradlew tools:generateTextures`.
   - `sounds/*.wav`: 16-bit mono PCM `.wav` files for every weapon, combat, world, pickup and menu cue plus the seamless `charge-hum.wav` blast-charge loop.
   - `models/viewmodel-hand.obj`: the mesh of the hand, wrist, cuff and sleeve.
   - `models/viewmodel-pistol.obj`, `models/viewmodel-scattergun.obj`, `models/viewmodel-raillance.obj`: the meshes of the first-person pistol (body and slide), shortened double-barrel drum combat scattergun (body and lever forend), and rail lance (body and magnetic bolt).
@@ -414,7 +421,18 @@ The `tools` programs print their own output and show only the warnings and error
 
 Numbers and texts that are meant to be tuned without a rebuild live in `key: value` text files under `assets/data/`,
 in the format the stage headers in `assets/levels/*.map` already use. The loader is
-`io.github.brantunger.gamex.data.TuningFile`; no tuning file ships yet.
+`io.github.brantunger.gamex.data.TuningFile`. The files that ship:
+
+- `enemies.txt`: each enemy kind's health, speed and attack, and what the kinds share.
+- `warden.txt`: the Warden's chase, three-punch combo and overdrive.
+- `difficulty.txt`: what Easy, Normal and Hard multiply.
+- `sound-volumes.txt`: the playback volume of each sound cue.
+- `walls.txt`: the `.png` texture of each wall type.
+
+The shaders in `assets/shaders/` and the textures in `assets/textures/` (generated by
+`./gradlew tools:generateTextures`) are not `key: value` files; the game finds them as
+[Which copy of a file is read](#which-copy-of-a-file-is-read) says. The sample below shows the format; no
+`pistol.txt` ships.
 
 ```
 // A line whose trimmed text begins with two slashes is a comment.
@@ -439,6 +457,15 @@ after a value, and `//` there is part of the value. A byte order mark and Window
   alone.
 - **`./gradlew run`** starts the game with `assets/` as its working directory, so it reads the files you edit. Change
   a value, start the game again, and the change is there; no Java is compiled.
+- **Trying a value needs no rebuild; committing one, for now, needs a test updated too.** The values the files
+  shipped with are pinned by tests that prove the move out of the code changed nothing, so `./gradlew build` fails
+  on a changed value until its pin is changed with it. The pins are chiefly in `EnemyTuningTest` (`enemies.txt`,
+  `warden.txt`), `DifficultyTuningTest` (`difficulty.txt`), `SoundVolumesTest` (`sound-volumes.txt`),
+  `WallTexturesTest` (`walls.txt`), `PIXELS_PAINTED_IN_CODE` in `GeneratedTexturesTest` (the textures), and
+  `ShaderFilesTest` and `RendererSupportTest` (the text of the shaders). Other tests hold shipped values too:
+  `EnemyTest` expects the Warden's 900 health, for one, and a `walls.txt` that stops using a generated texture
+  fails `theGameLoadsExactlyTheGeneratedTextures` in `GeneratedTexturesTest`. These pins are temporary and are to
+  be replaced; the aim is that committing a tuned value takes the data file alone.
 - **A packaged jar** holds a copy of `assets/` and reads that copy. A loose file at the same relative path under the
   working directory of the process (the directory `java -jar` is run from, which need not be the folder the jar is
   in) is read in its place: for example `data/pistol.txt` under that directory. Without one, a changed value needs
@@ -471,7 +498,10 @@ always reach the code as an immutable tuning object that is passed in:
 
 1. Add `assets/data/<name>.txt`.
 2. Add a class with a final field per value (public, except that an array is private with an accessor), a
-   constructor taking them all, and a static `load()` that declares every key the file holds. For the sample above:
+   constructor taking them all, and a static `load()` that declares every key the file holds. A class may
+   instead keep its constructor private and add a public `parse(label, text)` beside `load()`, which builds the
+   object from the text of a file (`WardenTuning`, and `EnemyTuning`, whose `parse` also takes the Warden's
+   tuning). For the sample above:
 
    ```java
    public static PistolTuning load() {
@@ -501,10 +531,13 @@ always reach the code as an immutable tuning object that is passed in:
      message names the file, key and line and ends with the value.
    - **Arrays.** `getFloats` and `getInts` return a new array each time. The tuning object keeps it in a private
      field and gives out an indexed getter or a copy, so that it stays immutable.
-3. Load it once at start-up, in `MainGame.create()` or later and never from a static initialiser, and pass the
-   object to the classes that use it, through a constructor or a `GameSimulation` field. Tests build their own
-   values with the constructor and read no file. To test the rules of a `load()` without a file, have it hand text
-   to `TuningFile.parseText(path, text, ...)`, which takes the same key declarations.
+3. In the game, load it once at start-up, in `MainGame.create()` or later and never from a static initialiser,
+   and pass the object to the classes that use it, through a constructor or a `GameSimulation` field. Tests build
+   their own values and read no file: with the public constructor (`DifficultyTuning`, `SoundVolumes`,
+   `WallTextures`), or with `parse(label, text)` where the constructor is private (`EnemyTuning`, `WardenTuning`).
+   Tests that want the shipped values take them from `TestTuning`, which loads the shipped files in static fields;
+   that is fine in test code. To test the rules of a `load()` without a file, have it hand text to
+   `TuningFile.parseText(path, text, ...)`, which takes the same key declarations.
 
 `core/build.gradle` and `tools/build.gradle` already track `assets/data`, `assets/shaders` and `assets/textures`, so
 a file added there needs no build change, and editing it reruns the tests. Any other new folder under `assets/` must
@@ -518,9 +551,8 @@ be added to `TestLocations` in `core/build.gradle` and to `ToolsAssetsLocation` 
 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
 graphics context; the few that touch libGDX's `Gdx` globals put stubs there (`InputControllerTest`,
-`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds and `.map`
-levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/build.gradle` tracks those folders and
-`assets/data`, `assets/shaders` and `assets/textures`, so editing an asset reruns them. They cover:
+`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `SoundVolumesTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`, `ShadersTest`, `WallTexturesTest`, `EnemyTuningTest`, `DemoRunTest`, `HudRendererTest`, and `ModelPreviewAppTest` in `tools`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds, `.map`
+levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/levels`, `assets/data` and `assets/shaders`, and the `tools` tests also read the textures in `assets/textures`. `core/build.gradle` and `tools/build.gradle` track all six folders, so editing an asset reruns them. They cover:
 
 - `GameSimulation` (`GameSimulationTest`): pistol hits, a charged blast from release to explosion, muzzle launch and
   crosshair convergence, a pause dropping a charge, targets blocking the player, the clamp on long frames, canister
@@ -537,7 +569,7 @@ levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/buil
   the floor and fit their pickup radius).
 - `render`: the Warden model (`WardenModelTest` reads the JSON part of `enemy-warden.glb`: its four animations, its
   one 28-joint skinned mesh, its height against the Warden's collision height, and the length of its combo clip
-  against the simulation's combo; and checks that only a stage with a live Warden loads the model, and the Warden's
+  against `combo_time` in `warden.txt`; and checks that only a stage with a live Warden loads the model, and the Warden's
   glow), and which animation each enemy state shows and how fast it plays for the feet not to slide
   (`WardenPoseTest`).
 - The Warden's melee (`WardenCombatTest`): its walk without sight and run with it, the three punches at their clip
@@ -576,9 +608,34 @@ levels from `assets/models`, `assets/sounds` and `assets/levels`, and `core/buil
 - `desktop`: parsing `GAMEX_WINDOW` (including its 160x120 to 7680x4320 bounds), when the game starts fullscreen,
   the packaging icons, when and how `StartupHelper` relaunches the JVM on macOS, and reading `GAMEX_LOG_LEVEL` and
   the level `logback.xml` then runs at (`LogLevelTest`).
+- Enemy, Warden and difficulty tuning: the shipped `enemies.txt`, `warden.txt` and `difficulty.txt` hold the
+  values the code had before them, a changed value changes a spawned enemy, the combo and the starter ammunition,
+  an edited loose copy is read with no rebuild, and a missing, unknown, mistyped or out-of-range key fails naming
+  the file and the key, as `avoids_hazards: true` does for any kind but the guard (`EnemyTuningTest`,
+  `DifficultyTuningTest`). `TunedSimulationTest` plays changed values through the whole simulation (rail damage,
+  shock grates, the boss flag, death bursts and noise, overdrive, punch sounds, difficulty scaling) and checks
+  that no main source of `core`, `desktop` or `tools` calls a constructor that reads the tuning files itself.
+  `TestTuning` holds the shipped values and one-value-changed copies of them for the other tests.
+- Wall textures (`WallTexturesTest`): the shipped `walls.txt` gives each wall type the texture it had in code, a
+  wall character without a line and a line for anything else fail the load, as does a value that is not a plain
+  `.png` file name, an edited loose copy changes a wall's texture, a table built in code is checked the same way,
+  and a texture file shared by wall types is loaded once.
+- Shaders: every shader file loads headless and through libGDX, and a missing one fails naming the file
+  (`ShadersTest`); the files are plain ASCII, say what the strings in the code said before the move, declare
+  exactly the uniforms and attributes the renderers set, and repeat the face shades baked into the map, and the
+  renderers keep no shader source in Java strings (`ShaderFilesTest`); the renderers compile the text of those
+  files and name them in a compile error (`RendererSupportTest`).
+- Sound volumes (`SoundVolumesTest`): the shipped `sound-volumes.txt` holds the gain every cue had in code, an
+  altered line changes that cue and no other, `SoundManager` plays a cue at the gain of its table, and a missing,
+  unknown, repeated, negative or malformed line fails naming the file and the key.
 - `tools` (`:tools:test`): `GeneratedModelsTest` and `GeneratedSoundsTest` run `GenerateAllModels` and
   `GenerateAllSounds` and check that every shipped `.obj` and `.wav` matches the generators byte for byte;
-  `GeneratedModelsTest` also checks the indexed vertex deduplication.
+  `GeneratedModelsTest` also checks the indexed vertex deduplication. `GeneratedTexturesTest` checks that every
+  shipped `.png` matches `GenerateAllTextures` pixel for pixel and holds the pixels the game painted in code
+  before, that libGDX decodes each to those pixels, that the files are 8-bit RGBA with no colour chunks, and that
+  the game loads exactly the generated textures. `ModelPreviewAppTest` checks that the previewer keeps no shader
+  source of its own and sets every uniform the game's model shader declares, and `MeshBuilderTest` that the
+  Gradle scripts declare the texture generator's output and order its consumers after it.
 
 Rendering, the drawing of the HUD and the menus on screen, OpenAL audio hardware playback and the other demo scripts
 have no tests.
@@ -595,6 +652,7 @@ Windows.
 - `tools:generateModels`: regenerates every sculpted `.obj` model in `assets/models/`.
 - `tools:generateSounds`: regenerates every synthesized `.wav` sound effect in `assets/sounds/`. To add a sound, see
   [Adding a Sound](tools/README.md#adding-a-sound).
+- `tools:generateTextures`: regenerates every painted `.png` texture in `assets/textures/`.
 - `tools:preview`: launches the interactive 3D OBJ model previewer (`R` rebuilds & reloads live).
 - `test`: runs the unit tests across `core`, `desktop`, and `tools`.
 - `build`: builds and tests every project.

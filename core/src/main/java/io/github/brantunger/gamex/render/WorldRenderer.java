@@ -77,86 +77,6 @@ public final class WorldRenderer implements Disposable {
     /** How far horizontal floor-glow decals sit above the floor (above the 0.024f top of shock grates). */
     static final float FLOOR_GLOW_HEIGHT = 0.028f;
 
-    private static final String VERTEX_SHADER =
-        "attribute vec3 a_position;\n"
-            + "attribute vec2 a_texCoord0;\n"
-            + "attribute float a_shade;\n"
-            + "uniform mat4 u_projViewTrans;\n"
-            + "uniform vec3 u_cameraPosition;\n"
-            + "uniform vec2 u_fogRange;\n"
-            + "varying vec2 v_texCoord;\n"
-            + "varying float v_shade;\n"
-            + "varying float v_fog;\n"
-            + "void main() {\n"
-            + "    v_texCoord = a_texCoord0;\n"
-            + "    v_shade = a_shade;\n"
-            + "    float range = length(a_position - u_cameraPosition);\n"
-            + "    v_fog = clamp((range - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
-            + "    gl_Position = u_projViewTrans * vec4(a_position, 1.0);\n"
-            + "}\n";
-
-    private static final String FRAGMENT_SHADER =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "uniform sampler2D u_texture;\n"
-            + "uniform vec3 u_fogColour;\n"
-            + "uniform float u_light;\n"
-            + "varying vec2 v_texCoord;\n"
-            + "varying float v_shade;\n"
-            + "varying float v_fog;\n"
-            + "void main() {\n"
-            + "    vec3 colour = texture2D(u_texture, v_texCoord).rgb * v_shade * u_light;\n"
-            + "    gl_FragColor = vec4(mix(colour, u_fogColour, v_fog), 1.0);\n"
-            + "}\n";
-
-    private static final String MODEL_VERTEX_SHADER =
-        "attribute vec3 a_position;\n"
-            + "attribute vec3 a_normal;\n"
-            + "attribute vec3 a_colour;\n"
-            + "attribute float a_gloss;\n"
-            + "attribute float a_accent;\n"
-            + "uniform mat4 u_projViewTrans;\n"
-            + "uniform mat4 u_model;\n"
-            + "uniform mat3 u_normalMatrix;\n"
-            + "uniform vec4 u_accentColour;\n"
-            + "uniform vec3 u_cameraPosition;\n"
-            + "uniform vec2 u_fogRange;\n"
-            + "uniform vec3 u_fogColour;\n"
-            + "uniform float u_light;\n"
-            + "uniform float u_hitFlash;\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    vec4 worldPos = u_model * vec4(a_position, 1.0);\n"
-            + "    vec3 worldNormal = normalize(u_normalMatrix * a_normal);\n"
-            + "    vec3 weight = worldNormal * worldNormal;\n"
-            + "    float shade = weight.z + weight.x * 0.72 + weight.y * (worldNormal.y > 0.0 ? 0.9 : 0.62);\n"
-            + "    vec3 lightDir = normalize(vec3(-0.3, 0.9, 0.4));\n"
-            + "    float key = 0.65 + 0.55 * max(dot(worldNormal, lightDir), 0.0);\n"
-            + "    vec3 delta = u_cameraPosition - worldPos.xyz;\n"
-            + "    float range = length(delta);\n"
-            + "    vec3 toCamera = range > 1e-4 ? delta / range : vec3(0.0, 0.0, 1.0);\n"
-            + "    vec3 halfVec = normalize(lightDir + toCamera);\n"
-            + "    vec3 surfaceColour = mix(a_colour, u_accentColour.rgb, a_accent);\n"
-            + "    float surfaceGloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
-            + "    float sheen = surfaceGloss * pow(max(dot(worldNormal, halfVec), 0.0), 12.0) * 0.35;\n"
-            + "    float rim = pow(1.0 - max(dot(worldNormal, toCamera), 0.0), 2.5) * 0.12;\n"
-            + "    vec3 lit = (surfaceColour * shade * key + vec3(sheen + rim)) * u_light;\n"
-            + "    lit = mix(lit, vec3(1.0, 0.25, 0.25), u_hitFlash * 0.65);\n"
-            + "    float fog = clamp((range - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
-            + "    v_colour = mix(lit, u_fogColour, fog);\n"
-            + "    gl_Position = u_projViewTrans * worldPos;\n"
-            + "}\n";
-
-    private static final String MODEL_FRAGMENT_SHADER =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    gl_FragColor = vec4(v_colour, 1.0);\n"
-            + "}\n";
-
     /** A static mesh and the texture it is drawn with. */
     static final class Surface implements Disposable {
         final Mesh mesh;
@@ -302,17 +222,22 @@ public final class WorldRenderer implements Disposable {
             int modelsBefore = ModelMesh.getLoadedCount();
             camera = createWorldCamera(graphics);
 
-            Disposable worldShaderHandle = active.createWorldShader(VERTEX_SHADER, FRAGMENT_SHADER);
+            // The shader text is read from assets/shaders/; a missing file stops the start here, by name.
+            Disposable worldShaderHandle = active.createWorldShader(
+                Shaders.load(Shaders.WORLD_VERTEX), Shaders.load(Shaders.WORLD_FRAGMENT));
             shader = trackResource(worldShaderHandle, ShaderProgram.class);
             if (!active.isWorldShaderCompiled(worldShaderHandle)) {
                 throw new GdxRuntimeException(
-                    "The world shader did not compile: " + active.getWorldShaderLog(worldShaderHandle));
+                    "The world shader did not compile: " + active.getWorldShaderLog(worldShaderHandle)
+                        + Shaders.describe(Shaders.WORLD_VERTEX, Shaders.WORLD_FRAGMENT));
             }
-            Disposable modelShaderHandle = active.createModelShader(MODEL_VERTEX_SHADER, MODEL_FRAGMENT_SHADER);
+            Disposable modelShaderHandle = active.createModelShader(
+                Shaders.load(Shaders.MODEL_VERTEX), Shaders.load(Shaders.MODEL_FRAGMENT));
             modelShader = trackResource(modelShaderHandle, ShaderProgram.class);
             if (!active.isModelShaderCompiled(modelShaderHandle)) {
                 throw new GdxRuntimeException(
-                    "The world model shader did not compile: " + active.getModelShaderLog(modelShaderHandle));
+                    "The world model shader did not compile: " + active.getModelShaderLog(modelShaderHandle)
+                        + Shaders.describe(Shaders.MODEL_VERTEX, Shaders.MODEL_FRAGMENT));
             }
 
             if (backend == null && textures == null) {

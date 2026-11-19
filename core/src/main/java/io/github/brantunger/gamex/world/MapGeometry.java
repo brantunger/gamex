@@ -19,6 +19,9 @@ public final class MapGeometry {
     /** The number of floats per quad. */
     public static final int QUAD_SIZE = 4 * VERTEX_SIZE;
 
+    // The shaders of the world models and of the viewmodel repeat these four shades, so that a model face is as
+    // bright as a wall, floor or ceiling facing the same way: change assets/shaders/model.vert.glsl and
+    // viewmodel.vert.glsl with them.
     private static final float SHADE_NORTH_SOUTH = 1f;
     private static final float SHADE_EAST_WEST = 0.72f;
     private static final float SHADE_FLOOR = 0.9f;

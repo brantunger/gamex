@@ -5,16 +5,19 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.utils.Disposable;
 import io.github.brantunger.gamex.audio.SoundManager;
+import io.github.brantunger.gamex.audio.SoundVolumes;
 import io.github.brantunger.gamex.debug.DemoRun;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.input.InputController;
 import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.render.ProceduralTextures;
 import io.github.brantunger.gamex.render.ViewmodelRenderer;
+import io.github.brantunger.gamex.render.WallTextures;
 import io.github.brantunger.gamex.render.WorldRenderer;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.GdxPreferencesStore;
@@ -23,6 +26,7 @@ import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.RunStats;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.world.Enemy;
+import io.github.brantunger.gamex.world.EnemyTuning;
 import io.github.brantunger.gamex.world.Levels;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +50,10 @@ public class MainGame extends ApplicationAdapter {
     private SaveData saveData;
     private MenuState menuState;
     private GameSimulation simulation;
+    /** The enemy balance, read from {@code assets/data/} once in {@link #create()}. */
+    private EnemyTuning enemyTuning;
+    /** What each difficulty multiplies, read from {@code assets/data/} once in {@link #create()}. */
+    private DifficultyTuning difficultyTuning;
     private ProceduralTextures textures;
     private WorldRenderer worldRenderer;
     private ViewmodelRenderer viewmodelRenderer;
@@ -101,6 +109,10 @@ public class MainGame extends ApplicationAdapter {
 
     @Override
     public void create() {
+        enemyTuning = EnemyTuning.load();
+        difficultyTuning = DifficultyTuning.load();
+        SoundVolumes soundVolumes = SoundVolumes.load();
+        WallTextures wallTextures = WallTextures.load();
         demoRun = DemoRun.fromEnvironment();
         if (demoRun != null) {
             if (demoRun.getScript().isEmpty()) {
@@ -122,27 +134,28 @@ public class MainGame extends ApplicationAdapter {
             MenuState.Screen startScreen = showTitle
                 ? MenuState.Screen.TITLE
                 : (showStages ? MenuState.Screen.STAGE_SELECT : MenuState.Screen.PLAYING);
-            menuState = new MenuState(settings, saveData, startScreen);
+            menuState = new MenuState(settings, saveData, startScreen, difficultyTuning);
             if ("lockdown".equals(script) || showStages) {
                 Levels.Stage lockdown = Levels.lockdownWing();
-                simulation = new GameSimulation(lockdown.map, menuState.getActiveLoadout(), lockdown.completeOnAllTargets);
+                simulation = new GameSimulation(lockdown.map, menuState.getActiveLoadout(),
+                    lockdown.completeOnAllTargets, enemyTuning, difficultyTuning);
             } else if ("scattergun".equals(script)) {
                 Levels.Stage range = Levels.trainingRange();
                 simulation = new GameSimulation(range.map,
                     new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    range.completeOnAllTargets);
+                    range.completeOnAllTargets, enemyTuning, difficultyTuning);
             } else if ("raillance".equals(script)) {
                 Levels.Stage hub = Levels.securityHub();
                 simulation = new GameSimulation(hub.map,
                     new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 8, true, 6, WeaponSlot.RAIL_LANCE),
-                    hub.completeOnAllTargets);
+                    hub.completeOnAllTargets, enemyTuning, difficultyTuning);
                 simulation.player.position.set(4.5f, 4.5f);
                 simulation.player.look(0f, -1f);
             } else if ("warden".equals(script)) {
                 Levels.Stage warden = Levels.wardenCore();
                 simulation = new GameSimulation(warden.map,
                     new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    warden.completeOnAllTargets);
+                    warden.completeOnAllTargets, enemyTuning, difficultyTuning);
                 simulation.player.position.set(23.5f, 13.6f);
                 simulation.player.look(-90f, -4f);
             } else if ("wardenidle".equals(script)) {
@@ -152,7 +165,7 @@ public class MainGame extends ApplicationAdapter {
                 Levels.Stage warden = Levels.wardenCore();
                 simulation = new GameSimulation(warden.map,
                     new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    warden.completeOnAllTargets);
+                    warden.completeOnAllTargets, enemyTuning, difficultyTuning);
                 for (Enemy enemy : simulation.enemies) {
                     if (enemy.getKind() != Enemy.Kind.WARDEN) enemy.damage(Float.MAX_VALUE);
                 }
@@ -162,23 +175,25 @@ public class MainGame extends ApplicationAdapter {
                 Levels.Stage range = Levels.trainingRange();
                 simulation = new GameSimulation(range.map,
                     new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                    range.completeOnAllTargets);
+                    range.completeOnAllTargets, enemyTuning, difficultyTuning);
                 simulation.player.position.set(9.8f, 15.5f);
                 simulation.player.look(0f, -14f);
             } else if ("breach".equals(script) || showTitle) {
                 Levels.Stage breach = Levels.outerBreach();
-                simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(), breach.completeOnAllTargets);
+                simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(),
+                    breach.completeOnAllTargets, enemyTuning, difficultyTuning);
             } else {
-                simulation = new GameSimulation(Levels.first());
+                simulation = new GameSimulation(Levels.first(), PlayerLoadout.fresh(), false, enemyTuning,
+                    difficultyTuning);
             }
         } else {
             settingsStore = new GdxPreferencesStore(Gdx.app.getPreferences(GameSettings.PREFERENCES_NAME));
             settings = GameSettings.load(settingsStore);
             saveData = new SaveData(new GdxPreferencesStore(Gdx.app.getPreferences(SaveData.PREFERENCES_NAME)));
-            menuState = new MenuState(settings, saveData, MenuState.Screen.TITLE);
+            menuState = new MenuState(settings, saveData, MenuState.Screen.TITLE, difficultyTuning);
             Levels.Stage initialStage = menuState.getActiveStage();
             simulation = new GameSimulation(initialStage.map, menuState.getActiveLoadout(),
-                initialStage.completeOnAllTargets);
+                initialStage.completeOnAllTargets, enemyTuning, difficultyTuning);
             simulationPlayed = false;
             log.info("Loaded settings: sensitivity {}, invert Y {}, field of view {}, view bob {}, volume {},"
                 + " fullscreen {}", settings.getMouseSensitivity(), settings.isInvertY(), settings.getFov(),
@@ -188,11 +203,11 @@ public class MainGame extends ApplicationAdapter {
             applyStartupDisplayMode(settings);
         }
 
-        textures = new ProceduralTextures();
+        textures = new ProceduralTextures(wallTextures);
         worldRenderer = new WorldRenderer(simulation.map, textures);
         viewmodelRenderer = new ViewmodelRenderer(textures);
         hudRenderer = new HudRenderer(textures);
-        soundManager = new SoundManager(demoRun != null);
+        soundManager = new SoundManager(demoRun != null, soundVolumes);
         if (demoRun == null) controller = new InputController(menuState, settings);
         syncDisplayViewport();
         log.info("Game created at {}x{}, fullscreen {}", Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
@@ -287,7 +302,8 @@ public class MainGame extends ApplicationAdapter {
         soundManager.update(simulation, menuState, settings);
 
         if (showsBackdrop(menuState)) {
-            GameSimulation next = backdropSimulation(simulation, menuState, simulationPlayed);
+            GameSimulation next = backdropSimulation(simulation, menuState, simulationPlayed, enemyTuning,
+                difficultyTuning);
             if (next != simulation) {
                 log.debug("Backdrop shows stage {}", menuState.getActiveStage().id);
                 simulation = next;
@@ -337,11 +353,13 @@ public class MainGame extends ApplicationAdapter {
     /**
      * Returns {@code current} when it is already an unplayed preview of {@code menuState}'s active stage, or a fresh
      * {@link GameSimulation} for that stage when the map changed or {@code current} was stepped or mutated in play.
+     * A fresh one is built with the tuning the game loaded at start-up.
      */
-    static GameSimulation backdropSimulation(GameSimulation current, MenuState menuState, boolean simulationPlayed) {
+    static GameSimulation backdropSimulation(GameSimulation current, MenuState menuState, boolean simulationPlayed,
+                                             EnemyTuning enemyTuning, DifficultyTuning difficultyTuning) {
         Levels.Stage stage = menuState.getActiveStage();
         if (current == null || current.map != stage.map || simulationPlayed || isSimulationMutated(current)) {
-            return new GameSimulation(stage.map);
+            return new GameSimulation(stage.map, PlayerLoadout.fresh(), false, enemyTuning, difficultyTuning);
         }
         return current;
     }
@@ -366,7 +384,8 @@ public class MainGame extends ApplicationAdapter {
                 PlayerLoadout loadout = menuState.getActiveLoadout();
                 log.info("Level started: {} ({}) on {}, health {}, armor {}, weapon {}", stage.id, stage.title,
                     loadout.difficulty, loadout.health, loadout.armor, loadout.activeWeapon);
-                simulation = new GameSimulation(stage.map, loadout, stage.completeOnAllTargets);
+                simulation = new GameSimulation(stage.map, loadout, stage.completeOnAllTargets, enemyTuning,
+                    difficultyTuning);
                 simulationPlayed = true;
                 worldRenderer.setMap(simulation.map);
                 deathTimer = 0f;

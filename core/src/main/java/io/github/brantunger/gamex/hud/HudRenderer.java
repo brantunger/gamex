@@ -716,7 +716,7 @@ public final class HudRenderer implements Disposable {
         Enemy boss = simulation.getActiveBoss();
         if (boss == null) return;
         boolean overdrive = boss.isOverdrive();
-        float frac = Math.max(0f, Math.min(1f, boss.getHealth() / boss.getKind().maxHealth));
+        float frac = Math.max(0f, Math.min(1f, boss.getHealth() / boss.getMaxHealth()));
 
         float barW = BOSS_BAR_WIDTH * unit;
         float barH = 14f * unit;

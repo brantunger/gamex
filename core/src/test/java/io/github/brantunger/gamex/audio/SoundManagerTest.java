@@ -153,7 +153,7 @@ class SoundManagerTest {
         input.fire = true;
         sim.update(1f / 60f, input);
 
-        SoundManager manager = new SoundManager(true);
+        SoundManager manager = new SoundManager(true, SoundVolumes.load());
         manager.update(sim, menu, settings);
         assertTrue(sim.drainSoundEvents().isEmpty(), "simulation events drained");
         List<SoundEvent> remainingMenu = new ArrayList<>();

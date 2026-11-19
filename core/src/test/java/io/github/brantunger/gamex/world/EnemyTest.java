@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
-import io.github.brantunger.gamex.player.Difficulty;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.weapon.EnemyProjectile;
 import org.junit.jupiter.api.Test;
@@ -29,7 +29,7 @@ class EnemyTest {
             "#....................#",
             "######################");
         // Facing north (yaw = 0): player behind at (+z, dist 6) is outside the 200-deg cone and outside 3.2u sense.
-        Enemy farBehind = new Enemy(Enemy.Kind.GUARD, 10.5f, 2.5f, 0f);
+        Enemy farBehind = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 10.5f, 2.5f, 0f);
         Player southPlayer = new Player(10.5f, 8.5f, 0f);
         GameMap tallArena = GameMap.parse(
             "###########",
@@ -44,14 +44,14 @@ class EnemyTest {
             "#.........#",
             "###########");
         Pathfinder pf = new Pathfinder();
-        farBehind = new Enemy(Enemy.Kind.GUARD, 5.5f, 2.5f, 0f);
+        farBehind = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 5.5f, 2.5f, 0f);
         southPlayer = new Player(5.5f, 8.5f, 0f); // 6u south (directly behind yaw=0)
-        farBehind.update(DT, tallArena, pf, southPlayer, Difficulty.NORMAL, Collections.emptyList(), new ArrayList<>());
+        farBehind.update(DT, tallArena, pf, southPlayer, TestTuning.NORMAL, Collections.emptyList(), new ArrayList<>());
         assertEquals(Enemy.State.DORMANT, farBehind.getState());
 
         // Player within close proximity (2.5u behind) wakes it immediately.
         Player closeBehind = new Player(5.5f, 5.0f, 0f);
-        farBehind.update(DT, tallArena, pf, closeBehind, Difficulty.NORMAL, Collections.emptyList(), new ArrayList<>());
+        farBehind.update(DT, tallArena, pf, closeBehind, TestTuning.NORMAL, Collections.emptyList(), new ArrayList<>());
         assertEquals(Enemy.State.PURSUING, farBehind.getState());
         assertFalse(arena.isSolid(1, 1));
     }
@@ -62,7 +62,7 @@ class EnemyTest {
             "#########",
             "#>..#...#",
             "#########");
-        Enemy guard = new Enemy(Enemy.Kind.GUARD, 6.5f, 1.5f, 270f);
+        Enemy guard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 6.5f, 1.5f, 270f);
         Player player = new Player(1.5f, 1.5f, 90f);
         guard.alert();
         assertEquals(Enemy.State.PURSUING, guard.getState());
@@ -70,12 +70,12 @@ class EnemyTest {
         Pathfinder pf = new Pathfinder();
         pf.compute(walled, player.position.x, player.position.y);
         for (int i = 0; i < 300; i++) {
-            guard.update(DT, walled, pf, player, Difficulty.NORMAL, Collections.emptyList(), new ArrayList<>());
+            guard.update(DT, walled, pf, player, TestTuning.NORMAL, Collections.emptyList(), new ArrayList<>());
         }
         assertEquals(Enemy.State.PURSUING, guard.getState(), "still within 6s memory window at 5s");
 
         for (int i = 0; i < 70; i++) {
-            guard.update(DT, walled, pf, player, Difficulty.NORMAL, Collections.emptyList(), new ArrayList<>());
+            guard.update(DT, walled, pf, player, TestTuning.NORMAL, Collections.emptyList(), new ArrayList<>());
         }
         assertEquals(Enemy.State.DORMANT, guard.getState(), "returns to dormant after 6s without LOS");
     }
@@ -89,14 +89,14 @@ class EnemyTest {
             "#...........#",
             "#############");
         // Turret initially faces north (0 deg); player is 180 deg behind (south) -> takes >1s at 150 deg/s to turn.
-        Enemy turret = new Enemy(Enemy.Kind.TURRET, 6.5f, 1.5f, 0f);
+        Enemy turret = new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 6.5f, 1.5f, 0f);
         Player player = new Player(6.5f, 3.0f, 0f); // 1.5u south (within close sense 3.2u)
         List<EnemyProjectile> bolts = new ArrayList<>();
         Pathfinder pf = new Pathfinder();
 
         // Advance 0.5s: turret should have turned ~75 deg (to 75 or 285 on a 180-deg tie), not yet fired.
         for (int i = 0; i < 30; i++) {
-            turret.update(DT, hall, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            turret.update(DT, hall, pf, player, TestTuning.NORMAL, Collections.emptyList(), bolts);
         }
         float turnedFromNorth = Math.min(turret.getYaw(), 360f - turret.getYaw());
         assertTrue(turnedFromNorth > 70f && turnedFromNorth < 85f, "turned " + turnedFromNorth + " (yaw " + turret.getYaw() + ")");
@@ -104,9 +104,9 @@ class EnemyTest {
 
         // Advance another 1.5s: finishes swivel, winds up 0.35s, and fires full 3-bolt burst.
         for (int i = 0; i < 90; i++) {
-            turret.update(DT, hall, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            turret.update(DT, hall, pf, player, TestTuning.NORMAL, Collections.emptyList(), bolts);
         }
-        assertEquals(Enemy.TURRET_BURST_COUNT, bolts.size());
+        assertEquals(TestTuning.ENEMIES.turretBurstCount, bolts.size());
     }
 
     @Test
@@ -119,25 +119,25 @@ class EnemyTest {
             "#.........#",
             "###########");
         // Stationary player hit test.
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 5.5f, 2.5f, 270f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 5.5f, 2.5f, 270f);
         Player stationary = new Player(4.7f, 2.5f, 90f); // 0.8u apart (<= 0.95 trigger)
         Pathfinder pf = new Pathfinder();
         for (int i = 0; i < 35; i++) {
-            drone.update(DT, hall, pf, stationary, Difficulty.NORMAL, Collections.emptyList(), null);
+            drone.update(DT, hall, pf, stationary, TestTuning.NORMAL, Collections.emptyList(), null);
         }
-        assertEquals(Player.MAX_HEALTH - Enemy.DRONE_LUNGE_DAMAGE, stationary.getHealth(), 1e-4f);
+        assertEquals(Player.MAX_HEALTH - TestTuning.ENEMIES.droneLungeDamage, stationary.getHealth(), 1e-4f);
         assertEquals(Enemy.State.RECOVERING, drone.getState());
 
         // Dodged lunge test: wake drone, let it enter WINDUP, then player sidesteps south during wind-up.
-        Enemy dodgeDrone = new Enemy(Enemy.Kind.DRONE, 5.5f, 2.5f, 270f);
+        Enemy dodgeDrone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 5.5f, 2.5f, 270f);
         Player dodger = new Player(4.7f, 2.5f, 90f);
         for (int i = 0; i < 20 && dodgeDrone.getState() != Enemy.State.WINDUP; i++) {
-            dodgeDrone.update(DT, hall, pf, dodger, Difficulty.NORMAL, Collections.emptyList(), null);
+            dodgeDrone.update(DT, hall, pf, dodger, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.WINDUP, dodgeDrone.getState());
         dodger.position.set(4.7f, 4.0f); // dashed 1.5u sideways
         for (int i = 0; i < 35; i++) {
-            dodgeDrone.update(DT, hall, pf, dodger, Difficulty.NORMAL, Collections.emptyList(), null);
+            dodgeDrone.update(DT, hall, pf, dodger, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Player.MAX_HEALTH, dodger.getHealth(), 1e-4f);
         assertEquals(Enemy.State.RECOVERING, dodgeDrone.getState());
@@ -145,16 +145,16 @@ class EnemyTest {
 
     @Test
     void difficultyScalesAttackCadenceWhileKeepingHitPointsConstant() {
-        assertEquals(Enemy.Kind.DRONE.maxHealth, 40f, 1e-6f);
-        assertEquals(Enemy.Kind.TURRET.maxHealth, 80f, 1e-6f);
-        assertEquals(Enemy.Kind.GUARD.maxHealth, 100f, 1e-6f);
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.DRONE).maxHealth, 40f, 1e-6f);
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.TURRET).maxHealth, 80f, 1e-6f);
+        assertEquals(TestTuning.ENEMIES.of(Enemy.Kind.GUARD).maxHealth, 100f, 1e-6f);
 
         GameMap room = GameMap.parse(
             "#############",
             "#>..........#",
             "#############");
-        Enemy easyGuard = new Enemy(Enemy.Kind.GUARD, 8.5f, 1.5f, 270f);
-        Enemy hardGuard = new Enemy(Enemy.Kind.GUARD, 8.5f, 1.5f, 270f);
+        Enemy easyGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 8.5f, 1.5f, 270f);
+        Enemy hardGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 8.5f, 1.5f, 270f);
         Player player = new Player(1.5f, 1.5f, 90f);
         List<EnemyProjectile> easyBolts = new ArrayList<>();
         List<EnemyProjectile> hardBolts = new ArrayList<>();
@@ -162,8 +162,8 @@ class EnemyTest {
 
         // Run for 3.0 seconds.
         for (int i = 0; i < 180; i++) {
-            easyGuard.update(DT, room, pf, player, Difficulty.EASY, Collections.emptyList(), easyBolts);
-            hardGuard.update(DT, room, pf, player, Difficulty.HARD, Collections.emptyList(), hardBolts);
+            easyGuard.update(DT, room, pf, player, TestTuning.EASY, Collections.emptyList(), easyBolts);
+            hardGuard.update(DT, room, pf, player, TestTuning.HARD, Collections.emptyList(), hardBolts);
         }
         assertTrue(hardBolts.size() > easyBolts.size(),
             "hard (" + hardBolts.size() + ") should fire more often than easy (" + easyBolts.size() + ")");
@@ -171,8 +171,8 @@ class EnemyTest {
 
     @Test
     void wardenEntersOverdriveOnceAtHalfHealth() {
-        assertEquals(900f, Enemy.Kind.WARDEN.maxHealth, 1e-6f);
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 9.5f, 1.5f, 270f);
+        assertEquals(900f, TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).maxHealth, 1e-6f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 9.5f, 1.5f, 270f);
         assertFalse(warden.isOverdrive());
         assertFalse(warden.consumeOverdriveTriggered());
 
@@ -197,14 +197,14 @@ class EnemyTest {
             "#.............#",
             "###############");
         for (float health : new float[] {900f, 400f}) {
-            Enemy warden = new Enemy(Enemy.Kind.WARDEN, 12.5f, 1.5f, 270f);
+            Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 12.5f, 1.5f, 270f);
             warden.damage(900f - health);
             Player player = new Player(1.5f, 1.5f, 90f, 100f, 100f);
             List<EnemyProjectile> bolts = new ArrayList<>();
             Pathfinder pf = new Pathfinder();
             // Long enough to see the player, run the length of the room and throw combos at them.
             for (int i = 0; i < 600 && !player.isDead(); i++) {
-                warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+                warden.update(DT, arena, pf, player, TestTuning.NORMAL, Collections.emptyList(), bolts);
             }
             assertTrue(bolts.isEmpty(), "the Warden is melee only; at " + health + " health it fired " + bolts.size());
             assertTrue(player.getHealth() + player.getArmor() < 200f, "it reached the player and punched them");
@@ -226,15 +226,15 @@ class EnemyTest {
 
         // Drone lunges south in a 1.0u-wide corridor while player hugs the west wall so direct east radial pushback
         // hits the east wall (x + 0.21 > 2.0).
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 1.58f, 3.20f, 180f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 1.58f, 3.20f, 180f);
         Player player = new Player(1.58f, 4.00f, 0f);
         for (int i = 0; i < 30 && drone.getState() != Enemy.State.WINDUP; i++) {
-            drone.update(DT, corridor, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
+            drone.update(DT, corridor, pf, player, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.WINDUP, drone.getState());
         player.position.set(1.40f, 3.60f);
         for (int i = 0; i < 35 && drone.getState() != Enemy.State.RECOVERING; i++) {
-            drone.update(DT, corridor, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
+            drone.update(DT, corridor, pf, player, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.RECOVERING, drone.getState());
         assertTrue(player.getHealth() < Player.MAX_HEALTH);
@@ -245,15 +245,15 @@ class EnemyTest {
             drone.getX(), drone.getZ(), drone.getRadius()), "drone pushed into corridor wall");
 
         // Warden combo in the same 1.0u-wide corridor: its lunges stop at a player who steps against the west wall.
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 1.55f, 2.50f, 180f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 1.55f, 2.50f, 180f);
         Player wPlayer = new Player(1.55f, 3.80f, 0f);
         for (int i = 0; i < 60 && warden.getState() != Enemy.State.WINDUP; i++) {
-            warden.update(DT, corridor, pf, wPlayer, Difficulty.NORMAL, Collections.emptyList(), null);
+            warden.update(DT, corridor, pf, wPlayer, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.WINDUP, warden.getState());
         wPlayer.position.set(1.30f, wPlayer.position.y);
         for (int i = 0; i < 200 && warden.getState() != Enemy.State.RECOVERING; i++) {
-            warden.update(DT, corridor, pf, wPlayer, Difficulty.NORMAL, Collections.emptyList(), null);
+            warden.update(DT, corridor, pf, wPlayer, TestTuning.NORMAL, Collections.emptyList(), null);
             float wardenDist = Vector2.dst(warden.getX(), warden.getZ(), wPlayer.position.x, wPlayer.position.y);
             assertTrue(wardenDist >= Player.RADIUS + warden.getRadius() - 1e-4f,
                 "warden lunged inside player at dist=" + wardenDist);
@@ -275,18 +275,18 @@ class EnemyTest {
         Pathfinder pf = new Pathfinder();
 
         // Drone lunges west into NW corner onto coincident player center while props block both South and East retract.
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 2.00f, 1.26f, 270f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 2.00f, 1.26f, 270f);
         Player player = new Player(1.26f, 1.26f, 90f);
         for (int i = 0; i < 40 && drone.getState() != Enemy.State.LUNGING; i++) {
-            drone.update(DT, room, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
+            drone.update(DT, room, pf, player, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.LUNGING, drone.getState());
         player.position.set(1.58f, 1.26f);
         Target canister = new Target(Target.Kind.CANISTER, 1.26f, 1.80f);
-        Enemy turret = new Enemy(Enemy.Kind.TURRET, 2.18f, 1.26f, 270f);
+        Enemy turret = new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 2.18f, 1.26f, 270f);
         List<Damageable> blockers = Arrays.asList(canister, turret);
-        float exactCoincidentDt = (drone.getX() - player.position.x) / Enemy.DRONE_LUNGE_SPEED;
-        drone.update(Math.max(1e-3f, exactCoincidentDt), room, pf, player, Difficulty.NORMAL, blockers, null);
+        float exactCoincidentDt = (drone.getX() - player.position.x) / TestTuning.ENEMIES.droneLungeSpeed;
+        drone.update(Math.max(1e-3f, exactCoincidentDt), room, pf, player, TestTuning.NORMAL, blockers, null);
         assertEquals(Enemy.State.RECOVERING, drone.getState());
         float droneDist = Vector2.dst(drone.getX(), drone.getZ(), player.position.x, player.position.y);
         assertTrue(droneDist >= Player.RADIUS + drone.getRadius() - 1e-4f,
@@ -296,17 +296,17 @@ class EnemyTest {
         assertFalse(Collision.overlapsSolid(blockers, new Vector2(drone.getX(), drone.getZ()), drone.getRadius()));
 
         // Warden combo diagonally into NW corner beside a SecurityConsole: its lunges stop at the player.
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 1.95f, 1.95f, 315f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 1.95f, 1.95f, 315f);
         Player wPlayer = new Player(1.32f, 1.32f, 135f);
         SecurityConsole console = new SecurityConsole(2.05f, 1.32f);
         List<Damageable> wBlockers = Collections.singletonList(console);
         for (int i = 0; i < 60 && warden.getState() != Enemy.State.WINDUP; i++) {
-            warden.update(DT, room, pf, wPlayer, Difficulty.NORMAL, wBlockers, null);
+            warden.update(DT, room, pf, wPlayer, TestTuning.NORMAL, wBlockers, null);
         }
         assertEquals(Enemy.State.WINDUP, warden.getState());
         wPlayer.position.set(1.45f, 1.56f);
         for (int i = 0; i < 200 && warden.getState() != Enemy.State.RECOVERING; i++) {
-            warden.update(DT, room, pf, wPlayer, Difficulty.NORMAL, wBlockers, null);
+            warden.update(DT, room, pf, wPlayer, TestTuning.NORMAL, wBlockers, null);
             float wardenDist = Vector2.dst(warden.getX(), warden.getZ(), wPlayer.position.x, wPlayer.position.y);
             assertTrue(wardenDist >= Player.RADIUS + warden.getRadius() - 1e-4f,
                 "corner warden lunged inside player at dist=" + wardenDist);
@@ -329,17 +329,17 @@ class EnemyTest {
             "#########");
         assertWardenClearsBlockingProp(arena, new SecurityConsole(4.50f, 2.50f));
         assertWardenClearsBlockingProp(arena, new Target(Target.Kind.CANISTER, 4.50f, 2.50f));
-        assertWardenClearsBlockingProp(arena, new Enemy(Enemy.Kind.TURRET, 4.50f, 2.50f, 90f));
+        assertWardenClearsBlockingProp(arena, new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 4.50f, 2.50f, 90f));
 
         // Unobstructed close-range combo (even with a SecurityConsole behind the player) still starts at once.
-        Enemy unobstructed = new Enemy(Enemy.Kind.WARDEN, 3.85f, 2.50f, 90f);
+        Enemy unobstructed = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 3.85f, 2.50f, 90f);
         Player openPlayer = new Player(5.00f, 2.50f, 270f);
         SecurityConsole behindPlayer = new SecurityConsole(6.00f, 2.50f);
         List<EnemyProjectile> openBolts = new ArrayList<>();
         Pathfinder pf = new Pathfinder();
         int punches = 0;
         for (int i = 0; i < 120; i++) {
-            unobstructed.update(DT, arena, pf, openPlayer, Difficulty.NORMAL,
+            unobstructed.update(DT, arena, pf, openPlayer, TestTuning.NORMAL,
                 Collections.singletonList(behindPlayer), openBolts);
             punches += unobstructed.consumePunchesThrown();
         }
@@ -350,7 +350,7 @@ class EnemyTest {
 
     private static void assertWardenClearsBlockingProp(GameMap arena, Damageable prop) {
         // Warden (3.95, 2.50) and Player (5.00, 2.50) start at dist = 1.05 across prop at (4.50, 2.50).
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 3.95f, 2.50f, 90f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 3.95f, 2.50f, 90f);
         Player player = new Player(5.00f, 2.50f, 270f);
         List<Damageable> blockers = Collections.singletonList(prop);
         List<EnemyProjectile> bolts = new ArrayList<>();
@@ -359,7 +359,7 @@ class EnemyTest {
 
         boolean sidesteppedAroundProp = false;
         for (int i = 0; i < 240; i++) {
-            warden.update(DT, arena, pf, player, Difficulty.NORMAL, blockers, bolts);
+            warden.update(DT, arena, pf, player, TestTuning.NORMAL, blockers, bolts);
             if (warden.getX() < 4.15f && Math.abs(warden.getZ() - 2.50f) < 0.25f) {
                 assertFalse(warden.getState() == Enemy.State.WINDUP,
                     "Warden must not start a blocked combo straight into " + prop.getClass().getSimpleName());
@@ -388,19 +388,19 @@ class EnemyTest {
 
         // 1. Transient squadmate blockage (> 2 frames): Canister against south wall, squadmate blocking north gap.
         Target canister = new Target(Target.Kind.CANISTER, 4.50f, 2.50f);
-        Enemy drone = new Enemy(Enemy.Kind.DRONE, 4.05f, 2.50f, 90f);
-        Enemy squadmate = new Enemy(Enemy.Kind.DRONE, 4.15f, 2.04f, 270f);
+        Enemy drone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 4.05f, 2.50f, 90f);
+        Enemy squadmate = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 4.15f, 2.04f, 270f);
         List<Damageable> blockers = Arrays.asList(canister, drone, squadmate);
         drone.alert();
 
         for (int i = 0; i < 20; i++) {
-            drone.update(DT, hall, pf, player, Difficulty.NORMAL, blockers, null);
+            drone.update(DT, hall, pf, player, TestTuning.NORMAL, blockers, null);
         }
         float restX = drone.getX();
         float restZ = drone.getZ();
         // Hold transient blockage for 25 more frames (> 2 frames): must remain jitter-free while blocked.
         for (int i = 0; i < 25; i++) {
-            drone.update(DT, hall, pf, player, Difficulty.NORMAL, blockers, null);
+            drone.update(DT, hall, pf, player, TestTuning.NORMAL, blockers, null);
             assertEquals(0f, Vector2.dst(restX, restZ, drone.getX(), drone.getZ()), 1e-4f,
                 "drone jittered while both sides were blocked");
         }
@@ -410,10 +410,10 @@ class EnemyTest {
         Player westLure = new Player(1.50f, 1.50f, 90f);
         squadmate.alert();
         for (int i = 0; i < 35; i++) {
-            squadmate.update(DT, hall, null, westLure, Difficulty.NORMAL, blockers, null);
+            squadmate.update(DT, hall, null, westLure, TestTuning.NORMAL, blockers, null);
         }
         for (int i = 0; i < 120 && player.getHealth() == Player.MAX_HEALTH; i++) {
-            drone.update(DT, hall, pf, player, Difficulty.NORMAL, blockers, null);
+            drone.update(DT, hall, pf, player, TestTuning.NORMAL, blockers, null);
         }
         assertTrue(drone.getX() > 5.0f, "drone did not walk around canister after squadmate left");
         assertTrue(player.getHealth() < Player.MAX_HEALTH, "drone should reach and damage player");
@@ -430,18 +430,18 @@ class EnemyTest {
         List<Door> doors = Collections.singletonList(door);
         Target doorCanister = new Target(Target.Kind.CANISTER, 3.50f, 2.75f);
         List<Damageable> doorBlockers = Collections.singletonList(doorCanister);
-        Enemy doorDrone = new Enemy(Enemy.Kind.DRONE, 3.50f, 1.50f, 180f);
+        Enemy doorDrone = new Enemy(TestTuning.ENEMIES, Enemy.Kind.DRONE, 3.50f, 1.50f, 180f);
         Player southPlayer = new Player(3.50f, 4.50f, 0f);
         pf.compute(doorHall, doors, southPlayer.position.x, southPlayer.position.y);
         doorDrone.alert();
 
         for (int i = 0; i < 60; i++) {
-            doorDrone.update(DT, doorHall, pf, southPlayer, Difficulty.NORMAL, doorBlockers, doors, null);
+            doorDrone.update(DT, doorHall, pf, southPlayer, TestTuning.NORMAL, doorBlockers, doors, null);
         }
         float doorRestX = doorDrone.getX();
         float doorRestZ = doorDrone.getZ();
         for (int i = 0; i < 30; i++) {
-            doorDrone.update(DT, doorHall, pf, southPlayer, Difficulty.NORMAL, doorBlockers, doors, null);
+            doorDrone.update(DT, doorHall, pf, southPlayer, TestTuning.NORMAL, doorBlockers, doors, null);
             assertEquals(0f, Vector2.dst(doorRestX, doorRestZ, doorDrone.getX(), doorDrone.getZ()), 1e-4f,
                 "drone jittered while door kept bypass closed");
         }
@@ -451,7 +451,7 @@ class EnemyTest {
         for (int i = 0; i < 150 && southPlayer.getHealth() == Player.MAX_HEALTH; i++) {
             door.update(DT);
             pf.compute(doorHall, doors, southPlayer.position.x, southPlayer.position.y);
-            doorDrone.update(DT, doorHall, pf, southPlayer, Difficulty.NORMAL, doorBlockers, doors, null);
+            doorDrone.update(DT, doorHall, pf, southPlayer, TestTuning.NORMAL, doorBlockers, doors, null);
         }
         assertTrue(doorDrone.getZ() > 3.0f, "drone did not round canister after bulkhead opened");
         assertTrue(southPlayer.getHealth() < Player.MAX_HEALTH, "drone should reach and damage player once door opens");
@@ -476,14 +476,14 @@ class EnemyTest {
             "#..............#",
             "#..............#",
             "################");
-        Enemy guard = new Enemy(Enemy.Kind.GUARD, 13.10f, 3.80f, 210f);
+        Enemy guard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 13.10f, 3.80f, 210f);
         Player player = new Player(11.61f, 11.66f, 0f);
         Pathfinder pf = new Pathfinder();
         pf.compute(arena, Collections.emptyList(), true, player.position.x, player.position.y);
         guard.alert();
 
         for (int i = 0; i < 240; i++) {
-            guard.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), new ArrayList<>());
+            guard.update(DT, arena, pf, player, TestTuning.NORMAL, Collections.emptyList(), new ArrayList<>());
             assertFalse(arena.isHazardAt(guard.getX(), guard.getZ()),
                 "oblique Guard clipped shock grate corner on frame " + i + " at (" + guard.getX() + ", " + guard.getZ() + ")");
         }
@@ -499,14 +499,14 @@ class EnemyTest {
             "##########");
         Target canister = new Target(Target.Kind.CANISTER, 4.50f, 2.68f);
         List<Damageable> blockers = Collections.singletonList(canister);
-        Enemy pathGuard = new Enemy(Enemy.Kind.GUARD, 2.50f, 2.82f, 90f);
+        Enemy pathGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 2.50f, 2.82f, 90f);
         Player hiddenPlayer = new Player(8.50f, 4.50f, 270f);
         pf.compute(hall, Collections.emptyList(), true, hiddenPlayer.position.x, hiddenPlayer.position.y);
         pathGuard.alert();
 
         float maxX = pathGuard.getX();
         for (int i = 0; i < 240; i++) {
-            pathGuard.update(DT, hall, pf, hiddenPlayer, Difficulty.NORMAL, blockers, new ArrayList<>());
+            pathGuard.update(DT, hall, pf, hiddenPlayer, TestTuning.NORMAL, blockers, new ArrayList<>());
             assertFalse(hall.isHazardAt(pathGuard.getX(), pathGuard.getZ()),
                 "Guard slid or sidestepped onto ~ grate beside canister at (" + pathGuard.getX() + ", " + pathGuard.getZ() + ")");
             maxX = Math.max(maxX, pathGuard.getX());
@@ -530,25 +530,25 @@ class EnemyTest {
         Pathfinder pf = new Pathfinder();
 
         // 1. Outflanking 180 deg behind Turret right before WINDUP completes: bolts fire along capped barrel yaw, not backwards.
-        Enemy turret = new Enemy(Enemy.Kind.TURRET, 5.5f, 5.5f, 270f);
+        Enemy turret = new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 5.5f, 5.5f, 270f);
         Player flanker = new Player(4.0f, 5.5f, 90f);
         List<EnemyProjectile> bolts = new ArrayList<>();
         for (int i = 0; i < 60 && !(turret.getState() == Enemy.State.WINDUP && turret.getWindupProgress() > 0.85f); i++) {
-            turret.update(DT, open, pf, flanker, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            turret.update(DT, open, pf, flanker, TestTuning.NORMAL, Collections.emptyList(), bolts);
         }
         assertEquals(Enemy.State.WINDUP, turret.getState());
         assertTrue(bolts.isEmpty());
 
         flanker.position.set(7.0f, 5.5f); // dashed 180 deg behind turret (+X)
         List<Float> firingYaws = new ArrayList<>();
-        for (int i = 0; i < 30 && bolts.size() < Enemy.TURRET_BURST_COUNT; i++) {
+        for (int i = 0; i < 30 && bolts.size() < TestTuning.ENEMIES.turretBurstCount; i++) {
             int before = bolts.size();
-            turret.update(DT, open, pf, flanker, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            turret.update(DT, open, pf, flanker, TestTuning.NORMAL, Collections.emptyList(), bolts);
             for (int b = before; b < bolts.size(); b++) {
                 firingYaws.add(turret.getYaw());
             }
         }
-        assertEquals(Enemy.TURRET_BURST_COUNT, bolts.size());
+        assertEquals(TestTuning.ENEMIES.turretBurstCount, bolts.size());
         for (int b = 0; b < bolts.size(); b++) {
             Vector3 dir = measureBoltDirection(bolts.get(b), open);
             assertTrue(dir.x < -0.2f, "outflanked turret bolt shot backwards toward +X: " + dir);
@@ -564,7 +564,7 @@ class EnemyTest {
         assertEquals(Player.MAX_HEALTH, flanker.getHealth(), 1e-4f, "outflanked burst must miss player behind turret");
 
         // 2. Steep close-range jump (> 28 deg above muzzle): vertical bolt pitch stays clamped within [-28, +28] deg.
-        Enemy pitchTurret = new Enemy(Enemy.Kind.TURRET, 5.5f, 5.5f, 270f);
+        Enemy pitchTurret = new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 5.5f, 5.5f, 270f);
         Player jumper = new Player(5.12f, 5.5f, 90f);
         assertTrue(jumper.tryJump());
         while (jumper.getVerticalVelocity() > 0f) {
@@ -572,10 +572,10 @@ class EnemyTest {
         }
         assertTrue(jumper.getJumpHeight() > 0.28f);
         List<EnemyProjectile> steepBolts = new ArrayList<>();
-        for (int i = 0; i < 60 && steepBolts.size() < Enemy.TURRET_BURST_COUNT; i++) {
-            pitchTurret.update(DT, open, pf, jumper, Difficulty.NORMAL, Collections.emptyList(), steepBolts);
+        for (int i = 0; i < 60 && steepBolts.size() < TestTuning.ENEMIES.turretBurstCount; i++) {
+            pitchTurret.update(DT, open, pf, jumper, TestTuning.NORMAL, Collections.emptyList(), steepBolts);
         }
-        assertEquals(Enemy.TURRET_BURST_COUNT, steepBolts.size());
+        assertEquals(TestTuning.ENEMIES.turretBurstCount, steepBolts.size());
         for (EnemyProjectile bolt : steepBolts) {
             Vector3 dir = measureBoltDirection(bolt, open);
             float pitchDeg = (float) Math.toDegrees(Math.asin(Math.max(-1f, Math.min(1f, dir.y))));
@@ -592,11 +592,11 @@ class EnemyTest {
             "#...#...#",
             "#.......#",
             "#########");
-        Enemy losTurret = new Enemy(Enemy.Kind.TURRET, 6.5f, 3.5f, 270f);
+        Enemy losTurret = new Enemy(TestTuning.ENEMIES, Enemy.Kind.TURRET, 6.5f, 3.5f, 270f);
         Player peeker = new Player(3.5f, 3.5f, 90f);
         List<EnemyProjectile> burstBolts = new ArrayList<>();
         for (int i = 0; i < 60 && burstBolts.isEmpty(); i++) {
-            losTurret.update(DT, pillared, pf, peeker, Difficulty.NORMAL, Collections.emptyList(), burstBolts);
+            losTurret.update(DT, pillared, pf, peeker, TestTuning.NORMAL, Collections.emptyList(), burstBolts);
         }
         assertEquals(1, burstBolts.size());
         float lockedYaw = losTurret.getYaw();
@@ -611,10 +611,10 @@ class EnemyTest {
             peeker.move(pillared, 0f, 0f, DT);
         }
 
-        for (int i = 0; i < 25 && burstBolts.size() < Enemy.TURRET_BURST_COUNT; i++) {
-            losTurret.update(DT, pillared, pf, peeker, Difficulty.NORMAL, Collections.emptyList(), burstBolts);
+        for (int i = 0; i < 25 && burstBolts.size() < TestTuning.ENEMIES.turretBurstCount; i++) {
+            losTurret.update(DT, pillared, pf, peeker, TestTuning.NORMAL, Collections.emptyList(), burstBolts);
         }
-        assertEquals(Enemy.TURRET_BURST_COUNT, burstBolts.size());
+        assertEquals(TestTuning.ENEMIES.turretBurstCount, burstBolts.size());
         assertEquals(lockedYaw, losTurret.getYaw(), 1e-4f, "turret tracked unseen player yaw behind cover");
         assertEquals(lockedPitch, losTurret.getAimPitch(), 1e-4f, "turret tracked unseen player pitch behind cover");
         for (int b = 1; b < burstBolts.size(); b++) {
@@ -638,11 +638,11 @@ class EnemyTest {
             "#.........#",
             "###########");
         Pathfinder pf = new Pathfinder();
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 5.5f, 5.5f, 270f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 5.5f, 5.5f, 270f);
         Player player = new Player(4.1f, 5.5f, 90f);
 
         for (int i = 0; i < 120 && !(warden.getState() == Enemy.State.WINDUP && warden.getComboTime() >= 0.15f); i++) {
-            warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
+            warden.update(DT, arena, pf, player, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.WINDUP, warden.getState());
         assertEquals(0, warden.consumePunchesThrown(), "the first punch has not been thrown yet");
@@ -651,7 +651,7 @@ class EnemyTest {
         player.position.set(7.2f, 5.5f);
         float preLaunchX = warden.getX();
         for (int i = 0; i < 200 && warden.getState() != Enemy.State.RECOVERING; i++) {
-            warden.update(DT, arena, pf, player, Difficulty.NORMAL, Collections.emptyList(), null);
+            warden.update(DT, arena, pf, player, TestTuning.NORMAL, Collections.emptyList(), null);
         }
         assertEquals(Enemy.State.RECOVERING, warden.getState());
         assertTrue(warden.getX() < preLaunchX - 0.5f,
@@ -679,36 +679,36 @@ class EnemyTest {
 
         // 1. Woken from 180 deg behind: after WAKE_COOLDOWN (0.25s -> 18 frames = 0.30s), the Guard has not turned
         // within the forward firing arc yet, so it may not initiate WINDUP backwards.
-        Enemy rearGuard = new Enemy(Enemy.Kind.GUARD, 5.5f, 5.5f, 0f);
+        Enemy rearGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 5.5f, 5.5f, 0f);
         Player behindPlayer = new Player(5.5f, 8.3f, 0f);
         List<EnemyProjectile> rearGuardBolts = new ArrayList<>();
 
         for (int i = 0; i < 18; i++) {
-            rearGuard.update(DT, arena, pf, behindPlayer, Difficulty.NORMAL, Collections.emptyList(), rearGuardBolts);
+            rearGuard.update(DT, arena, pf, behindPlayer, TestTuning.NORMAL, Collections.emptyList(), rearGuardBolts);
         }
         assertEquals(Enemy.State.PURSUING, rearGuard.getState(), "Guard started WINDUP while still facing away");
         assertTrue(rearGuardBolts.isEmpty());
 
         // Once it finishes turning into its forward firing arc, it enters WINDUP and fires cleanly.
         for (int i = 0; i < 65; i++) {
-            rearGuard.update(DT, arena, pf, behindPlayer, Difficulty.NORMAL, Collections.emptyList(), rearGuardBolts);
+            rearGuard.update(DT, arena, pf, behindPlayer, TestTuning.NORMAL, Collections.emptyList(), rearGuardBolts);
         }
         assertFalse(rearGuardBolts.isEmpty(), "Guard should fire after turning to face player");
 
         // 2. Flanking 180 deg behind right before ranged WINDUP completes: the emitted bolt stays clamped to forward arc.
-        Enemy flankedGuard = new Enemy(Enemy.Kind.GUARD, 5.5f, 5.5f, 90f);
+        Enemy flankedGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 5.5f, 5.5f, 90f);
         Player runner = new Player(9.0f, 5.5f, 270f);
         List<EnemyProjectile> guardVolley = new ArrayList<>();
 
         for (int i = 0; i < 60 && !(flankedGuard.getState() == Enemy.State.WINDUP
             && flankedGuard.getWindupProgress() > 0.90f); i++) {
-            flankedGuard.update(DT, arena, pf, runner, Difficulty.NORMAL, Collections.emptyList(), guardVolley);
+            flankedGuard.update(DT, arena, pf, runner, TestTuning.NORMAL, Collections.emptyList(), guardVolley);
         }
         assertTrue(guardVolley.isEmpty());
 
         runner.position.set(3.5f, 5.5f); // teleported 180 deg behind (-X) while the Guard faces +X (yaw ~ 90)
         for (int i = 0; i < 10 && guardVolley.isEmpty(); i++) {
-            flankedGuard.update(DT, arena, pf, runner, Difficulty.NORMAL, Collections.emptyList(), guardVolley);
+            flankedGuard.update(DT, arena, pf, runner, TestTuning.NORMAL, Collections.emptyList(), guardVolley);
         }
         assertEquals(1, guardVolley.size());
 
@@ -737,11 +737,11 @@ class EnemyTest {
         Pathfinder pf = new Pathfinder();
 
         // 1. Wall-hugging Guard whose right weapon arm protrudes past radius=0.24 into < 2.075 beside wall col 1 (x = 2.0).
-        Enemy wallGuard = new Enemy(Enemy.Kind.GUARD, 2.24f, 3.95f, 183f);
+        Enemy wallGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 2.24f, 3.95f, 183f);
         Player guardTarget = new Player(1.85f, 12.50f, 0f);
         List<EnemyProjectile> guardBolts = new ArrayList<>();
         for (int i = 0; i < 60 && guardBolts.isEmpty(); i++) {
-            wallGuard.update(DT, alcove, pf, guardTarget, Difficulty.NORMAL, Collections.emptyList(), guardBolts);
+            wallGuard.update(DT, alcove, pf, guardTarget, TestTuning.NORMAL, Collections.emptyList(), guardBolts);
         }
         assertEquals(1, guardBolts.size());
         EnemyProjectile gBolt = guardBolts.get(0);
@@ -773,11 +773,11 @@ class EnemyTest {
         Door northDoor = new Door(Door.LockKind.LOCKDOWN, Door.Orientation.SPAN_Z, 2, 2);
         Door southDoor = new Door(Door.LockKind.LOCKDOWN, Door.Orientation.SPAN_Z, 2, 3);
         List<Door> doors = Arrays.asList(northDoor, southDoor);
-        Enemy doorGuard = new Enemy(Enemy.Kind.GUARD, 2.83f, 3.05f, 183f);
+        Enemy doorGuard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 2.83f, 3.05f, 183f);
         Player doorTarget = new Player(2.45f, 11.60f, 0f);
         List<EnemyProjectile> doorBolts = new ArrayList<>();
         for (int i = 0; i < 60 && doorBolts.isEmpty(); i++) {
-            doorGuard.update(DT, doorAlcove, pf, doorTarget, Difficulty.NORMAL,
+            doorGuard.update(DT, doorAlcove, pf, doorTarget, TestTuning.NORMAL,
                 Collections.emptyList(), doors, doorBolts);
         }
         assertEquals(1, doorBolts.size());
@@ -798,10 +798,10 @@ class EnemyTest {
     @Test
     void damageAndUpdateIgnoreNonPositiveAndNaNWhilePositiveInfinityKillsCleanly() {
         for (Enemy.Kind kind : Enemy.Kind.values()) {
-            Enemy enemy = new Enemy(kind, 2.5f, 3.5f, 90f);
+            Enemy enemy = new Enemy(TestTuning.ENEMIES, kind, 2.5f, 3.5f, 90f);
             for (float ignored : new float[] {Float.NaN, 0f, -0f, -25f, Float.NEGATIVE_INFINITY}) {
                 enemy.damage(ignored);
-                assertEquals(kind.maxHealth, enemy.getHealth(), 1e-6f);
+                assertEquals(enemy.getMaxHealth(), enemy.getHealth(), 1e-6f);
                 assertFalse(Float.isNaN(enemy.getHealth()));
                 assertFalse(enemy.isDestroyed());
                 assertEquals(0f, enemy.getHitFlash(), 1e-6f);
@@ -812,7 +812,7 @@ class EnemyTest {
 
             // Finite damage after NaN/non-positive calls still applies, alerts, and leaves entity destructible.
             enemy.damage(10f);
-            assertEquals(kind.maxHealth - 10f, enemy.getHealth(), 1e-6f);
+            assertEquals(enemy.getMaxHealth() - 10f, enemy.getHealth(), 1e-6f);
             assertFalse(enemy.isDestroyed());
             assertEquals(1f, enemy.getHitFlash(), 1e-6f);
             assertEquals(Enemy.State.PURSUING, enemy.getState());
@@ -821,15 +821,15 @@ class EnemyTest {
             enemy.damage(Float.NaN);
             enemy.damage(-15f);
             enemy.damage(Float.NEGATIVE_INFINITY);
-            assertEquals(kind.maxHealth - 10f, enemy.getHealth(), 1e-6f);
+            assertEquals(enemy.getMaxHealth() - 10f, enemy.getHealth(), 1e-6f);
             assertFalse(enemy.isDestroyed());
 
-            enemy.damage(kind.maxHealth);
+            enemy.damage(enemy.getMaxHealth());
             assertEquals(0f, enemy.getHealth(), 1e-6f);
             assertTrue(enemy.isDestroyed());
 
             // Positive infinity deals lethal damage cleanly without producing NaN or negative health.
-            Enemy infTarget = new Enemy(kind, 2.5f, 3.5f, 90f);
+            Enemy infTarget = new Enemy(TestTuning.ENEMIES, kind, 2.5f, 3.5f, 90f);
             infTarget.damage(Float.POSITIVE_INFINITY);
             assertEquals(0f, infTarget.getHealth(), 1e-6f);
             assertTrue(infTarget.isDestroyed());
@@ -853,15 +853,15 @@ class EnemyTest {
             "#######");
         Pathfinder pf = new Pathfinder();
         Player player = new Player(1.5f, 1.5f, 90f);
-        Enemy nanYaw = new Enemy(Enemy.Kind.GUARD, 4.5f, 1.5f, Float.NaN);
+        Enemy nanYaw = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 4.5f, 1.5f, Float.NaN);
         assertEquals(0f, nanYaw.getYaw(), 1e-6f);
 
-        Enemy guard = new Enemy(Enemy.Kind.GUARD, 4.5f, 1.5f, 270f);
+        Enemy guard = new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 4.5f, 1.5f, 270f);
         guard.damage(10f);
         float expectedHealth = guard.getHealth();
         List<EnemyProjectile> bolts = new ArrayList<>();
         for (float badDt : new float[] {Float.NaN, 0f, -0.1f, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY}) {
-            guard.update(badDt, room, pf, player, Difficulty.NORMAL, Collections.emptyList(), bolts);
+            guard.update(badDt, room, pf, player, TestTuning.NORMAL, Collections.emptyList(), bolts);
             assertEquals(4.5f, guard.getX(), 1e-6f);
             assertEquals(1.5f, guard.getZ(), 1e-6f);
             assertEquals(270f, guard.getYaw(), 1e-6f);

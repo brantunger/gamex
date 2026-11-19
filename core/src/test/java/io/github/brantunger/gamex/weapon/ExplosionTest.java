@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.world.Damageable;
 import io.github.brantunger.gamex.world.Door;
@@ -37,7 +38,7 @@ class ExplosionTest {
         // while each cylinder's east lateral rim protrudes into open cell (3, 2) with clear line of sight.
         float blastX = 2.82f;
         float blastZ = 1.88f;
-        Enemy warden = new Enemy(Enemy.Kind.WARDEN, 3.33f, 2.50f, 0f);
+        Enemy warden = new Enemy(TestTuning.ENEMIES, Enemy.Kind.WARDEN, 3.33f, 2.50f, 0f);
         Target ringBoard = new Target(Target.Kind.RING_BOARD, 3.26f, 2.40f);
         Player player = new Player(3.27f, 2.42f, 0f);
 
@@ -52,7 +53,7 @@ class ExplosionTest {
             Arrays.asList(warden, ringBoard), player, 0.5f);
 
         assertEquals(2, damaged, "both wide targets hit via exposed lateral rim");
-        assertTrue(warden.getHealth() < Enemy.Kind.WARDEN.maxHealth);
+        assertTrue(warden.getHealth() < TestTuning.ENEMIES.of(Enemy.Kind.WARDEN).maxHealth);
         assertTrue(ringBoard.getHealth() < Target.Kind.RING_BOARD.maxHealth);
         assertTrue(player.getHealth() < Player.MAX_HEALTH, "player hit via exposed lateral rim");
     }

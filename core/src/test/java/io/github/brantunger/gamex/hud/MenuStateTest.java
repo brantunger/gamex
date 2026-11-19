@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
@@ -194,7 +195,7 @@ class MenuStateTest {
         GameSettings settings = new GameSettings();
         MapKeyValueStore store = new MapKeyValueStore();
         SaveData save = new SaveData(store);
-        save.saveCampaignRun(5, PlayerLoadout.forStage(5, Difficulty.NORMAL));
+        save.saveCampaignRun(5, PlayerLoadout.forStage(5, Difficulty.NORMAL, TestTuning.DIFFICULTY));
         MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
 
         menu.confirm(); // CONTINUE CAMPAIGN -> Stage 06
