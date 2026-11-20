@@ -5,7 +5,6 @@ import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.utils.IntSet;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
-import io.github.brantunger.gamex.hud.PixelFont;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
 import org.slf4j.Logger;
@@ -53,18 +52,6 @@ public final class InputController extends InputAdapter {
     private boolean clickPending;
     private int clickX;
     private int clickY;
-
-    /**
-     * Creates a controller with the bindings of {@code assets/data/bindings.txt}, which it reads here and now with
-     * the font. This is for tests only: the game loads the bindings once at start-up and uses
-     * {@link #InputController(MenuState, GameSettings, KeyBindings)}.
-     * @param menuState screen & menu state machine
-     * @param settings live player settings (sensitivity, invert Y)
-     * @throws IllegalArgumentException if the bindings file or the font file breaks its format
-     */
-    public InputController(MenuState menuState, GameSettings settings) {
-        this(menuState, settings, KeyBindings.load(PixelFont.load()));
-    }
 
     /**
      * @param menuState screen & menu state machine

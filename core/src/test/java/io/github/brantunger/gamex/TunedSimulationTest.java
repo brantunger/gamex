@@ -34,14 +34,14 @@ import java.util.stream.Stream;
 
 /**
  * Checks that the simulation takes its per-kind rules and its difficulty multipliers from the tuning it is given:
- * each test plays the same scene with the shipped tuning and with one value changed.
+ * each test plays the same scene with the tests' own tuning and with one value changed.
  */
 class TunedSimulationTest {
 
     private static final float FRAME = 1f / 60f;
 
     private static GameSimulation sim(EnemyTuning enemies, String... rows) {
-        return new GameSimulation(GameMap.parse(rows), PlayerLoadout.fresh(), false, enemies, TestTuning.DIFFICULTY);
+        return TestTuning.simulation(GameMap.parse(rows), PlayerLoadout.fresh(), false, enemies, TestTuning.DIFFICULTY);
     }
 
     private static SoundEvent sound(List<SoundEvent> events, SoundEvent.Type type) {
@@ -60,7 +60,7 @@ class TunedSimulationTest {
 
     /** Fires one rail slug along a corridor at the enemy standing in it and returns what health it lost. */
     private static float railDamage(EnemyTuning enemies, char enemy) {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse(
                 "###########",
                 "#.>..." + enemy + "...#",
@@ -105,9 +105,9 @@ class TunedSimulationTest {
 
     @Test
     void shockGratesHurtTheKindsWhoseHazardDamageIsOn() {
-        assertTrue(lostCrossingAGrate(TestTuning.ENEMIES, 'G') > 0f, "the shipped guard is hurt");
+        assertTrue(lostCrossingAGrate(TestTuning.ENEMIES, 'G') > 0f, "the tests' own guard is hurt");
         assertEquals(0f, lostCrossingAGrate(TestTuning.enemiesWith("guard.hazard_damage", "false"), 'G'), 0f);
-        assertEquals(0f, lostCrossingAGrate(TestTuning.ENEMIES, 'D'), 0f, "the shipped drone hovers over it");
+        assertEquals(0f, lostCrossingAGrate(TestTuning.ENEMIES, 'D'), 0f, "the tests' own drone hovers over it");
         assertTrue(lostCrossingAGrate(TestTuning.enemiesWith("drone.hazard_damage", "true"), 'D') > 0f);
     }
 
@@ -126,7 +126,7 @@ class TunedSimulationTest {
     @Test
     void onlyAKindThatAvoidsHazardsStopsShortOfAGrate() {
         Enemy careful = guardBehindAGrate(TestTuning.ENEMIES);
-        assertTrue(careful.getX() < 4f, "the shipped guard stays this side of the grate, at " + careful.getX());
+        assertTrue(careful.getX() < 4f, "the tests' own guard stays this side of the grate, at " + careful.getX());
         assertEquals(careful.getMaxHealth(), careful.getHealth(), 0f);
 
         Enemy careless = guardBehindAGrate(TestTuning.enemiesWith("guard.avoids_hazards", "false"));
@@ -262,7 +262,7 @@ class TunedSimulationTest {
 
     /** Walks the player over a medkit at 60 health and across a shock grate; returns the health after each. */
     private static float[] medkitThenGrate(DifficultyTuning difficulty, Difficulty played) {
-        GameSimulation pickup = new GameSimulation(
+        GameSimulation pickup = TestTuning.simulation(
             GameMap.parse(
                 "#####",
                 "#>+.#",
@@ -272,7 +272,7 @@ class TunedSimulationTest {
         forward.moveForward = 1f;
         for (int i = 0; i < 40; i++) pickup.update(FRAME, forward);
 
-        GameSimulation grate = new GameSimulation(
+        GameSimulation grate = TestTuning.simulation(
             GameMap.parse(
                 "#####",
                 "#>~.#",
@@ -305,9 +305,9 @@ class TunedSimulationTest {
     void theSimulationNeedsItsTuning() {
         GameMap map = GameMap.parse("###", "#>#", "###");
         assertThrows(IllegalArgumentException.class,
-            () -> new GameSimulation(map, PlayerLoadout.fresh(), false, null, TestTuning.DIFFICULTY));
+            () -> TestTuning.simulation(map, PlayerLoadout.fresh(), false, null, TestTuning.DIFFICULTY));
         assertThrows(IllegalArgumentException.class,
-            () -> new GameSimulation(map, PlayerLoadout.fresh(), false, TestTuning.ENEMIES, null));
+            () -> TestTuning.simulation(map, PlayerLoadout.fresh(), false, TestTuning.ENEMIES, null));
     }
 
     /** @return the number of arguments of each {@code new Name(...)} in the text, with where it is */
@@ -343,10 +343,10 @@ class TunedSimulationTest {
     }
 
     /**
-     * The constructors of {@link GameSimulation}, {@code MenuState}, {@code InputController}, {@code GameSettings}
-     * and {@link MainGame} that read the tuning files themselves are for tests. The launcher reads the window and
-     * settings defaults once and the game reads the rest once in {@code MainGame.create()}, so no main source may
-     * call the short forms.
+     * The constructors of {@code MenuState}, {@code GameSettings} and {@link MainGame} that read the tuning files
+     * themselves are for tests. The launcher reads the window and settings defaults once and the game reads the rest
+     * once in {@code MainGame.create()}, so no main source may call the short forms. {@link GameSimulation} and
+     * {@code InputController} have no short form: the compiler holds every caller to the loaded tuning.
      */
     @Test
     void noMainSourceBuildsASimulationOrTheMenusWithoutTheLoadedTuning() throws IOException {
@@ -362,9 +362,7 @@ class TunedSimulationTest {
             for (Path source : sources) {
                 String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
                 scanned++;
-                offenders.addAll(shortCalls(source, text, "GameSimulation", 7));
                 offenders.addAll(shortCalls(source, text, "MenuState", 6));
-                offenders.addAll(shortCalls(source, text, "InputController", 3));
                 offenders.addAll(shortCalls(source, text, "MainGame", 5));
                 offenders.addAll(emptyCalls(source, text, "GameSettings"));
             }
@@ -373,10 +371,9 @@ class TunedSimulationTest {
         assertEquals(List.of(), offenders);
         // The check itself: a short call is seen, a full one is not.
         Path sample = Paths.get("Sample.java");
-        assertEquals(1, shortCalls(sample, "a = new GameSimulation(map, f(a, b), false);", "GameSimulation", 7).size());
-        assertEquals(1, shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d);", "GameSimulation", 7).size());
-        assertEquals(0,
-            shortCalls(sample, "a = new GameSimulation(m, l, false, e,\n d, w, g);", "GameSimulation", 7).size());
+        assertEquals(1, shortCalls(sample, "a = new MenuState(settings, f(a, b), screen);", "MenuState", 6).size());
+        assertEquals(1, shortCalls(sample, "a = new MenuState(s, d, screen, t,\n w);", "MenuState", 6).size());
+        assertEquals(0, shortCalls(sample, "a = new MenuState(s, d, screen, t,\n w, text);", "MenuState", 6).size());
         assertEquals(1, shortCalls(sample, "new App(new MainGame(w, h, forced), config);", "MainGame", 5).size());
         assertEquals(0, shortCalls(sample, "new App(new MainGame(w, h, f, win,\n set), c);", "MainGame", 5).size());
         assertEquals(1, emptyCalls(sample, "settings = new GameSettings();", "GameSettings").size());

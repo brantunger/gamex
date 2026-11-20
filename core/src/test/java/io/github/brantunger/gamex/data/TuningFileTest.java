@@ -33,7 +33,7 @@ class TuningFileTest {
     private static final List<String> SAMPLE_KEYS = Arrays.asList(
         "pistol.fire_interval", "pistol.pellets", "pistol.auto", "pistol.name", "pistol.falloff");
     private static final List<String> SAMPLE_REPEATED_KEYS = Collections.singletonList("hint");
-    /** The shipped font, which display text is checked against. */
+    /** The tests' own font, which display text is checked against. */
     private static final PixelFont FONT = TestTuning.FONT;
 
     private Files previousFiles;

@@ -1,0 +1,145 @@
+// Enemy balance: one block per kind, then what the kinds share and each kind's attack. Read once when the game
+// starts; change a value, start the game again and it is there. Every key must be present.
+// Distances are in map cells, times in seconds, angles in degrees, turn rates in degrees per second.
+// The Warden's attack is in warden.txt; the difficulty multipliers are in difficulty.txt.
+//
+// Per kind:
+//   health                     hit points
+//   move_speed                 cells per second (for the Warden its walk; its run is in warden.txt)
+//   rail_damage_scale          share of the Rail Lance's damage a slug does to it
+//   hazard_damage              whether a shock grate under it hurts it
+//   avoids_hazards             whether it routes and steps round shock grates; only the guard can, so true
+//                              for any other kind stops the game at start-up
+//   boss                       whether it has the boss health bar, the boss death sound and the sealed boss doors
+//   death_burst_size           size of the explosion it leaves
+//   death_sound_gain           volume of its death sound
+//   death_noise_range          its death wakes enemies this near that have a line of sight to it
+//   death_noise_muffled_range  its death wakes enemies this near through walls
+// A kind's radius and height are not here. They are its collision cylinder and stay in code (Enemy.Kind), because
+// the .obj models are sculpted to them: changing one would change what can be hit, not what is drawn. The Warden
+// is the exception: its .glb model is drawn scaled to its height.
+
+// Fast close-range hover unit that rushes around cover and performs a telegraphed shock lunge.
+drone.health: 40
+drone.move_speed: 3.5
+drone.rail_damage_scale: 1
+drone.hazard_damage: false
+drone.avoids_hazards: false
+drone.boss: false
+drone.death_burst_size: 0.464
+drone.death_sound_gain: 1
+drone.death_noise_range: 5
+drone.death_noise_muffled_range: 3
+
+// Anchored dual-barrel turret with a capped swivel rate that fires telegraphed bursts.
+turret.health: 80
+turret.move_speed: 0
+turret.rail_damage_scale: 1
+turret.hazard_damage: false
+turret.avoids_hazards: false
+turret.boss: false
+turret.death_burst_size: 0.544
+turret.death_sound_gain: 1
+turret.death_noise_range: 5
+turret.death_noise_muffled_range: 3
+
+// Mobile armoured skirmisher that strafes at medium range and fires single aimed plasma bolts.
+guard.health: 100
+guard.move_speed: 2.15
+guard.rail_damage_scale: 1
+guard.hazard_damage: true
+guard.avoids_hazards: true
+guard.boss: false
+guard.death_burst_size: 0.656
+guard.death_sound_gain: 1
+guard.death_noise_range: 5
+guard.death_noise_muffled_range: 3
+
+// Two-phase melee boss. Its hide takes three quarters of a rail slug.
+warden.health: 900
+warden.move_speed: 1.30
+warden.rail_damage_scale: 0.75
+warden.hazard_damage: false
+warden.avoids_hazards: false
+warden.boss: true
+warden.death_burst_size: 1.8
+warden.death_sound_gain: 1.25
+warden.death_noise_range: 10
+warden.death_noise_muffled_range: 6
+
+// Perception, shared by every kind.
+// How long a hit keeps an enemy flashing.
+perception.hit_flash_time: 0.15
+// A dormant enemy notices a player it has a line of sight to within sight_range and inside its forward cone of
+// fov_degrees (the whole cone, not half of it), or within close_sense_range whichever way it faces.
+perception.sight_range: 15
+perception.close_sense_range: 3.2
+perception.fov_degrees: 200
+// An alerted enemy that has not seen the player for this long goes dormant again.
+perception.aggro_memory_time: 6.0
+// An alerted enemy still counts the player as seen out to sight_range times this.
+perception.aggro_sight_scale: 1.25
+// The shortest wait between waking up and the first attack.
+perception.wake_cooldown: 0.25
+
+// Turret.
+turret.turn_rate: 150
+turret.windup_time: 0.35
+turret.burst_count: 3
+turret.burst_interval: 0.11
+turret.cooldown: 1.35
+turret.bolt_speed: 8.5
+turret.bolt_damage: 12
+// The barrels pitch up or down by at most max_pitch, at pitch_rate toward a player in sight and at
+// pitch_return_rate back to level without one.
+turret.max_pitch: 28
+turret.pitch_rate: 90
+turret.pitch_return_rate: 60
+// The wait before it winds up again after losing sight of the player during a wind-up.
+turret.lost_sight_cooldown: 0.3
+// It starts to wind up once it faces the player within this angle.
+turret.fire_arc: 18
+
+// Guard.
+guard.windup_time: 0.28
+guard.cooldown: 1.15
+guard.bolt_speed: 7.2
+guard.bolt_damage: 18
+// It closes in beyond max_range, backs off inside min_range and circles in between, drifting toward
+// preferred_range by range_adjust_gain of the distance it is off. It fires out to attack_range.
+guard.min_range: 3.5
+guard.max_range: 7.5
+guard.preferred_range: 5.5
+guard.range_adjust_gain: 0.2
+guard.attack_range: 15.5
+// How much it strafes for each unit it advances, and how it mixes backing off and strafing when too close.
+guard.advance_strafe: 0.35
+guard.retreat_back: 0.8
+guard.retreat_strafe: 0.6
+// How often it changes the side it strafes to.
+guard.strafe_switch_time: 1.8
+// Share of its speed it keeps while it winds up a shot.
+guard.windup_move_scale: 0.45
+// How fast it turns to a player in sight, and along its route to one out of sight.
+guard.turn_rate: 420
+guard.path_turn_rate: 360
+// How far its walk animation advances per cell walked.
+guard.walk_phase_rate: 7.5
+// It fires once it faces the player within fire_arc, and a bolt leaves within that angle of its facing and
+// within bolt_max_pitch of level.
+guard.fire_arc: 28
+guard.bolt_max_pitch: 35
+
+// Drone.
+// It lunges at a player in sight within trigger_range: windup_time to telegraph, then lunge_time at lunge_speed.
+drone.trigger_range: 0.95
+drone.windup_time: 0.26
+drone.lunge_time: 0.18
+drone.lunge_speed: 8.5
+drone.lunge_damage: 22
+// A lunge hits a player within this distance beyond touching.
+drone.contact_margin: 0.12
+// How long it hangs after a lunge, and the wait from then to its next one.
+drone.recover_time: 0.50
+drone.cooldown: 0.25
+drone.turn_rate: 540

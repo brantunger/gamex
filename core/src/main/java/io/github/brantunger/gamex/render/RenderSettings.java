@@ -14,7 +14,7 @@ import java.util.Locale;
  * How the 3D view is drawn, where that is a number, a colour or a choice per kind rather than code: the clip range,
  * the fog, the halo under each pickup and security console, and which accent of the world palette each kind of door
  * and pickup is drawn with. Loaded once at start-up from {@code assets/data/render.txt} and passed to
- * {@link WorldRenderer}; tests read the shipped file or hand their own text to {@link #parse}.
+ * {@link WorldRenderer}; tests take their own copy from {@code TestTuning} or hand text to {@link #parse}.
  *
  * <p>The file holds the keys below and nothing else. A kind's key ends in the lower-case name of its enum constant
  * ({@code pickup.halo.medkit} for {@link Pickup.Kind#MEDKIT}).

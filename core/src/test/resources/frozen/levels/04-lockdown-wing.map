@@ -1,0 +1,29 @@
+id: 04_lockdown_wing
+title: 04: LOCKDOWN WING
+par: 85
+complete_on_all_targets: false
+loadout: scattergun, raillance
+briefing: BULKHEAD LOCKDOWNS SEAL THE LOWER RESEARCH SECTOR.
+briefing: FIND THE AMBER KEYCARD AND OVERRIDE THE SECURITY CONSOLE.
+briefing: WATCH FOR AMBUSH BAYS UNSEALED BY CONSOLE OVERRIDE.
+
+#####&&&&&&&&&&&&&#&&&&&&&&&&&
+#...#......o......#.....o...a&
+#.>.=....o....G...#..D....T..&
+#.a.#.............#..........&
+#...#..&...&..D...=....&.....&
+#####.............#....&..k..&
+&&&&&....o....+...#..G....e..&
+&...e..&.....s..r.#..........&
+&&&&&&&&&&&A&&&&&&############
+%%%%%%%%#...........##########
+%.D..G..#...o...T...#...o....#
+%.e.....#.....s.....#.r..T...#
+%%%%L%%%#..#.....#..#........#
+%.......#...........#..#..#..#
+%...o...=.....G.....#........#
+%.......#...........L...G....#
+%...S...#..o.....D..#........#
+%.+...a.#..r.s......#..+..o..#
+%.......#...e...G...#.....X..#
+%%%%%%%%######################

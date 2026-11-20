@@ -17,7 +17,6 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.audio.SoundManager;
-import io.github.brantunger.gamex.audio.SoundVolumes;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -122,10 +121,10 @@ class MainGameViewportTest {
 
     private static GameSettings savedSettings(boolean fullscreen) {
         MapKeyValueStore store = new MapKeyValueStore();
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         settings.setFullscreen(fullscreen);
         settings.save(store);
-        return GameSettings.load(store, SettingsDefaults.load());
+        return GameSettings.load(store, TestTuning.SETTINGS);
     }
 
     private static final class ViewportRecorder {
@@ -258,7 +257,7 @@ class MainGameViewportTest {
 
     @Test
     void settingsOpenedFromTheTitleKeepsTheTitleBackdrop() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.TITLE);
         assertTrue(MainGame.showsBackdrop(menu), "Title");
         assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
@@ -270,7 +269,7 @@ class MainGameViewportTest {
 
     @Test
     void settingsOpenedFromPauseKeepsTheFirstPersonView() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         assertFalse(MainGame.showsBackdrop(menu), "in play");
         menu.escape();
@@ -288,7 +287,7 @@ class MainGameViewportTest {
             if (screen == MenuState.Screen.SETTINGS) continue;
             boolean expected = screen == MenuState.Screen.TITLE || screen == MenuState.Screen.STAGE_SELECT
                 || screen == MenuState.Screen.DIFFICULTY_SELECT || screen == MenuState.Screen.BRIEFING;
-            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()), screen);
+            MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()), screen);
             assertEquals(expected, MainGame.showsBackdrop(menu), screen.name());
         }
     }
@@ -337,8 +336,8 @@ class MainGameViewportTest {
 
     @Test
     void theGameNeedsTheDefaultsTheLauncherLoaded() {
-        WindowDefaults window = WindowDefaults.load();
-        SettingsDefaults settingsDefaults = SettingsDefaults.load();
+        WindowDefaults window = TestTuning.WINDOW;
+        SettingsDefaults settingsDefaults = TestTuning.SETTINGS;
         assertThrows(IllegalArgumentException.class, () -> new MainGame(800, 600, false, null, settingsDefaults));
         assertThrows(IllegalArgumentException.class, () -> new MainGame(800, 600, false, window, null));
         assertEquals(WindowDefaults.MIN_WIDTH, MainGame.MIN_WINDOW_WIDTH);
@@ -373,12 +372,12 @@ class MainGameViewportTest {
 
     @Test
     void backdropSimulationReplacesPlayedOrMutatedGameplaySimulationOnSameStage() {
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.TITLE);
         Levels.Stage outerBreach = menu.getActiveStage();
         assertEquals("01_outer_breach", outerBreach.id);
 
-        GameSimulation cleanPreview = new GameSimulation(outerBreach.map);
+        GameSimulation cleanPreview = TestTuning.simulation(outerBreach.map);
         assertSame(cleanPreview,
             MainGame.backdropSimulation(cleanPreview, menu, false, TestTuning.ENEMIES, TestTuning.DIFFICULTY,
                 TestTuning.WEAPONS, TestTuning.WORLD),
@@ -391,7 +390,7 @@ class MainGameViewportTest {
         assertEquals(0f, afterFlaggedPlay.getTime(), 1e-6f);
 
         // Stepped simulation on the same map (time > 0, fired shots, etc.) is replaced with a clean preview.
-        GameSimulation mutated = new GameSimulation(outerBreach.map);
+        GameSimulation mutated = TestTuning.simulation(outerBreach.map);
         PlayerInput fireInput = new PlayerInput();
         fireInput.fire = true;
         mutated.update(1f / 60f, fireInput);
@@ -474,7 +473,7 @@ class MainGameViewportTest {
         Gdx.app = null;
         FailingKeyValueStore failingStore = new FailingKeyValueStore(
             new GdxRuntimeException("Read-only preferences file"));
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         settings.setFov(95f);
 
         List<String> disposed = new ArrayList<>();
@@ -515,9 +514,9 @@ class MainGameViewportTest {
         Gdx.app = null;
         FailingKeyValueStore failingStore = new FailingKeyValueStore(new GdxRuntimeException("Disk full"));
         MainGame game = new MainGame();
-        game.settings = new GameSettings();
+        game.settings = TestTuning.settings();
         game.settingsStore = failingStore;
-        game.soundManager = new SoundManager(true, SoundVolumes.load());
+        game.soundManager = new SoundManager(true, TestTuning.SOUNDS);
 
         try (LogCapture capture = LogCapture.of(MainGame.class, Level.INFO)) {
             assertDoesNotThrow(game::dispose);

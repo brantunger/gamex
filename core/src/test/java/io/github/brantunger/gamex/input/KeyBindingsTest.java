@@ -1,12 +1,14 @@
 package io.github.brantunger.gamex.input;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Input;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.hud.GlyphCheck;
 import io.github.brantunger.gamex.hud.PixelFont;
 import org.junit.jupiter.api.Test;
@@ -19,14 +21,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Verifies {@link KeyBindings}, {@link KeyNames} and {@link Action}: the shipped file binds every action to the
- * inputs the game had in code, a changed line changes the inputs and the hint, and every mistake in a file is
+ * Verifies {@link KeyBindings}, {@link KeyNames} and {@link Action}: every line of a bindings file binds its own
+ * action, the shipped file loads, a changed line changes the inputs and the hint, and every mistake in a file is
  * reported with the file, the action and the line.
  */
 class KeyBindingsTest {
 
     private static final String FILE = "data/test-bindings.txt";
-    private static final PixelFont FONT = PixelFont.load();
+    private static final PixelFont FONT = TestTuning.FONT;
 
     private static BoundInput key(int keycode) {
         return new BoundInput(BoundInput.Kind.KEY, keycode, Input.Keys.toString(keycode));
@@ -40,75 +42,83 @@ class KeyBindingsTest {
         return new BoundInput(BoundInput.Kind.WHEEL, direction, "wheel " + direction);
     }
 
-    /** @return the inputs {@code InputController} named in code before the bindings moved to a file */
-    private static Map<Action, List<BoundInput>> inputsBeforeTheMove() {
+    /**
+     * Lines for every action, none of them the inputs the shipped file or {@link #fileWith} gives that action, so an
+     * action that took another's line, or an input still held in code, shows.
+     */
+    private static final String[] EVERY_ACTION_REBOUND = {
+        "pause", "P", "retry", "T", "move_forward", "I", "move_back", "K", "move_left", "J", "move_right", "L",
+        "dash", "L-Ctrl, R-Ctrl", "jump", "N", "interact", "F", "weapon_1", "7", "weapon_2", "8", "weapon_3", "9",
+        "quick_swap", "Tab", "weapon_next", "Wheel-Up", "weapon_prev", "Wheel-Down", "fire", "Mouse-Middle",
+        "alt_fire", "Mouse-Back", "menu_up", "I, Numpad 8", "menu_down", "K, Numpad 2", "menu_left", "Z",
+        "menu_right", "C", "menu_confirm", "F, Numpad 5", "quit", "X", "menu_click", "Mouse-Right"
+    };
+
+    /** @return the inputs the lines of {@link #EVERY_ACTION_REBOUND} name, action by action */
+    private static Map<Action, List<BoundInput>> inputsOfTheReboundFile() {
         Map<Action, List<BoundInput>> expected = new EnumMap<>(Action.class);
-        expected.put(Action.PAUSE, List.of(key(Input.Keys.ESCAPE)));
-        expected.put(Action.RETRY, List.of(key(Input.Keys.R)));
-        expected.put(Action.MOVE_FORWARD, List.of(key(Input.Keys.W)));
-        expected.put(Action.MOVE_BACK, List.of(key(Input.Keys.S)));
-        expected.put(Action.MOVE_LEFT, List.of(key(Input.Keys.A)));
-        expected.put(Action.MOVE_RIGHT, List.of(key(Input.Keys.D)));
-        expected.put(Action.DASH, List.of(key(Input.Keys.SHIFT_LEFT), key(Input.Keys.SHIFT_RIGHT)));
-        expected.put(Action.JUMP, List.of(key(Input.Keys.SPACE)));
-        expected.put(Action.INTERACT, List.of(key(Input.Keys.E)));
-        expected.put(Action.WEAPON_1, List.of(key(Input.Keys.NUM_1)));
-        expected.put(Action.WEAPON_2, List.of(key(Input.Keys.NUM_2)));
-        expected.put(Action.WEAPON_3, List.of(key(Input.Keys.NUM_3)));
-        expected.put(Action.QUICK_SWAP, List.of(key(Input.Keys.Q)));
-        // A positive scroll amount, the wheel turned towards the player, chose the next weapon.
-        expected.put(Action.WEAPON_NEXT, List.of(wheel(1)));
-        expected.put(Action.WEAPON_PREV, List.of(wheel(-1)));
-        expected.put(Action.FIRE, List.of(button(Input.Buttons.LEFT)));
-        expected.put(Action.ALT_FIRE, List.of(button(Input.Buttons.RIGHT)));
-        expected.put(Action.MENU_UP, List.of(key(Input.Keys.UP), key(Input.Keys.W)));
-        expected.put(Action.MENU_DOWN, List.of(key(Input.Keys.DOWN), key(Input.Keys.S)));
-        expected.put(Action.MENU_LEFT, List.of(key(Input.Keys.LEFT), key(Input.Keys.A)));
-        expected.put(Action.MENU_RIGHT, List.of(key(Input.Keys.RIGHT), key(Input.Keys.D)));
-        expected.put(Action.MENU_CONFIRM, List.of(key(Input.Keys.ENTER), key(Input.Keys.SPACE)));
-        expected.put(Action.QUIT, List.of(key(Input.Keys.Q)));
-        expected.put(Action.MENU_CLICK, List.of(button(Input.Buttons.LEFT)));
+        expected.put(Action.PAUSE, List.of(key(Input.Keys.P)));
+        expected.put(Action.RETRY, List.of(key(Input.Keys.T)));
+        expected.put(Action.MOVE_FORWARD, List.of(key(Input.Keys.I)));
+        expected.put(Action.MOVE_BACK, List.of(key(Input.Keys.K)));
+        expected.put(Action.MOVE_LEFT, List.of(key(Input.Keys.J)));
+        expected.put(Action.MOVE_RIGHT, List.of(key(Input.Keys.L)));
+        expected.put(Action.DASH, List.of(key(Input.Keys.CONTROL_LEFT), key(Input.Keys.CONTROL_RIGHT)));
+        expected.put(Action.JUMP, List.of(key(Input.Keys.N)));
+        expected.put(Action.INTERACT, List.of(key(Input.Keys.F)));
+        expected.put(Action.WEAPON_1, List.of(key(Input.Keys.NUM_7)));
+        expected.put(Action.WEAPON_2, List.of(key(Input.Keys.NUM_8)));
+        expected.put(Action.WEAPON_3, List.of(key(Input.Keys.NUM_9)));
+        expected.put(Action.QUICK_SWAP, List.of(key(Input.Keys.TAB)));
+        // A negative scroll amount is the wheel turned away from the player.
+        expected.put(Action.WEAPON_NEXT, List.of(wheel(-1)));
+        expected.put(Action.WEAPON_PREV, List.of(wheel(1)));
+        expected.put(Action.FIRE, List.of(button(Input.Buttons.MIDDLE)));
+        expected.put(Action.ALT_FIRE, List.of(button(Input.Buttons.BACK)));
+        expected.put(Action.MENU_UP, List.of(key(Input.Keys.I), key(Input.Keys.NUMPAD_8)));
+        expected.put(Action.MENU_DOWN, List.of(key(Input.Keys.K), key(Input.Keys.NUMPAD_2)));
+        expected.put(Action.MENU_LEFT, List.of(key(Input.Keys.Z)));
+        expected.put(Action.MENU_RIGHT, List.of(key(Input.Keys.C)));
+        expected.put(Action.MENU_CONFIRM, List.of(key(Input.Keys.F), key(Input.Keys.NUMPAD_5)));
+        expected.put(Action.QUIT, List.of(key(Input.Keys.X)));
+        expected.put(Action.MENU_CLICK, List.of(button(Input.Buttons.RIGHT)));
         return expected;
     }
 
-    /**
-     * @return the key names the on-screen text spelled out before hints were taken from the bindings, and for the
-     *     actions that text never named ({@code pause}, the menu arrows, {@code menu_confirm}, {@code menu_click},
-     *     {@code weapon_prev}, {@code weapon_2}) the names the strings file was first written against
-     */
-    private static Map<Action, String> hintsBeforeTheMove() {
+    /** @return the key name the text shows for the first input of each line of {@link #EVERY_ACTION_REBOUND} */
+    private static Map<Action, String> hintsOfTheReboundFile() {
         Map<Action, String> expected = new EnumMap<>(Action.class);
-        expected.put(Action.PAUSE, "ESC");
-        expected.put(Action.RETRY, "R");
-        expected.put(Action.MOVE_FORWARD, "W");
-        expected.put(Action.MOVE_BACK, "S");
-        expected.put(Action.MOVE_LEFT, "A");
-        expected.put(Action.MOVE_RIGHT, "D");
-        expected.put(Action.DASH, "SHIFT");
-        expected.put(Action.JUMP, "SPACE");
-        expected.put(Action.INTERACT, "E");
-        expected.put(Action.WEAPON_1, "1");
-        expected.put(Action.WEAPON_2, "2");
-        expected.put(Action.WEAPON_3, "3");
-        expected.put(Action.QUICK_SWAP, "Q");
+        expected.put(Action.PAUSE, "P");
+        expected.put(Action.RETRY, "T");
+        expected.put(Action.MOVE_FORWARD, "I");
+        expected.put(Action.MOVE_BACK, "K");
+        expected.put(Action.MOVE_LEFT, "J");
+        expected.put(Action.MOVE_RIGHT, "L");
+        expected.put(Action.DASH, "CTRL");
+        expected.put(Action.JUMP, "N");
+        expected.put(Action.INTERACT, "F");
+        expected.put(Action.WEAPON_1, "7");
+        expected.put(Action.WEAPON_2, "8");
+        expected.put(Action.WEAPON_3, "9");
+        expected.put(Action.QUICK_SWAP, "TAB");
         expected.put(Action.WEAPON_NEXT, "SCROLL");
         expected.put(Action.WEAPON_PREV, "SCROLL");
-        expected.put(Action.FIRE, "LMB");
-        expected.put(Action.ALT_FIRE, "RMB");
-        expected.put(Action.MENU_UP, "UP");
-        expected.put(Action.MENU_DOWN, "DOWN");
-        expected.put(Action.MENU_LEFT, "LEFT");
-        expected.put(Action.MENU_RIGHT, "RIGHT");
-        expected.put(Action.MENU_CONFIRM, "ENTER");
-        expected.put(Action.QUIT, "Q");
-        expected.put(Action.MENU_CLICK, "LMB");
+        expected.put(Action.FIRE, "MMB");
+        expected.put(Action.ALT_FIRE, "MB4");
+        expected.put(Action.MENU_UP, "I");
+        expected.put(Action.MENU_DOWN, "K");
+        expected.put(Action.MENU_LEFT, "Z");
+        expected.put(Action.MENU_RIGHT, "C");
+        expected.put(Action.MENU_CONFIRM, "F");
+        expected.put(Action.QUIT, "X");
+        expected.put(Action.MENU_CLICK, "RMB");
         return expected;
     }
 
     /**
      * @param changes pairs of an action id and the value to give its line; a null value leaves the line out
      * @return the text of a bindings file with one line per action in declaration order, so that an action's line
-     *     number is its ordinal plus one (less the lines left out above it), holding the shipped inputs but for
+     *     number is its ordinal plus one (less the lines left out above it), holding the usual inputs but for
      *     {@code changes}
      */
     private static String fileWith(String... changes) {
@@ -171,35 +181,36 @@ class KeyBindingsTest {
     }
 
     @Test
-    void theShippedFileBindsEveryActionToTheInputsTheGameHadInCode() {
-        KeyBindings shipped = KeyBindings.load(FONT);
-        Map<Action, List<BoundInput>> expected = inputsBeforeTheMove();
+    void everyLineOfABindingsFileBindsItsOwnAction() {
+        KeyBindings bindings = parseWith(EVERY_ACTION_REBOUND);
+        Map<Action, List<BoundInput>> expected = inputsOfTheReboundFile();
         assertEquals(Action.values().length, expected.size(), "the table above must cover every action");
         for (Action action : Action.values()) {
-            assertEquals(expected.get(action), shipped.inputs(action), action.id);
+            assertEquals(expected.get(action), bindings.inputs(action), action.id);
         }
     }
 
     @Test
-    void theShippedHintsAreTheKeyNamesTheScreenSpelledOut() {
-        KeyBindings shipped = KeyBindings.load(FONT);
-        assertEquals(Action.values().length, hintsBeforeTheMove().size(), "the table above must cover every action");
-        for (Map.Entry<Action, String> hint : hintsBeforeTheMove().entrySet()) {
-            assertEquals(hint.getValue(), shipped.hint(hint.getKey()), hint.getKey().id);
-            assertEquals(hint.getValue(), shipped.hint(hint.getKey().id), hint.getKey().id);
+    void theHintOfAnActionIsTheKeyNameOfItsFirstInput() {
+        KeyBindings bindings = parseWith(EVERY_ACTION_REBOUND);
+        assertEquals(Action.values().length, hintsOfTheReboundFile().size(), "the table must cover every action");
+        for (Map.Entry<Action, String> hint : hintsOfTheReboundFile().entrySet()) {
+            assertEquals(hint.getValue(), bindings.hint(hint.getKey()), hint.getKey().id);
+            assertEquals(hint.getValue(), bindings.hint(hint.getKey().id), hint.getKey().id);
         }
         for (Action action : Action.values()) {
-            assertEquals(-1, GlyphCheck.firstUndrawable(FONT, shipped.hint(action)), action.id);
+            assertEquals(-1, GlyphCheck.firstUndrawable(FONT, bindings.hint(action)), action.id);
         }
     }
 
+    /** Whatever inputs the shipped file holds, it loads with the shipped font and binds every action. */
     @Test
-    void theTestFileHoldsTheShippedBindings() {
-        KeyBindings shipped = KeyBindings.load(FONT);
-        KeyBindings test = parseWith();
+    void theShippedFileLoads() {
+        PixelFont font = PixelFont.load();
+        KeyBindings shipped = KeyBindings.load(font);
         for (Action action : Action.values()) {
-            assertEquals(shipped.inputs(action), test.inputs(action), action.id);
-            assertEquals(shipped.hint(action), test.hint(action), action.id);
+            assertFalse(shipped.inputs(action).isEmpty(), action.id);
+            assertEquals(-1, GlyphCheck.firstUndrawable(font, shipped.hint(action)), action.id);
         }
     }
 

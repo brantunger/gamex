@@ -1,0 +1,5 @@
+// The size of the game's window, in pixels, when it is not fullscreen and GAMEX_WINDOW does not set one. Both keys
+// are needed, and the size is from 160x120 to 7680x4320. The renderers also size their cameras, and the HUD its
+// overlay, with it until the window reports its own size.
+window.width: 1280
+window.height: 720

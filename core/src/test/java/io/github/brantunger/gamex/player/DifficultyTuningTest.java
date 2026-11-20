@@ -11,23 +11,45 @@ import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
-/** Checks the difficulty tuning file: what it ships with, what a changed value does, and its errors. */
+/**
+ * Checks the difficulty tuning file: that each key sets its own value, that the shipped file loads, what a changed
+ * value does, and its errors.
+ */
 class DifficultyTuningTest {
 
-    private static void assertScales(Difficulty difficulty, float damageTaken, float pickup, float enemySpeed) {
-        DifficultyTuning.Scales scales = TestTuning.DIFFICULTY.of(difficulty);
+    /** The test's own file, in which every number differs from the shipped one and from every other. */
+    private static final String FIXTURE = "data-fixtures/difficulty.txt";
+
+    private static void assertScales(DifficultyTuning tuning, Difficulty difficulty, float damageTaken, float pickup,
+                                     float enemySpeed) {
+        DifficultyTuning.Scales scales = tuning.of(difficulty);
         assertEquals(damageTaken, scales.damageTakenScale, 0f, difficulty + " damage taken");
         assertEquals(pickup, scales.pickupScale, 0f, difficulty + " pickup");
         assertEquals(enemySpeed, scales.enemySpeedScale, 0f, difficulty + " enemy speed");
     }
 
-    /** The values are the ones the {@code Difficulty} enum held before the file existed (commit 10cd4a4). */
+    /**
+     * The values on the right are those of the test's own file, where no two numbers are alike, so a key read into
+     * another key's field, or a value still held in code, shows.
+     */
     @Test
-    void theShippedFileHoldsTheValuesTheEnumHadBeforeIt() {
-        assertScales(Difficulty.EASY, 0.7f, 1.25f, 0.85f);
-        assertScales(Difficulty.NORMAL, 1.0f, 1.0f, 1.0f);
-        assertScales(Difficulty.HARD, 1.4f, 0.8f, 1.2f);
-        assertSame(TestTuning.DIFFICULTY.of(Difficulty.NORMAL), TestTuning.DIFFICULTY.of(null));
+    void everyKeyOfADifficultyFileSetsItsOwnValue() {
+        DifficultyTuning t = DifficultyTuning.parse(FIXTURE, AssetText.read("data", FIXTURE));
+        assertScales(t, Difficulty.EASY, 0.714f, 1.2875f, 0.884f);
+        assertScales(t, Difficulty.NORMAL, 1.05f, 1.06f, 1.07f);
+        assertScales(t, Difficulty.HARD, 1.512f, 0.872f, 1.32f);
+        assertSame(t.of(Difficulty.NORMAL), t.of(null));
+    }
+
+    /** Whatever values the shipped file holds, it loads and gives every difficulty its three multipliers. */
+    @Test
+    void theShippedFileLoads() {
+        DifficultyTuning shipped = DifficultyTuning.load();
+        for (Difficulty difficulty : Difficulty.values()) {
+            DifficultyTuning.Scales scales = shipped.of(difficulty);
+            assertTrue(scales.damageTakenScale >= 0f && scales.pickupScale > 0f && scales.enemySpeedScale > 0f,
+                difficulty.toString());
+        }
     }
 
     /** Saved games store these names and the order is the menu's; neither may move with the numbers. */
@@ -42,7 +64,7 @@ class DifficultyTuningTest {
 
     @Test
     void aChangedPickupScaleSizesTheStarterAmmunition() {
-        Levels.Stage lockdownWing = Levels.stage("04_lockdown_wing");
+        Levels.Stage lockdownWing = TestTuning.stageStartingWith("scattergun, raillance");
         PlayerLoadout shipped = PlayerLoadout.forStage(lockdownWing, Difficulty.EASY, TestTuning.DIFFICULTY,
             TestTuning.WEAPONS);
         assertEquals(Math.round(TestTuning.WEAPONS.scattergunWeaponPickupShells * 1.25f), shipped.shells);
@@ -60,7 +82,7 @@ class DifficultyTuningTest {
     }
 
     private static String error(String key, String value) {
-        String text = TestTuning.withValue(AssetText.read("data", DifficultyTuning.PATH), key, value);
+        String text = TestTuning.withValue(TestTuning.text(DifficultyTuning.PATH), key, value);
         return assertThrows(IllegalArgumentException.class,
             () -> DifficultyTuning.parse(DifficultyTuning.PATH, text)).getMessage();
     }
@@ -70,7 +92,7 @@ class DifficultyTuningTest {
         assertEquals("Missing 'hard.pickup' key in data/difficulty.txt", error("hard.pickup", null));
 
         String unknown = assertThrows(IllegalArgumentException.class, () -> DifficultyTuning.parse(
-            DifficultyTuning.PATH, "nightmare.pickup: 0.5\n" + AssetText.read("data", DifficultyTuning.PATH)))
+            DifficultyTuning.PATH, "nightmare.pickup: 0.5\n" + TestTuning.text(DifficultyTuning.PATH)))
             .getMessage();
         assertEquals("Unknown key 'nightmare.pickup' in data/difficulty.txt at line 1", unknown);
 

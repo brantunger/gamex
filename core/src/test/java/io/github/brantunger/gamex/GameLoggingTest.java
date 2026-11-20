@@ -26,7 +26,7 @@ class GameLoggingTest {
     private static final float FRAME = 1f / 60f;
 
     private static GameSimulation tinyRange() {
-        return new GameSimulation(GameMap.parse(
+        return TestTuning.simulation(GameMap.parse(
             "#######",
             "#>.o..#",
             "#######"), PlayerLoadout.fresh(), true);
@@ -55,7 +55,7 @@ class GameLoggingTest {
     @Test
     void framesWithNoEventLogNothing() {
         // A stage with an exit, hostiles, a keycard bulkhead and a console, so the objective is worked out.
-        GameSimulation simulation = new GameSimulation(Levels.stage("04_lockdown_wing").map, PlayerLoadout.fresh(),
+        GameSimulation simulation = TestTuning.simulation(Levels.stage("04_lockdown_wing").map, PlayerLoadout.fresh(),
             false);
         PlayerInput input = new PlayerInput();
         assertNotNull(simulation.getObjective(), "the stage has an objective");
@@ -75,7 +75,7 @@ class GameLoggingTest {
     @Test
     void theObjectiveIsLoggedWhenItChangesAndNotWhenItIsWorkedOutAgain() {
         // A plain bulkhead stands between the player and the exit; opening it does not change the objective.
-        GameSimulation simulation = new GameSimulation(GameMap.parse(
+        GameSimulation simulation = TestTuning.simulation(GameMap.parse(
             "#########",
             "#>.=...X#",
             "#########"));
@@ -103,11 +103,11 @@ class GameLoggingTest {
 
     @Test
     void aSettingAtTheEndOfItsRangeLogsNoChange() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         settings.setFov(settings.defaults().fov.max);
         settings.setMouseSensitivity(settings.defaults().sensitivity.min);
         settings.setMasterVolume(settings.defaults().volume.max);
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         menu.moveSelection(3);
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
@@ -131,8 +131,8 @@ class GameLoggingTest {
     @Test
     void menuLogsScreensAtInfoAndNavigationAndSettingsAtDebug() {
         try (LogCapture capture = LogCapture.of(MenuState.class, Level.DEBUG)) {
-            GameSettings settings = new GameSettings();
-            MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+            GameSettings settings = TestTuning.settings();
+            MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
             menu.moveSelection(1);
             // Reading the options, as the HUD does on every frame, is not an event.
             for (int i = 0; i < 10; i++) menu.getOptions();

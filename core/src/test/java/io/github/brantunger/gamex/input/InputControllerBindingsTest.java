@@ -9,6 +9,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
@@ -26,15 +27,15 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Drives {@link InputController#poll} with stubbed devices and bindings other than the shipped ones: an action
+ * Drives {@link InputController#poll} with stubbed devices and bindings other than the tests' own: an action
  * follows its line of the bindings file, and the input it had before does nothing. {@link InputControllerTest}
- * covers the shipped bindings.
+ * covers the tests' own bindings.
  */
 class InputControllerBindingsTest {
 
     private static final String FILE = "data/test-bindings.txt";
     private static final float FRAME = 1f / 60f;
-    private static final PixelFont FONT = PixelFont.load();
+    private static final PixelFont FONT = TestTuning.FONT;
 
     private Input previousInput;
     private Graphics previousGraphics;
@@ -114,12 +115,12 @@ class InputControllerBindingsTest {
 
     /**
      * @param changes pairs of an action id and the value to give its line
-     * @return the shipped bindings with those lines changed
+     * @return the tests' own bindings with those lines changed
      */
     private static KeyBindings shippedWith(String... changes) {
         StringBuilder text = new StringBuilder();
         Set<String> changed = new HashSet<>();
-        for (String line : AssetText.splitLines(AssetText.read("data", KeyBindings.PATH))) {
+        for (String line : AssetText.splitLines(TestTuning.text(KeyBindings.PATH))) {
             for (int i = 0; i < changes.length; i += 2) {
                 if (line.startsWith(changes[i] + ":")) {
                     line = changes[i] + ": " + changes[i + 1];
@@ -128,12 +129,12 @@ class InputControllerBindingsTest {
             }
             text.append(line).append('\n');
         }
-        assertEquals(changes.length / 2, changed.size(), "every change must find its line in the shipped file");
+        assertEquals(changes.length / 2, changed.size(), "every change must find its line in the tests' own file");
         return KeyBindings.parse(FILE, text.toString(), FONT);
     }
 
     private static MenuState playing() {
-        return new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        return TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
     }
 
     private static MenuState paused() {
@@ -144,7 +145,7 @@ class InputControllerBindingsTest {
     }
 
     private InputController controller(MenuState menu, KeyBindings bindings) {
-        InputController controller = new InputController(menu, new GameSettings(), bindings);
+        InputController controller = new InputController(menu, TestTuning.settings(), bindings);
         assertSame(controller, registered, "the controller must register itself as the input processor");
         return controller;
     }
@@ -346,15 +347,15 @@ class InputControllerBindingsTest {
 
     @Test
     void settingsKeysFollowTheBindings() {
-        GameSettings settings = new GameSettings();
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        GameSettings settings = TestTuning.settings();
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         menu.escape();
         assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
         assertTrue(menu.selectId(MenuState.OptionId.SET_FOV));
         float start = settings.getFov();
-        GameSettings expected = new GameSettings();
+        GameSettings expected = TestTuning.settings();
         expected.adjustFov(1);
         InputController controller = new InputController(menu, settings,
             shippedWith("menu_left", "J", "menu_right", "L"));

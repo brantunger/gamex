@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class RailLanceTest {
 
-    /** The shipped weapon balance. */
+    /** The tests' own weapon balance. */
     private static final WeaponTuning W = TestTuning.WEAPONS;
 
     private static final float DT = 1f / 60f;

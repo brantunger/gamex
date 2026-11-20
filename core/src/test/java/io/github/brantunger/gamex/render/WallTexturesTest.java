@@ -2,7 +2,7 @@ package io.github.brantunger.gamex.render;
 
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
-import io.github.brantunger.gamex.data.AssetText;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.TuningFile;
 import io.github.brantunger.gamex.world.GameMap;
 import org.junit.jupiter.api.AfterEach;
@@ -57,16 +57,27 @@ class WallTexturesTest {
             TuningFile.parseText(WallTextures.FILE, text, WallTextures.wallKeys(), Collections.emptyList()));
     }
 
-    /** The mapping {@code ProceduralTextures.wall(char)} had in code at commit 10cd4a4, for the three wall types. */
+    /** A table in which no two wall types share a file, so a type that took another's line, or none, shows. */
     @Test
-    void theShippedTableGivesEachWallTypeTheTextureItHadInCode() {
-        WallTextures shipped = WallTextures.load();
+    void everyWallTypeTakesTheTextureOfItsOwnLine() {
+        WallTextures table = parse("#: first.png\n%: second.png\n&: third.png\n");
 
         assertEquals("#%&", GameMap.WALL_TYPES);
-        assertEquals("brick.png", shipped.file('#'));
-        assertEquals("panel.png", shipped.file('%'));
-        assertEquals("stone.png", shipped.file('&'));
-        assertEquals(Arrays.asList("brick.png", "panel.png", "stone.png"), new ArrayList<>(shipped.files()));
+        assertEquals("first.png", table.file('#'));
+        assertEquals("second.png", table.file('%'));
+        assertEquals("third.png", table.file('&'));
+        assertEquals(Arrays.asList("first.png", "second.png", "third.png"), new ArrayList<>(table.files()));
+    }
+
+    /** Whatever textures the shipped table names, it loads and gives every wall type a .png file. */
+    @Test
+    void theShippedTableLoads() {
+        WallTextures shipped = WallTextures.load();
+
+        for (char wall : GameMap.WALL_TYPES.toCharArray()) {
+            assertTrue(shipped.file(wall).endsWith(".png"), wall + ": " + shipped.file(wall));
+            assertTrue(shipped.files().contains(shipped.file(wall)));
+        }
     }
 
     @Test
@@ -107,7 +118,7 @@ class WallTexturesTest {
 
     @Test
     void anEditedLooseCopyOfTheTableChangesTheTextureOfAWall(@TempDir Path temp) throws IOException {
-        String shipped = AssetText.read("data", WallTextures.FILE);
+        String shipped = TestTuning.text(WallTextures.FILE);
         assertTrue(shipped.contains("%: panel.png"), shipped);
         Path loose = temp.resolve(WallTextures.FILE);
         java.nio.file.Files.createDirectories(loose.getParent());

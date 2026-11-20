@@ -346,47 +346,6 @@ public final class GameSimulation {
     };
 
     /**
-     * Builds a level on Normal difficulty with the tuning files read here and now. This is for tests only:
-     * the game loads its tuning once at start-up and uses
-     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning, WeaponTuning,
-     * WorldTuning)}.
-     * @param map the level to play on Normal difficulty
-     */
-    public GameSimulation(GameMap map) {
-        this(map, PlayerLoadout.fresh(), false);
-    }
-
-    /**
-     * Builds a level with the tuning files read here and now. This is for tests only: the game loads its
-     * tuning once at start-up and uses
-     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning, WeaponTuning,
-     * WorldTuning)}.
-     * @param map the level to play
-     * @param entryLoadout starting player health, armor and difficulty snapshot
-     * @param completeOnAllTargets whether clearing all targets ends the level
-     */
-    public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets) {
-        this(map, entryLoadout, completeOnAllTargets, EnemyTuning.load(), DifficultyTuning.load());
-    }
-
-    /**
-     * Builds a level with the weapon and world tuning files read here and now. This is for tests only: the
-     * game loads its tuning once at start-up and uses
-     * {@link #GameSimulation(GameMap, PlayerLoadout, boolean, EnemyTuning, DifficultyTuning, WeaponTuning,
-     * WorldTuning)}.
-     * @param map the level to play
-     * @param entryLoadout starting player health, armor and difficulty snapshot
-     * @param completeOnAllTargets whether clearing all targets ends the level
-     * @param enemyTuning the enemy balance
-     * @param difficultyTuning what each difficulty multiplies
-     */
-    public GameSimulation(GameMap map, PlayerLoadout entryLoadout, boolean completeOnAllTargets,
-                          EnemyTuning enemyTuning, DifficultyTuning difficultyTuning) {
-        this(map, entryLoadout, completeOnAllTargets, enemyTuning, difficultyTuning, WeaponTuning.load(),
-            WorldTuning.load());
-    }
-
-    /**
      * @param map the level to play
      * @param entryLoadout starting player health, armor and difficulty snapshot; its shells and slugs are capped at
      *     the most the player carries

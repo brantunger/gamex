@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
-import io.github.brantunger.gamex.data.AssetText;
+import io.github.brantunger.gamex.TestTuning;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -163,10 +163,11 @@ class LevelsErrorMessagesTest {
     @Test
     void aLoadoutHeaderInTheTrainingRangeFileIsRejectedNamingTheFileAndLine(@TempDir Path temp) throws IOException {
         Gdx.files = null;
-        String shipped = AssetText.read("level", Levels.TRAINING_RANGE_PATH);
+        // The tests' own copy of the file, so that the line counted below does not move with the shipped one.
+        String shipped = TestTuning.text(Levels.TRAINING_RANGE_PATH);
         String marker = "complete_on_all_targets: true\n";
         assertTrue(shipped.replace("\r\n", "\n").startsWith("id: range\ntitle: TRAINING RANGE\npar: 45\n" + marker),
-            "the shipped file no longer starts with the four headers this test counts lines by");
+            "the tests' own file no longer starts with the four headers this test counts lines by");
         assertEquals("range", Levels.trainingRange().id, "the shipped file, which has no such header, loads");
 
         Path file = java.nio.file.Files.createDirectories(temp.resolve("levels")).resolve("training-range.map");

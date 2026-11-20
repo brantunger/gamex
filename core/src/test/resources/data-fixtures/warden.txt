@@ -1,0 +1,28 @@
+// A test's own Warden fight, with the keys of assets/data/warden.txt. Every number differs from the shipped one
+// and from every other number here, so a test that reads it can tell each key from the next and from a value held
+// in code. EnemyTuningTest reads it; it is not the game's balance and never needs to follow it.
+overdrive_health_ratio: 0.51
+run_speed: 3.811
+chase_memory: 0.52
+turn_rate: 321
+path_turn_rate: 281
+attack_range: 0.945
+attack_facing: 16
+combo_time: 2.614666702
+punch_times: 0.642, 1.188, 1.3843
+punch_damage: 17, 18, 29
+lunge_distance: 2.53, 0.777, 0.784
+lunge_time: 0.339, 0.228, 0.161
+punch_reach: 1.276
+punch_arc: 51
+combo_turn_rate: 46
+telegraph_time: 0.2574
+recover_time: 1.062
+punch_sound_gain: 1.3685
+overdrive_speed_scale: 1.5
+overdrive_turn_scale: 1.815
+overdrive_damage_scale: 1.647
+overdrive_combo_rate: 1.4145
+overdrive_recover_scale: 0.606
+overdrive_sound_gain: 1.275
+overdrive_burst_size: 1.648
