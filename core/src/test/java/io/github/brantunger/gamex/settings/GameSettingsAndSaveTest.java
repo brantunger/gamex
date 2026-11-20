@@ -37,6 +37,7 @@ class GameSettingsAndSaveTest {
         settings.setInvertY(true);
         settings.setViewBob(false);
         settings.setFullscreen(true);
+        settings.setMinimap(false);
         settings.save(store);
 
         GameSettings loaded = GameSettings.load(store, TestTuning.SETTINGS);
@@ -46,6 +47,7 @@ class GameSettingsAndSaveTest {
         assertTrue(loaded.isInvertY());
         assertFalse(loaded.isViewBob());
         assertTrue(loaded.isFullscreen());
+        assertFalse(loaded.isMinimap());
     }
 
     @Test

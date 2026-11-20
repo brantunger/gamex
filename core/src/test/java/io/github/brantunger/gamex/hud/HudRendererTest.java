@@ -20,6 +20,7 @@ import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
+import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.settings.WindowDefaults;
@@ -115,6 +116,33 @@ class HudRendererTest {
     }
 
     @Test
+    void minimapShowsWithCombatHudOnlyWhenMinimapSettingIsEnabled() {
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
+        GameSettings settings = TestTuning.settings();
+        MenuState playing = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        assertTrue(HudRenderer.showsMinimap(playing, simulation));
+        assertFalse(HudRenderer.showsMinimap(playing, null));
+
+        settings.setMinimap(false);
+        assertFalse(HudRenderer.showsMinimap(playing, simulation));
+        assertTrue(HudRenderer.showsCombatHud(playing, simulation));
+
+        settings.setMinimap(true);
+        playing.escape();
+        assertTrue(HudRenderer.showsMinimap(playing, simulation), "PAUSED keeps minimap under menu");
+        assertTrue(playing.selectId(MenuState.OptionId.SETTINGS));
+        playing.confirm();
+        assertTrue(HudRenderer.showsMinimap(playing, simulation), "SETTINGS from PAUSED keeps minimap");
+        playing.onPlayerDied();
+
+        MenuState title = menuOn(MenuState.Screen.TITLE);
+        assertFalse(HudRenderer.showsMinimap(title, simulation));
+        assertTrue(title.selectId(MenuState.OptionId.SETTINGS));
+        title.confirm();
+        assertFalse(HudRenderer.showsMinimap(title, simulation), "SETTINGS from TITLE shows no minimap");
+    }
+
+    @Test
     void theOverlayTakesTheSizeOfTheWindowDefaultsUntilTheWindowReportsItsOwn() {
         WindowDefaults other = WindowDefaults.parse("window.txt", "window.width: 1024\nwindow.height: 768\n");
         for (Graphics graphics : new Graphics[] {null, graphicsStub(0, 0), graphicsStub(-1, 600)}) {
@@ -194,10 +222,10 @@ class HudRendererTest {
                 size[0] + "x" + size[1]);
         }
 
-        // Half-screen and portrait windows clamp unit by width / 720f so 678-unit Title footer and 660-unit Briefing fit.
+        // Half-screen and portrait windows clamp unit by width / 720f so 705-unit Title footer and 660-unit Briefing fit.
         String titleFooter = TestTuning.STRINGS.get(UiText.SCREEN_TITLE_FOOTER);
-        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
-            titleFooter, "the tests' own footer with the key names of the tests' own bindings");
+        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT"
+            + "  M: MAP", titleFooter, "the tests' own footer with the key names of the tests' own bindings");
         for (int[] size : new int[][] {{960, 1080}, {1080, 1920}, {480, 720}, {680, 720}, {160, 320}}) {
             float w = size[0];
             float h = size[1];
@@ -246,9 +274,9 @@ class HudRendererTest {
         assertTrue(footerFitsFourByThree(ownFooter), ownFooter);
         assertTrue(footerFitsFourByThree(widestFooter), widestFooter);
 
-        // A 4:3 window is 960 HUD units wide, which is room for 120 characters of the footer's size.
+        // A 4:3 window is 960 HUD units wide, which is room for 126 characters of the footer's size.
         StringBuilder full = new StringBuilder();
-        while (full.length() < 120) full.append('W');
+        while (full.length() < 126) full.append('W');
         assertTrue(footerFitsFourByThree(full.toString()));
         assertFalse(footerFitsFourByThree(full + "W"));
 
@@ -257,7 +285,7 @@ class HudRendererTest {
             "move_back", "Numpad 5", "move_right", "Numpad 6", "weapon_1", "Numpad 1", "weapon_3", "Numpad 3",
             "quick_swap", "Numpad 0")::hint);
         assertEquals("NUMPAD 8NUMPAD 4NUMPAD 5NUMPAD 6: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  "
-            + "NUMPAD 1-NUMPAD 3/NUMPAD 0/SCROLL: WEAPON  LMB/RMB: FIRE/ALT", numpad);
+            + "NUMPAD 1-NUMPAD 3/NUMPAD 0/SCROLL: WEAPON  LMB/RMB: FIRE/ALT  M: MAP", numpad);
         assertFalse(footerFitsFourByThree(numpad), numpad);
     }
 

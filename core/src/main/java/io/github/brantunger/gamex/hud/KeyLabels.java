@@ -19,7 +19,7 @@ public interface KeyLabels {
      */
     Set<String> ACTIONS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         "pause", "retry", "move_forward", "move_back", "move_left", "move_right", "dash", "jump", "interact",
-        "weapon_1", "weapon_2", "weapon_3", "quick_swap", "weapon_next", "weapon_prev", "fire", "alt_fire",
+        "weapon_1", "weapon_2", "weapon_3", "quick_swap", "weapon_next", "weapon_prev", "fire", "alt_fire", "minimap",
         "menu_up", "menu_down", "menu_left", "menu_right", "menu_confirm", "quit", "menu_click")));
 
     /**

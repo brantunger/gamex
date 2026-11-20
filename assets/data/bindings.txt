@@ -30,6 +30,7 @@ weapon_next: Wheel-Down
 weapon_prev: Wheel-Up
 fire: Mouse-Left
 alt_fire: Mouse-Right
+minimap: M
 
 // On the menu screens. quit closes the game on a second press.
 menu_up: Up, W

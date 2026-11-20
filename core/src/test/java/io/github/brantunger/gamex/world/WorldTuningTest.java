@@ -53,6 +53,7 @@ class WorldTuningTest {
 
         assertEquals(0.1696f, t.hitMarkerTime, 0f);
         assertEquals(2.14f, t.toastTime, 0f);
+        assertEquals(13.5f, t.minimapRevealRadius, 0f);
 
         assertEquals(10, NoiseEvent.values().length, "a new noise needs its line here");
         assertNoise(t, NoiseEvent.BLAST_DETONATION, 12f, 5.94f);
@@ -95,6 +96,7 @@ class WorldTuningTest {
                 event.toString());
         }
         assertTrue(shipped.pickupMedkit >= 1f && shipped.pickupArmor >= 1f && shipped.pickupEnergyCell >= 1f);
+        assertTrue(shipped.minimapRevealRadius > 0f);
     }
 
     @Test
@@ -108,6 +110,7 @@ class WorldTuningTest {
             TestTuning.WEAPONS), 0f);
         assertEquals(11f, Pickup.baseAmount(Pickup.Kind.SHELLS, G,
             TestTuning.weaponsWith("scattergun.box_pickup_shells", "11")), 0f);
+        assertEquals(16f, TestTuning.worldWith("minimap.reveal_radius", "16").minimapRevealRadius, 0f);
     }
 
     private static String error(String key, String value) {
@@ -138,6 +141,7 @@ class WorldTuningTest {
     @Test
     void aMissingUnknownOrInvalidValueFailsNamingTheFileAndTheKey() {
         assertEquals("Missing 'grate.damage' key in data/world.txt", error("grate.damage", null));
+        assertEquals("Missing 'minimap.reveal_radius' key in data/world.txt", error("minimap.reveal_radius", null));
         assertEquals("Missing 'noise.pistol_hit' key in data/world.txt", error("noise.pistol_hit", null));
 
         String unknown = assertThrows(IllegalArgumentException.class, () -> WorldTuning.parse(
@@ -150,6 +154,7 @@ class WorldTuningTest {
             {"canister.self_damage_scale", "-0.5"},
             {"grate.damage", "-8"}, {"grate.interval", "0"}, {"grate.clearance_height", "-0.1"},
             {"feedback.hit_marker_time", "0"}, {"feedback.toast_time", "-2"},
+            {"minimap.reveal_radius", "0"}, {"minimap.reveal_radius", "-4"}, {"minimap.reveal_radius", "near"},
             {"noise.pistol_shot", "9"}, {"noise.pistol_shot", "9, 4.5, 1"}, {"noise.pistol_shot", "-9, 4.5"},
             {"noise.rail_hit", "7, -4"}, {"noise.canister_explosion", "far, near"},
         }) {

@@ -20,13 +20,17 @@ import io.github.brantunger.gamex.player.DifficultyTuning;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponTuning;
+import io.github.brantunger.gamex.render.AssetPreparer;
 import io.github.brantunger.gamex.render.Palettes;
 import io.github.brantunger.gamex.render.ProceduralTextures;
 import io.github.brantunger.gamex.render.RenderSettings;
 import io.github.brantunger.gamex.render.ViewmodelRenderer;
 import io.github.brantunger.gamex.render.WallTextures;
 import io.github.brantunger.gamex.render.WorldRenderer;
+import io.github.brantunger.gamex.settings.AsyncKeyValueStore;
 import io.github.brantunger.gamex.settings.GameSettings;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import io.github.brantunger.gamex.settings.GdxPreferencesStore;
 import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
@@ -59,6 +63,10 @@ public class MainGame extends ApplicationAdapter {
     KeyValueStore settingsStore;
     GameSettings settings;
     private SaveData saveData;
+    private ExecutorService workerPool;
+    private ExecutorService ioExecutor;
+    private AsyncKeyValueStore asyncSettingsStore;
+    private AsyncKeyValueStore asyncSaveStore;
     private MenuState menuState;
     private GameSimulation simulation;
     /** The enemy balance, read from {@code assets/data/} once in {@link #create()}. */
@@ -200,9 +208,14 @@ public class MainGame extends ApplicationAdapter {
                 strings);
             simulation = scene.createSimulation(enemyTuning, difficultyTuning, weaponTuning, worldTuning);
         } else {
-            settingsStore = new GdxPreferencesStore(Gdx.app.getPreferences(GameSettings.PREFERENCES_NAME));
+            ioExecutor = AsyncKeyValueStore.newIoExecutor();
+            asyncSettingsStore = new AsyncKeyValueStore(
+                new GdxPreferencesStore(Gdx.app.getPreferences(GameSettings.PREFERENCES_NAME)), ioExecutor, false);
+            settingsStore = asyncSettingsStore;
             settings = GameSettings.load(settingsStore, settingsDefaults);
-            saveData = new SaveData(new GdxPreferencesStore(Gdx.app.getPreferences(SaveData.PREFERENCES_NAME)));
+            asyncSaveStore = new AsyncKeyValueStore(
+                new GdxPreferencesStore(Gdx.app.getPreferences(SaveData.PREFERENCES_NAME)), ioExecutor, false);
+            saveData = new SaveData(asyncSaveStore);
             menuState = new MenuState(settings, saveData, MenuState.Screen.TITLE, difficultyTuning, weaponTuning,
                 strings);
             Levels.Stage initialStage = menuState.getActiveStage();
@@ -210,19 +223,27 @@ public class MainGame extends ApplicationAdapter {
                 initialStage.completeOnAllTargets, enemyTuning, difficultyTuning, weaponTuning, worldTuning);
             simulationPlayed = false;
             log.info("Loaded settings: sensitivity {}, invert Y {}, field of view {}, view bob {}, volume {},"
-                + " fullscreen {}", settings.getMouseSensitivity(), settings.isInvertY(), settings.getFov(),
-                settings.isViewBob(), settings.getMasterVolume(), settings.isFullscreen());
+                + " fullscreen {}, minimap {}", settings.getMouseSensitivity(), settings.isInvertY(),
+                settings.getFov(), settings.isViewBob(), settings.getMasterVolume(), settings.isFullscreen(),
+                settings.isMinimap());
             log.info("Loaded progress: saved run {}, unlocked stage index {}", saveData.hasSavedRun(),
                 saveData.getUnlockedStageIndex());
             applyStartupDisplayMode(settings);
         }
 
-        textures = new ProceduralTextures(wallTextures);
-        worldRenderer = new WorldRenderer(simulation.map, textures, palettes.world, renderSettings, windowDefaults,
-            settingsDefaults);
-        viewmodelRenderer = new ViewmodelRenderer(textures, palettes, windowDefaults);
+        workerPool = AssetPreparer.newWorkerPool();
+        AssetPreparer.StartupBatch startupBatch = AssetPreparer.prepareStartup(wallTextures, palettes, workerPool);
+        try {
+            soundManager = new SoundManager(demoRun != null, soundVolumes);
+            textures = new ProceduralTextures(wallTextures, startupBatch.awaitTextures());
+            worldRenderer = new WorldRenderer(simulation.map, textures, palettes.world, renderSettings, windowDefaults,
+                settingsDefaults, startupBatch.awaitWorldModels(), workerPool);
+            viewmodelRenderer = new ViewmodelRenderer(textures, palettes, windowDefaults,
+                startupBatch.awaitViewmodels());
+        } finally {
+            startupBatch.dispose();
+        }
         hudRenderer = new HudRenderer(textures, font, strings, windowDefaults);
-        soundManager = new SoundManager(demoRun != null, soundVolumes);
         if (demoRun == null) controller = new InputController(menuState, settings, bindings);
         syncDisplayViewport();
         log.info("Game created at {}x{}, fullscreen {}", Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
@@ -404,6 +425,7 @@ public class MainGame extends ApplicationAdapter {
                 simulation = new GameSimulation(stage.map, loadout, stage.completeOnAllTargets, enemyTuning,
                     difficultyTuning, weaponTuning, worldTuning);
                 simulationPlayed = true;
+                worldRenderer.preloadWardenIfNeeded(simulation.enemies);
                 worldRenderer.setMap(simulation.map);
                 deathTimer = 0f;
                 controller.resetCaptureForStageLaunch();
@@ -412,6 +434,9 @@ public class MainGame extends ApplicationAdapter {
             case APPLY_DISPLAY:
                 saveSettingsQuietly(settings, settingsStore);
                 applyDisplayMode(settings.isFullscreen());
+                break;
+            case SAVE_SETTINGS:
+                saveSettingsQuietly(settings, settingsStore);
                 break;
             case QUIT:
                 log.info("Quit chosen from the menu");
@@ -534,7 +559,10 @@ public class MainGame extends ApplicationAdapter {
         log.info("Shutting down");
         // create() may have failed part-way, so any of these can still be null.
         disposeResources(settings, settingsStore, demoRun != null,
-            soundManager, worldRenderer, viewmodelRenderer, hudRenderer, textures);
+            soundManager, worldRenderer, viewmodelRenderer, hudRenderer, textures,
+            asyncSettingsStore, asyncSaveStore,
+            () -> shutdownExecutor(ioExecutor),
+            () -> shutdownExecutor(workerPool));
     }
 
     static void disposeResources(GameSettings settings, KeyValueStore settingsStore, boolean skipSettingsSave,
@@ -545,6 +573,20 @@ public class MainGame extends ApplicationAdapter {
         if (resources == null) return;
         for (Disposable resource : resources) {
             disposeQuietly(resource);
+        }
+    }
+
+    static void shutdownExecutor(ExecutorService pool) {
+        if (pool == null) return;
+        pool.shutdown();
+        try {
+            if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("Timed out waiting for background worker pool shutdown");
+                pool.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            pool.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

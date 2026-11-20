@@ -30,6 +30,9 @@ grate.clearance_height: 0.06
 feedback.hit_marker_time: 0.16
 feedback.toast_time: 2.0
 
+// How far around the player line-of-sight reveals the minimap, in world units.
+minimap.reveal_radius: 12
+
 // Noise. Each line is two distances:
 //   noise.event: line-of-sight range, muffled range
 // The noise wakes the dormant enemies within the first distance that have a line of sight to where it was made,

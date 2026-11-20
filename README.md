@@ -57,6 +57,7 @@ While playing:
 | Right mouse button | Pistol: charge Energy Blast / Scattergun: 2-shell Double-Blast / Rail Lance: 1.8x Tactical Zoom Optic |
 | `1` / `2` / `3` / `Q` / Scroll | Select Pistol (`1`), Combat Scattergun (`2`), Rail Lance (`3`), quick-swap last weapon (`Q`), or cycle owned weapons (`Mouse Wheel`) |
 | `E` | Open unlocked bulkheads, unlock matching keycard doors, or override Security Consoles |
+| `M` | Toggle the top-down minimap on or off (persisted in Settings) |
 | `R` | Quick-restart the current stage from your entry state |
 | `Esc` | Open the pause menu and free the cursor; `Esc` again resumes |
 
@@ -161,8 +162,8 @@ is a hit if it damages at least one hostile, ring board or canister, however man
 targets a beam pierces. A charged blast becomes a hit only when its explosion damages one of them. The Training Range awards
 no medals.
 
-**Settings.** The settings are mouse sensitivity, inverted look, field of view, view bob, master volume and
-fullscreen. They are saved between runs; what each is before you change it, and the range and step of each
+**Settings.** The settings are mouse sensitivity, inverted look, field of view, view bob, master volume,
+fullscreen and minimap. They are saved between runs; what each is before you change it, and the range and step of each
 row, come from `assets/data/settings.txt` (see [Tuning files](#tuning-files)). Opened from the Title, the Settings screen keeps the Title's moving
 backdrop; opened from the pause menu, it stays over the paused game.
 
@@ -232,7 +233,7 @@ The game keeps two files in the `.prefs` folder of your home directory: `~/.pref
 
 | File | Holds |
 | --- | --- |
-| `io.github.brantunger.gamex.settings` | The six settings |
+| `io.github.brantunger.gamex.settings` | The seven settings |
 | `io.github.brantunger.gamex.save` | The saved campaign run, the stages unlocked, and the best time, best rank and medals of each stage and difficulty |
 
 To reset, close the game and delete the file: without `.settings` the settings go back to their defaults, and
@@ -426,10 +427,12 @@ The `tools` programs print their own output and show only the warnings and error
   - `audio`: headless sound-event cues (`SoundEvent`) and internal `.wav` asset loading with 3D distance/pan OpenAL
     playback (`SoundManager`), at the volume `assets/data/sound-volumes.txt` gives each cue (`SoundVolumes`).
   - `world`: the level grid (`GameMap`), `.map` and `campaign.txt` level/stage asset loading (`Levels`, which also finds a campaign stage by its id with `Levels.stage(id)`), collision with walls, targets and enemies,
-    hitscan ray casting, grid BFS pathfinding (`Pathfinder`), map geometry, targets, hostile enemies (`Enemy`), pickups
+    hitscan ray casting, grid BFS pathfinding (`Pathfinder`), line-of-sight fog-of-war exploration
+    (`MapExploration`), map geometry, targets, hostile enemies (`Enemy`), pickups
     (`Pickup`), world object models (`WorldModels`), effects, the enemy and Warden values read from
     `assets/data/enemies.txt` and `assets/data/warden.txt` (`EnemyTuning`, `WardenTuning`), and the pickup, canister,
-    shock grate, feedback-time and noise values read from `assets/data/world.txt` (`WorldTuning`).
+    shock grate, feedback-time, minimap reveal-radius and noise values read from `assets/data/world.txt`
+    (`WorldTuning`).
   - `player`: the player's position, view angles, movement and dash, health and armor, the per-frame input record,
     the difficulty levels (`Difficulty`), their multipliers read from `assets/data/difficulty.txt`
     (`DifficultyTuning`) and the health, armor, weapons and ammunition a stage is entered with (`PlayerLoadout`, whose `forStage` gives
@@ -445,10 +448,11 @@ The `tools` programs print their own output and show only the warnings and error
     a headless forward-kinematics rig evaluator (`ModelRig`), vertex packing (`ModelVertices`, including 16-bit
     indexed deduplication), and the material and accent colours of a model read from a palette file
     (`ModelPalette`). None use graphics types.
-  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), the reading of the shader files in `assets/shaders/` (`Shaders`), the textures read from `assets/textures/` (`ProceduralTextures`, with the wall types' textures named by `assets/data/walls.txt` through `WallTextures`), the five palettes of the world models, the weapons and the hand loaded together (`Palettes`), and the clip range, fog, halos and per-kind accents read from `assets/data/render.txt` (`RenderSettings`).
-  - `hud`: the 2D overlay (crosshair and hit markers, health, armor and energy bars, charge bar, status texts and
-    the menu screens), the screen and menu state machine behind those screens (`MenuState`, which uses no graphics
-    types and reads no input device), the pixel font, whose glyphs are loaded from `assets/data/pixel-font.txt`
+  - `render`: the 3D view (`WorldRenderer` with `u_normalMatrix` and `u_accentColour` shader uniforms), the pass that draws the weapon and hand over it (`ViewmodelRenderer`), the Warden's skinned glTF model drawn with gdx-gltf's PBR shader (`WardenModel`) and the choice of its animation (`WardenPose`), concurrent off-thread startup texture decoding and OBJ mesh/rig packing (`AssetPreparer`) plus stage-triggered parallel glTF image preloading (`WardenPreloader`), the reading of the shader files in `assets/shaders/` (`Shaders`), the textures read from `assets/textures/` (`ProceduralTextures`, with the wall types' textures named by `assets/data/walls.txt` through `WallTextures`), the five palettes of the world models, the weapons and the hand loaded together (`Palettes`), and the clip range, fog, halos and per-kind accents read from `assets/data/render.txt` (`RenderSettings`).
+  - `hud`: the 2D overlay (`HudRenderer`: crosshair and hit markers, health, armor and energy bars, charge bar, status
+    texts, north-up top-right minimap via `MinimapRenderer`, and the menu screens), the screen and menu state
+    machine behind those screens (`MenuState`, which uses no graphics types and reads no input device), the pixel
+    font, whose glyphs are loaded from `assets/data/pixel-font.txt`
     (`PixelFont`), the check that text read from a file can be drawn with it (`GlyphCheck`), and the text of the
     menus and the HUD, loaded from `assets/data/strings.txt` (`UiStrings`): the list of its lines and their
     placeholders (`UiText`), the parsing and filling of a line (`TextTemplate`), the key names and tuning values a
@@ -456,7 +460,8 @@ The `tools` programs print their own output and show only the warnings and error
     start-up that every line fits where it is drawn (`TextFit`).
   - `settings`: the player's settings (`GameSettings`), the saved campaign run and best records (`SaveData`), the
     medals (`Medal`), what a finished run hands to the results screen (`RunStats`), and the key-value store they are
-    kept in: libGDX preferences in the game, a map in tests and debug runs. Also the defaults, ranges and steps of
+    kept in: libGDX preferences wrapped in `AsyncKeyValueStore` (an in-memory write-through cache with a sequential
+    `gamex-io` background writer) in the game, a map in tests and debug runs. Also the defaults, ranges and steps of
     the settings, loaded from `assets/data/settings.txt` (`SettingsDefaults`), and the default window size, loaded
     from `assets/data/window.txt` (`WindowDefaults`).
   - `input`: reads the keyboard and mouse for play and for the menus (`InputController`), adds up mouse movement
@@ -519,7 +524,8 @@ in the format the stage headers in `assets/levels/*.map` already use. The loader
   `assets/levels/03-security-hub.map` quotes its `rail.zoom_factor` with a `{rail.zoom_factor}` placeholder
   ("1.8X ZOOM OPTIC"), so the text follows the value.
 - `world.txt`: what the health, armor and energy pickups give, the canister's explosion, the shock grates, how
-  long the hit marker and a pickup toast show, and the table of how far each noise is heard.
+  long the hit marker and a pickup toast show, how far line-of-sight reveals the minimap, and the table of how far
+  each noise is heard.
 - `palette-world.txt`, `palette-pistol.txt`, `palette-scattergun.txt`, `palette-rail-lance.txt` and
   `palette-hand.txt`: the colours of the world models, of each weapon and of the hand, one `material.<name>` line
   for each material and one `accent.<name>` line for each accent colour, as `red, green, blue, gloss` from 0 to 1.
@@ -531,9 +537,10 @@ in the format the stage headers in `assets/levels/*.map` already use. The loader
   text shows (see [Key bindings](#key-bindings-bindingstxt)).
 - `settings.txt`: what each setting is until the game first saves the settings, and the least, the most and the step
   of the mouse sensitivity, the field of view and the master volume on the Settings screen. The player's own choices
-  stay in the saved preferences (see [Saved settings and progress](#saved-settings-and-progress)): all six settings
-  are saved, changed or not, when the player leaves the Settings screen, switches fullscreen or closes the game (a
-  screenshot run saves nothing), so a default changed in the file reaches only a player with nothing saved. A saved
+  stay in the saved preferences (see [Saved settings and progress](#saved-settings-and-progress)): all seven settings
+  are saved, changed or not, when the player leaves the Settings screen, toggles the minimap during play, switches
+  fullscreen or closes the game (a screenshot run saves nothing), so a default changed in the file reaches only a
+  player with nothing saved. A saved
   value outside a range that was narrowed is brought back into it when it is read. A least value above the most, a
   default outside its range, a step below the precision a setting is kept to (0.01 for sensitivity and volume, 1 for
   the field of view) and a least value, a most value or a default finer than that precision (a field of view of 72.5,
@@ -609,13 +616,14 @@ how many characters it is too long:
 
 | Line | Room |
 |---|---|
-| The Title footer | A 4:3 window: 120 characters. |
+| The Title footer | A 4:3 window: 126 characters. |
 | A toast, the pickup toasts among them | The room kept around the centre of the window: 38 characters. |
 | The objective line, `hud.objective` around the objective's words | From the status column to that room: 40 characters. |
 | An interaction prompt | The narrowest window: 73 characters. A blocked bulkhead's line is also a toast. |
 | A menu option, with the Select Stage, Select Difficulty and Settings rows | Its row while highlighted: 42 characters. |
 | The title and captions of each menu screen, the quit prompt, the Settings help line, the medal line of Select Stage, the lines of the results screen, and a stage's title on the Briefing and results screens | Their panel, less a margin on each side. |
 | The label over the boss health bar | The bar's panel. |
+| The minimap header label (`hud.minimap_north`) | The minimap header strip: 25 characters. |
 | A briefing line of a stage file | The briefing's box: 58 characters. The box holds three lines, and a stage with more stops the game too. |
 
 A line that takes values is measured with the longest it is given room for: every stage title and every label,
@@ -643,9 +651,9 @@ fire: Mouse-Left
 ```
 
 - The actions are `pause`, `retry`, `move_forward`, `move_back`, `move_left`, `move_right`, `dash`, `jump`,
-  `interact`, `weapon_1`, `weapon_2`, `weapon_3`, `quick_swap`, `weapon_next`, `weapon_prev`, `fire`, `alt_fire`
-  (during play) and `menu_up`, `menu_down`, `menu_left`, `menu_right`, `menu_confirm`, `quit`, `menu_click` (on the
-  menu screens); `pause` and `retry` act in both. What an action does, and whether it acts while held or once per
+  `interact`, `weapon_1`, `weapon_2`, `weapon_3`, `quick_swap`, `weapon_next`, `weapon_prev`, `fire`, `alt_fire`,
+  `minimap` (during play) and `menu_up`, `menu_down`, `menu_left`, `menu_right`, `menu_confirm`, `quit`,
+  `menu_click` (on the menu screens); `pause` and `retry` act in both. What an action does, and whether it acts while held or once per
   press, stays in code (`InputController`, the `Action` enum).
 - A key has the name libGDX gives it, and the case matters: `A` to `Z`, `0` to `9`, `Space`, `Enter`, `Escape`,
   `Tab`, `Up`, `Down`, `Left`, `Right`, `L-Shift`, `R-Shift`, `L-Ctrl`, `R-Ctrl`, `L-Alt`, `R-Alt`, `F1` to `F12`,
@@ -666,7 +674,7 @@ fire: Mouse-Left
   action changes all of them at the next start.
 - Longer key names make longer lines, and a line a key name makes too long for its place stops the game at start-up
   (see [Menu and HUD text](#menu-and-hud-text)): the message names the line and the actions whose key names it shows.
-  The Title footer is one centred line with room for 120 characters in a 4:3 window, and it has 85 with the shipped
+  The Title footer is one centred line with room for 126 characters in a 4:3 window, and it has 93 with the shipped
   keys; the briefing line of the Security Hub that names the alt-fire button has room for a key name of 14 characters
   with the shipped zoom factor, which is the longest name a key has (`Forward Delete`).
 
@@ -857,10 +865,10 @@ tuning, text and bindings of `assets/data` but the tests' own copy in `core/src/
 - `MainGame` (`MainGameViewportTest`): the GL viewport on resize and on HiDPI displays, the windowed size to fall
   back to (the one it is given, or that of the window defaults when it is given none), a forced windowed start, and
   which screens draw the backdrop.
-- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit, the `loadout` header and finding a stage by its id), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
+- `world`: layout and `.map`/manifest parsing (`GameMapTest`, `LevelsTest`, including doors, keycards, consoles, pickups, enemies, hazards and exit, the `loadout` header and finding a stage by its id), the first level (the spawn is clear of walls and every target can be reached), the Training Range and all six campaign stages (progression-aware reachability of targets, enemies, pickups, consoles and exit), 360-degree line-of-sight fog-of-war exploration (`MapExplorationTest`), collision, standard & piercing hitscan (`HitscanTest`), grid BFS pathfinding (`PathfinderTest`), enemy AI (`EnemyTest`), enemies rounding doorway corners, canisters and turrets and guards keeping off Shock Grates (`EnemyMovementTest`), map geometry, targets
   and the shipped world/enemy `.obj` models (closed outward manifolds matching collision dimensions; pickups stand on
   the floor and fit their pickup radius).
-- `render`: the Warden model (`WardenModelTest` reads the JSON part of `enemy-warden.glb`: its four animations, its
+- `render`: concurrent CPU startup asset preparation (`AssetPreparerTest`), parallel Warden glTF image preloading and cancellation (`WardenPreloaderTest`), and the Warden model (`WardenModelTest` reads the JSON part of `enemy-warden.glb`: its four animations, its
   one 28-joint skinned mesh, its height against the Warden's collision height, and the length of its combo clip
   against `combo_time` in `warden.txt`; and checks that only a stage with a live Warden loads the model, and the Warden's
   glow), and which animation each enemy state shows and how fast it plays for the feet not to slide
@@ -874,16 +882,17 @@ tuning, text and bindings of `assets/data` but the tests' own copy in `core/src/
   and refusal on low energy), and the jump (its arc, the mid-air dash, and the jump buffer at low frame rates).
 - `hud`: the menu screens, the saved run, quick restart and the `Q` quit prompt (`MenuStateTest`,
   `MenuStateFlowTest`), the Select Stage rows and the lines of the results screen, including that they fit their
-  panels (`StageRecordsDisplayTest`), when the combat HUD is shown and the size the overlay takes from the window
-  defaults until the window reports its own (`HudRendererTest`), and the pixel font
-  (`PixelFontTest`): each block of a glyph file is the glyph of its own character, the shipped `pixel-font.txt`
+  panels (`StageRecordsDisplayTest`), when the combat HUD and minimap are shown and the size the overlay takes from
+  the window defaults until the window reports its own (`HudRendererTest`), minimap layout bounds, north-up
+  coordinate mapping, FOV cone aspect/zoom calculation and 2D raycast bounds (`MinimapRendererTest`), and the pixel
+  font (`PixelFontTest`): each block of a glyph file is the glyph of its own character, the shipped `pixel-font.txt`
   loads, an altered or added glyph changes what is drawn, an edited loose copy is read with no rebuild, and a
   broken file fails naming the file, the line and the glyph. The text of the menus and the HUD: each line is shown
   where its key belongs, an edited line changes what is shown and nothing else, the Select Difficulty rows are made
   from the loaded multipliers, the option rows fit their box, and a broken line fails naming the file, the key and
   the line (`UiStringsTest`); the shipped `strings.txt` loads with the shipped font, bindings and tuning and every
-  line of it passes the start-up's fit check (`ShippedTextTest`); the placeholder rules of a line (`TextTemplateTest`); how
-  numbers and times are written
+  line of it passes the start-up's fit check (`ShippedTextTest`); the placeholder rules of a line (`TextTemplateTest`);
+  how numbers and times are written
   (`TextFormatTest`); and every menu flow run again with every line reworded (`RenamedLabelsFlowTest`).
   `KeyHintsTest`: every key name on screen is the one the bindings give, and other keys in the bindings file
   change the Title footer, the HUD captions, the prompts, the quit and retry lines, the
@@ -894,10 +903,11 @@ tuning, text and bindings of `assets/data` but the tests' own copy in `core/src/
   fourth briefing line stops it naming the stage and its file, and `MainGame` runs the check when it has loaded the
   text.
 - `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, the saved run,
-  best times and ranks (`GameSettingsAndSaveTest`), the medals (`MedalTest`), and damaged or hand-edited settings and
-  save values (`CorruptPrefsTest`). `SettingsDefaultsTest`: each key of a settings file sets its own default, least
-  value, most value or step, the shipped `settings.txt` loads and new settings start at its defaults, edited
-  ones reach the settings and the Settings rows, a stored value outside a narrowed
+  best times and ranks (`GameSettingsAndSaveTest`), the medals (`MedalTest`), damaged or hand-edited settings and
+  save values (`CorruptPrefsTest`), and non-blocking cached reads, ordered background disk flushes, shutdown draining,
+  and fault isolation (`AsyncKeyValueStoreTest`). `SettingsDefaultsTest`: each key of a settings file sets its own
+  default, least value, most value or step, the shipped `settings.txt` loads and new settings start at its defaults,
+  edited ones reach the settings and the Settings rows, a stored value outside a narrowed
   range is clamped, and a range, default or step that cannot work fails naming the file and the key, as does a
   least value, a most value or a default finer than the setting is kept.
   `WindowDefaultsTest`: the size is the one the file holds, the shipped `window.txt` loads, and a file without a
@@ -958,7 +968,7 @@ tuning, text and bindings of `assets/data` but the tests' own copy in `core/src/
   and an energy meter too small for a dash or for the smallest blast (`WeaponTuningTest`, `WorldTuningTest`).
   `TunedWeaponSimulationTest` plays changed values through the whole simulation: shot damage and range, recoil
   kicks, the blast, how far each kind of shot is heard, pickups, grates and canisters, the toast and hit-marker
-  times, the ammunition caps and the starter ammunition.
+  times, the minimap reveal radius, the ammunition caps and the starter ammunition.
 - The `loadout` header: every campaign stage starts with the weapons its own file lists, the header sets the
   loadout wherever the stage stands in a campaign, a stage without the header starts with the pistol alone, and
   which weapon is in hand (`StageLoadoutTest`); `StageLoadoutFileTest` reads the shipped and edited stage files through

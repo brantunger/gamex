@@ -148,7 +148,10 @@ public final class DemoScene {
                 if (!keptEnemies.contains(enemy.getKind())) enemy.damage(Float.MAX_VALUE);
             }
         }
-        if (position != null) simulation.player.position.set(position[0], position[1]);
+        if (position != null) {
+            simulation.player.position.set(position[0], position[1]);
+            simulation.resetExploration();
+        }
         if (look != null) simulation.player.look(look[0], look[1]);
         return simulation;
     }

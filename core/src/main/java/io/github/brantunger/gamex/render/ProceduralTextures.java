@@ -7,7 +7,9 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -70,20 +72,32 @@ public final class ProceduralTextures implements Disposable {
      * @throws RuntimeException if a texture file is missing or cannot be decoded
      */
     public ProceduralTextures(WallTextures wallTextures) {
+        this(wallTextures, null);
+    }
+
+    /**
+     * Uploads every texture file into GPU textures (reusing any pre-decoded CPU pixmaps in {@code predecoded}) and
+     * makes {@link #white}. Needs a GL context.
+     * @param wallTextures which texture file covers each wall type
+     * @param predecoded optional pre-decoded pixmaps from {@link AssetPreparer}, consumed and disposed here
+     * @throws RuntimeException if a texture file is missing or cannot be decoded
+     */
+    public ProceduralTextures(WallTextures wallTextures, AssetPreparer.PreparedTextures predecoded) {
         if (wallTextures == null) {
+            if (predecoded != null) predecoded.dispose();
             throw new IllegalArgumentException("wallTextures must not be null");
         }
         this.wallTextures = wallTextures;
         try {
-            wallsByFile = loadEach(wallTextures.files(), this::load);
-            floor = load(FLOOR_FILE);
-            ceiling = load(CEILING_FILE);
-            muzzleFlash = load(MUZZLE_FLASH_FILE);
-            scorch = load(SCORCH_FILE);
-            spark = load(SPARK_FILE);
-            orb = upload(read(ORB_FILE), Texture.TextureFilter.Linear);
-            explosion = load(EXPLOSION_FILE);
-            exitPad = load(EXIT_PAD_FILE);
+            wallsByFile = loadEach(wallTextures.files(), file -> load(file, predecoded));
+            floor = load(FLOOR_FILE, predecoded);
+            ceiling = load(CEILING_FILE, predecoded);
+            muzzleFlash = load(MUZZLE_FLASH_FILE, predecoded);
+            scorch = load(SCORCH_FILE, predecoded);
+            spark = load(SPARK_FILE, predecoded);
+            orb = upload(read(ORB_FILE, predecoded), Texture.TextureFilter.Linear);
+            explosion = load(EXPLOSION_FILE, predecoded);
+            exitPad = load(EXIT_PAD_FILE, predecoded);
             white = upload(paintWhite());
         } catch (Throwable t) {
             try {
@@ -92,7 +106,25 @@ public final class ProceduralTextures implements Disposable {
                 t.addSuppressed(suppressed);
             }
             throw t;
+        } finally {
+            if (predecoded != null) {
+                predecoded.dispose();
+            }
         }
+    }
+
+    /** @return ordered distinct texture file names under {@code assets/textures/} needed at startup. */
+    static Set<String> allFiles(WallTextures wallTextures) {
+        Set<String> files = new LinkedHashSet<>(wallTextures.files());
+        files.add(FLOOR_FILE);
+        files.add(CEILING_FILE);
+        files.add(MUZZLE_FLASH_FILE);
+        files.add(SCORCH_FILE);
+        files.add(SPARK_FILE);
+        files.add(ORB_FILE);
+        files.add(EXPLOSION_FILE);
+        files.add(EXIT_PAD_FILE);
+        return files;
     }
 
     /**
@@ -141,12 +173,20 @@ public final class ProceduralTextures implements Disposable {
     }
 
     /** Reads a file of {@code assets/textures/} into a nearest-filtered texture. */
-    private Texture load(String file) {
-        return upload(read(file));
+    private Texture load(String file, AssetPreparer.PreparedTextures predecoded) {
+        return upload(read(file, predecoded));
+    }
+
+    private static Pixmap read(String file, AssetPreparer.PreparedTextures predecoded) {
+        if (predecoded != null) {
+            Pixmap pixmap = predecoded.take(file);
+            if (pixmap != null) return pixmap;
+        }
+        return read(file);
     }
 
     /** Decodes a file of {@code assets/textures/}: the loose file under the working directory, else the classpath. */
-    private static Pixmap read(String file) {
+    static Pixmap read(String file) {
         return new Pixmap(Gdx.files.internal(TEXTURES_DIR + "/" + file));
     }
 

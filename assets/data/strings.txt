@@ -5,8 +5,8 @@
 // Placeholders are names in braces:
 //   {key:action}        the name of the key bound to an action: pause, retry, move_forward, move_back,
 //                       move_left, move_right, dash, jump, interact, weapon_1, weapon_2, weapon_3, quick_swap,
-//                       weapon_next, weapon_prev, fire, alt_fire, menu_up, menu_down, menu_left, menu_right,
-//                       menu_confirm, quit, menu_click
+//                       weapon_next, weapon_prev, fire, alt_fire, minimap, menu_up, menu_down, menu_left,
+//                       menu_right, menu_confirm, quit, menu_click
 //   {rail.zoom_factor}  the value of that key in data/weapons.txt
 //   any other name      a value the game fills in. Each line has its own fixed set, the ones it uses below: a
 //                       line must keep every one of them and can take no others.
@@ -52,6 +52,7 @@ menu.settings.fov: FIELD OF VIEW: < {value} >
 menu.settings.view_bob: VIEW BOB: < {value} >
 menu.settings.volume: MASTER VOLUME: < {value} >
 menu.settings.fullscreen: FULLSCREEN: < {value} >
+menu.settings.minimap: MINIMAP: < {value} >
 menu.settings.on: ON
 menu.settings.off: OFF
 
@@ -74,11 +75,12 @@ hud.time: TIME {time}
 hud.objective: OBJECTIVE: {text}
 hud.boss: WARDEN
 hud.boss_overdrive: WARDEN // OVERDRIVE
+hud.minimap_north: N
 
 // Screen titles and captions
 screen.title.name: GAMEX
 screen.title.subtitle: SECTOR BREACH // TACTICAL FPS
-screen.title.footer: {key:move_forward}{key:move_left}{key:move_back}{key:move_right}: MOVE  {key:jump}: JUMP  {key:dash}: DASH  {key:interact}: USE  {key:weapon_1}-{key:weapon_3}/{key:quick_swap}/{key:weapon_next}: WEAPON  {key:fire}/{key:alt_fire}: FIRE/ALT
+screen.title.footer: {key:move_forward}{key:move_left}{key:move_back}{key:move_right}: MOVE  {key:jump}: JUMP  {key:dash}: DASH  {key:interact}: USE  {key:weapon_1}-{key:weapon_3}/{key:quick_swap}/{key:weapon_next}: WEAPON  {key:fire}/{key:alt_fire}: FIRE/ALT  {key:minimap}: MAP
 screen.stage_select.title: SELECT STAGE
 screen.stage_select.hint: CHOOSE ANY UNLOCKED STAGE TO DEPLOY
 screen.difficulty.title: SELECT DIFFICULTY

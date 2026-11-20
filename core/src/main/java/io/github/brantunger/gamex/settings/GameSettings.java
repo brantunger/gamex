@@ -20,6 +20,7 @@ public final class GameSettings {
     private static final String KEY_VIEW_BOB = "viewBob";
     private static final String KEY_MASTER_VOLUME = "masterVolume";
     private static final String KEY_FULLSCREEN = "fullscreen";
+    private static final String KEY_MINIMAP = "minimap";
 
     private final SettingsDefaults defaults;
     private float mouseSensitivity;
@@ -28,6 +29,7 @@ public final class GameSettings {
     private boolean viewBob;
     private float masterVolume;
     private boolean fullscreen;
+    private boolean minimap;
 
     /**
      * Builds the default settings with the defaults file read here and now. This is for tests only: the game loads
@@ -51,6 +53,7 @@ public final class GameSettings {
         viewBob = defaults.viewBob;
         setMasterVolume(defaults.volume.initial);
         fullscreen = defaults.fullscreen;
+        minimap = defaults.minimap;
     }
 
     /**
@@ -68,6 +71,7 @@ public final class GameSettings {
         settings.setViewBob(store.getBoolean(KEY_VIEW_BOB, settings.viewBob));
         settings.setMasterVolume(store.getFloat(KEY_MASTER_VOLUME, settings.masterVolume));
         settings.setFullscreen(store.getBoolean(KEY_FULLSCREEN, settings.fullscreen));
+        settings.setMinimap(store.getBoolean(KEY_MINIMAP, settings.minimap));
         return settings;
     }
 
@@ -85,9 +89,10 @@ public final class GameSettings {
         store.putBoolean(KEY_VIEW_BOB, viewBob);
         store.putFloat(KEY_MASTER_VOLUME, masterVolume);
         store.putBoolean(KEY_FULLSCREEN, fullscreen);
+        store.putBoolean(KEY_MINIMAP, minimap);
         store.flush();
         log.debug("Saved settings: sensitivity {}, invert Y {}, field of view {}, view bob {}, volume {},"
-            + " fullscreen {}", mouseSensitivity, invertY, fov, viewBob, masterVolume, fullscreen);
+            + " fullscreen {}, minimap {}", mouseSensitivity, invertY, fov, viewBob, masterVolume, fullscreen, minimap);
     }
 
     public float getMouseSensitivity() {
@@ -148,5 +153,13 @@ public final class GameSettings {
 
     public void setFullscreen(boolean fullscreen) {
         this.fullscreen = fullscreen;
+    }
+
+    public boolean isMinimap() {
+        return minimap;
+    }
+
+    public void setMinimap(boolean minimap) {
+        this.minimap = minimap;
     }
 }

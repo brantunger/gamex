@@ -95,8 +95,8 @@ class TextFitTest {
         // A character is 4 font pixels wide with its gap, less the gap after the last one.
         // Toast: 452 around the centre less 14 on each side, at 2.8.
         assertRoomFor("toast.out_of_shells", 38, "a toast");
-        // Title footer: the 960 of a 4:3 window, at 2.0.
-        assertRoomFor("screen.title.footer", 120, "a 4:3 window");
+        // Title footer: the 960 of a 4:3 window, at 1.9.
+        assertRoomFor("screen.title.footer", 126, "a 4:3 window");
         // Interaction prompt: 720 less 10 on each side, at 2.4.
         assertRoomFor("prompt.open_bulkhead", 73, "an interaction prompt");
         // A blocked bulkhead's line is a toast as well as a prompt, and the toast is the narrower.
@@ -122,6 +122,8 @@ class TextFitTest {
         // The boss label: the bar's 380 and 12 on each side, at 2.3.
         assertRoomFor("hud.boss", 44, "the boss bar's panel");
         assertRoomFor("hud.boss_overdrive", 44, "the boss bar's panel");
+        // The minimap header: 168 less 4 on each side, at 1.6.
+        assertRoomFor("hud.minimap_north", 25, "the minimap header");
     }
 
     @Test
@@ -259,17 +261,17 @@ class TextFitTest {
             + "is 592.8 HUD units wide and 580 fit; it shows the key name of 'alt_fire' (FORWARD DELETE) from "
             + "data/bindings.txt, and a shorter key name there shortens it", rejected(remapped));
 
-        // The Title footer names twelve actions; numpad keys for seven of them push it past a 4:3 window.
+        // The Title footer names thirteen actions; numpad keys for seven of them push it past a 4:3 window.
         UiStrings numpad = TestTuning.stringsFor(TestTuning.bindingsWith("move_forward", "Numpad 8", "move_left",
             "Numpad 4", "move_back", "Numpad 5", "move_right", "Numpad 6", "weapon_1", "Numpad 1", "weapon_3",
             "Numpad 3", "quick_swap", "Numpad 0"));
         String footer = rejected(numpad);
         assertTrue(footer.startsWith("Invalid 'screen.title.footer' in data/strings.txt at line "
-            + lineOf("screen.title.footer") + ": too long for a 4:3 window by 14 characters: "
+            + lineOf("screen.title.footer") + ": too long for a 4:3 window by 16 characters: "
             + "\"NUMPAD 8NUMPAD 4NUMPAD 5NUMPAD 6: MOVE  SPACE: JUMP"), footer);
         assertTrue(footer.contains("; it shows the key names of 'move_forward' (NUMPAD 8), 'move_left' (NUMPAD 4), "),
             footer);
-        assertTrue(footer.endsWith("'alt_fire' (RMB) from data/bindings.txt, and a shorter key name there shortens "
+        assertTrue(footer.endsWith("'minimap' (M) from data/bindings.txt, and a shorter key name there shortens "
             + "it"), footer);
 
         // A long name that every line has room for is no error.

@@ -545,6 +545,14 @@ class MenuStateFlowTest {
         assertFalse(settings.isViewBob());
         assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(0), "a zero step does nothing");
         assertFalse(settings.isViewBob());
+        select(menu, OptionId.SET_MINIMAP);
+        assertTrue(settings.isMinimap());
+        assertEquals(MenuState.Command.NONE, menu.adjustHorizontal(1));
+        assertFalse(settings.isMinimap());
+        assertEquals(strings().format(UiText.MENU_SETTINGS_MINIMAP, strings().get(UiText.MENU_SETTINGS_OFF)),
+            menu.getSelectedOption().label);
+        assertEquals(MenuState.Command.NONE, menu.confirm(), "Enter on the row toggles minimap too");
+        assertTrue(settings.isMinimap());
 
         assertEquals(MenuState.Command.NONE, choose(menu, OptionId.BACK));
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());

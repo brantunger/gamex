@@ -12,6 +12,7 @@ grate.interval: 0.364
 grate.clearance_height: 0.063
 feedback.hit_marker_time: 0.1696
 feedback.toast_time: 2.14
+minimap.reveal_radius: 13.5
 noise.blast_detonation: 12, 5.94
 noise.console_override: 13, 8
 noise.pistol_shot: 10, 4.905

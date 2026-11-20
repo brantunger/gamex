@@ -35,6 +35,8 @@ import java.util.Locale;
  *       the tally show it: the panel they are drawn in, less {@link HudRenderer#PANEL_TEXT_MARGIN} on each side;
  *       </li>
  *   <li>the label over the boss health bar: the bar's panel;</li>
+ *   <li>the minimap header label: {@link MinimapRenderer#MAP_SIZE} less {@link MinimapRenderer#HEADER_PAD_X} on each
+ *       side;</li>
  *   <li>every briefing line of every stage: {@link HudRenderer#BRIEFING_LOG_WIDTH}. The box has room for
  *       {@link HudRenderer#BRIEFING_LINES} lines, and a stage with more stops the start too.</li>
  * </ul>
@@ -178,6 +180,7 @@ public final class TextFit {
         option(UiText.MENU_SETTINGS_VIEW_BOB, strings.format(UiText.MENU_SETTINGS_VIEW_BOB, onOff));
         option(UiText.MENU_SETTINGS_VOLUME, strings.format(UiText.MENU_SETTINGS_VOLUME, volume));
         option(UiText.MENU_SETTINGS_FULLSCREEN, strings.format(UiText.MENU_SETTINGS_FULLSCREEN, onOff));
+        option(UiText.MENU_SETTINGS_MINIMAP, strings.format(UiText.MENU_SETTINGS_MINIMAP, onOff));
     }
 
     private void option(UiText text, String label) {
@@ -189,6 +192,9 @@ public final class TextFit {
         float bossPanel = HudRenderer.BOSS_BAR_WIDTH + 2f * HudRenderer.BOSS_PANEL_PAD_X;
         fixed(UiText.HUD_BOSS, HudRenderer.BOSS_LABEL_PIXEL, bossPanel, "the boss bar's panel");
         fixed(UiText.HUD_BOSS_OVERDRIVE, HudRenderer.BOSS_LABEL_PIXEL, bossPanel, "the boss bar's panel");
+
+        float minimapHeader = MinimapRenderer.MAP_SIZE - 2f * MinimapRenderer.HEADER_PAD_X;
+        fixed(UiText.HUD_MINIMAP_NORTH, MinimapRenderer.NORTH_LABEL_PIXEL, minimapHeader, "the minimap header");
 
         float title = inPanel(HudRenderer.TITLE_PANEL_WIDTH);
         fixed(UiText.SCREEN_TITLE_NAME, HudRenderer.TITLE_NAME_PIXEL, title, "the Title panel");
