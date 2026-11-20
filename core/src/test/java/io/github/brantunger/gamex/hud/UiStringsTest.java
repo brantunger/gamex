@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.hud;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,16 +31,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Checks {@code assets/data/strings.txt}: that the shipped file shows the text the game held in code before the
- * text moved there, that an edited line changes what is shown and nothing else, and that a broken file stops the
- * load.
+ * Checks the text file of the menus and the HUD: that each line is shown where its key belongs, that an edited
+ * line changes what is shown and nothing else, and that a broken file stops the load. The shipped file is checked
+ * in {@link ShippedTextTest}.
  */
 class UiStringsTest {
 
     private static final UiStrings STRINGS = TestTuning.STRINGS;
 
     private static MenuState menu(UiStrings strings, SaveData save, MenuState.Screen screen) {
-        return new MenuState(new GameSettings(), save, screen, TestTuning.DIFFICULTY, TestTuning.WEAPONS, strings);
+        return new MenuState(TestTuning.settings(), save, screen, TestTuning.DIFFICULTY, TestTuning.WEAPONS, strings);
     }
 
     private static MenuState menu(MenuState.Screen screen) {
@@ -51,23 +52,23 @@ class UiStringsTest {
     }
 
     private static String error(String key, String value) {
-        String text = TestTuning.withValue(AssetText.read("data", UiStrings.PATH), key, value);
+        String text = TestTuning.withValue(TestTuning.text(UiStrings.PATH), key, value);
         return assertThrows(IllegalArgumentException.class, () -> parse(text)).getMessage();
     }
 
-    /** @return the line of the shipped file that holds a key, from 1. */
+    /** @return the line of the tests' own file that holds a key, from 1. */
     private static int lineOf(String key) {
-        List<String> lines = AssetText.splitLines(AssetText.read("data", UiStrings.PATH));
+        List<String> lines = AssetText.splitLines(TestTuning.text(UiStrings.PATH));
         for (int i = 0; i < lines.size(); i++) {
             if (lines.get(i).startsWith(key + ":")) return i + 1;
         }
         throw new AssertionError("no line for " + key);
     }
 
-    // ---- The shipped file shows what the code held ----
+    // ---- Each line of the tests' own file is shown where its key belongs ----
 
     @Test
-    void shippedMenuOptionsAreTheLabelsTheCodeHeld() {
+    void menuOptionsShowTheLinesOfTheirKeys() {
         SaveData saved = new SaveData(new MapKeyValueStore());
         saved.saveCampaignRun(0, PlayerLoadout.fresh());
         assertEquals(Arrays.asList("CONTINUE CAMPAIGN", "START CAMPAIGN", "SELECT STAGE", "TRAINING RANGE",
@@ -93,12 +94,12 @@ class UiStringsTest {
     }
 
     @Test
-    void shippedSettingsRowsAreTheLinesTheCodeBuilt() {
-        GameSettings settings = new GameSettings();
+    void settingsRowsShowTheirLinesWithTheValueFilledIn() {
+        GameSettings settings = TestTuning.settings();
         settings.setInvertY(true);
         MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.SETTINGS,
             TestTuning.DIFFICULTY, TestTuning.WEAPONS, STRINGS);
-        // The expressions MenuState.getOptions() held before the text moved to the file.
+        // Each row is its line with the setting's value in place of {value}.
         assertEquals(Arrays.asList(
             String.format(Locale.ROOT, "SENSITIVITY: < %.2f >", settings.getMouseSensitivity()),
             "INVERT LOOK Y: < " + (settings.isInvertY() ? "ON" : "OFF") + " >",
@@ -115,7 +116,7 @@ class UiStringsTest {
     }
 
     @Test
-    void shippedHudCaptionsAreTheTextTheCodeHeld() {
+    void hudCaptionsShowTheLinesOfTheirKeys() {
         assertEquals("LOW ENERGY", STRINGS.get(UiText.HUD_LOW_ENERGY));
         assertEquals("CHARGE", STRINGS.get(UiText.HUD_CHARGE));
         assertEquals("ENERGY [SHIFT: DASH]", STRINGS.get(UiText.HUD_ENERGY));
@@ -141,7 +142,7 @@ class UiStringsTest {
     }
 
     @Test
-    void shippedScreenTextIsTheTextTheCodeHeld() {
+    void screenTextShowsTheLinesOfItsKeys() {
         assertEquals("GAMEX", STRINGS.get(UiText.SCREEN_TITLE_NAME));
         assertEquals("SECTOR BREACH // TACTICAL FPS", STRINGS.get(UiText.SCREEN_TITLE_SUBTITLE));
         assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
@@ -169,7 +170,7 @@ class UiStringsTest {
     }
 
     @Test
-    void shippedLabelsObjectivesPromptsAndToastsAreTheTextTheCodeHeld() {
+    void labelsObjectivesPromptsAndToastsShowTheLinesOfTheirKeys() {
         assertEquals(Arrays.asList("EASY", "NORMAL", "HARD"), Arrays.asList(STRINGS.label(Difficulty.EASY),
             STRINGS.label(Difficulty.NORMAL), STRINGS.label(Difficulty.HARD)));
         assertEquals(Arrays.asList("UNTOUCHED", "SWEEP", "UNDER PAR", "SHARPSHOOTER"), Arrays.asList(
@@ -193,7 +194,7 @@ class UiStringsTest {
         for (GameSimulation.InteractionPrompt prompt : GameSimulation.InteractionPrompt.values()) {
             String text = STRINGS.prompt(prompt);
             assertEquals(prompts[prompt.ordinal()], text);
-            // The colour the HUD picked by the text's first characters is the one the kind gives now.
+            // In the tests' own text a prompt starts with its key exactly when the player can use the thing.
             assertEquals(text.startsWith("[E]"), prompt.kind == GameSimulation.InteractionPrompt.Kind.USABLE, text);
         }
 
@@ -213,7 +214,7 @@ class UiStringsTest {
 
     /** Walks the player over the pickup two cells ahead and returns the toast it raises, as the HUD words it. */
     private static String pickupToast(PlayerLoadout loadout, char pickup) {
-        GameSimulation sim = new GameSimulation(GameMap.parse("#####", "#>" + pickup + ".#", "#####"), loadout,
+        GameSimulation sim = TestTuning.simulation(GameMap.parse("#####", "#>" + pickup + ".#", "#####"), loadout,
             false);
         PlayerInput forward = new PlayerInput();
         forward.moveForward = 1f;
@@ -222,7 +223,7 @@ class UiStringsTest {
     }
 
     @Test
-    void shippedPickupToastsAreTheTextThePickupBuilt() {
+    void pickupToastsNameWhatThePickupGave() {
         PlayerLoadout hurt = new PlayerLoadout(60f, 0f, Difficulty.NORMAL);
         PlayerLoadout armed = new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 4, true, 2, WeaponSlot.PISTOL);
         assertEquals("+25 HEALTH", pickupToast(hurt, '+'));
@@ -236,18 +237,63 @@ class UiStringsTest {
         assertEquals("+3 SLUGS", pickupToast(armed, 'r'));
     }
 
+    /** A briefing line of the test's own, as a stage file holds it: it names a key and quotes a tuning value. */
+    private static final String BRIEFING_LINE =
+        "HOLD {key:alt_fire} FOR THE {rail.zoom_factor}X ZOOM OPTIC AND BREACH TO EXTRACTION.";
+
     @Test
-    void shippedBriefingsReadAsTheyDidWithTheirPlaceholdersFilledIn() {
-        Levels.Stage hub = Levels.stage("03_security_hub");
-        assertEquals("HOLD {key:alt_fire} FOR THE {rail.zoom_factor}X ZOOM OPTIC, THEN EXTRACT.",
-            hub.briefing.get(2));
+    void briefingsAreShownWithTheirPlaceholdersFilledIn() {
+        assertEquals("HOLD RMB FOR THE 1.8X ZOOM OPTIC AND BREACH TO EXTRACTION.",
+            STRINGS.fill(BRIEFING_LINE, "the briefing"));
+
+        // Whatever the stage files say, the menus show every line of every briefing filled in.
         MenuState menu = menu(MenuState.Screen.STAGE_SELECT);
-        assertEquals(Arrays.asList(
-            "AUTOMATED CONTAINMENT LOCKDOWN DETECTED IN SECTOR 01.",
-            "GRAB THE COMBAT SCATTERGUN TO SHRED CLOSE-RANGE DRONES.",
-            "USE COOLANT CANISTERS AND DASH TO REACH EXTRACTION."), menu.getActiveBriefing());
-        assertEquals("HOLD RMB FOR THE 1.8X ZOOM OPTIC, THEN EXTRACT.",
-            STRINGS.fill(hub.briefing.get(2), "the briefing"));
+        List<String> shown = menu.getActiveBriefing();
+        List<String> raw = menu.getActiveStage().briefing;
+        assertFalse(raw.isEmpty());
+        assertEquals(raw.size(), shown.size());
+        for (int i = 0; i < raw.size(); i++) {
+            assertEquals(STRINGS.fill(raw.get(i), "the briefing"), shown.get(i));
+            assertFalse(shown.get(i).contains("{"), shown.get(i));
+        }
+        for (Levels.Stage stage : Levels.campaign()) {
+            for (String line : stage.briefing) assertFalse(STRINGS.fill(line, stage.id).contains("{"), line);
+        }
+    }
+
+    /**
+     * Every line of a file that is reworded throughout is the text shown for its key, so a line that took another
+     * key's text, or a label still held in code, shows.
+     */
+    @Test
+    void everyLineOfARewordedFileIsTheTextShownForItsKey() {
+        UiStrings reworded = TestTuning.rewordedStrings();
+        List<String> lines = AssetText.splitLines(TestTuning.rewordedStringsText());
+        int plain = 0;
+        for (UiText text : UiText.values()) {
+            String raw = null;
+            for (String line : lines) {
+                if (line.startsWith(text.key + ":")) raw = line.substring(text.key.length() + 1).trim();
+            }
+            assertNotNull(raw, text.key);
+            if (!raw.contains("{")) {
+                plain++;
+                assertEquals(raw, reworded.get(text), text.key);
+                // A line with no letter in it has no word to change.
+                if (raw.chars().anyMatch(Character::isLetter)) {
+                    assertNotEquals(STRINGS.get(text), reworded.get(text), text.key + " is reworded");
+                }
+            } else {
+                // The words between the placeholders are the line's own.
+                String[] values = new String[text.placeholders.size()];
+                Arrays.fill(values, "1");
+                String shown = reworded.format(text, values);
+                for (String words : raw.split("\\{[^}]*\\}")) {
+                    assertTrue(shown.contains(words), text.key + " shows '" + words + "': " + shown);
+                }
+            }
+        }
+        assertTrue(plain > 40, "lines without a placeholder: " + plain);
     }
 
     // ---- An edited file changes what is shown, and only that ----
@@ -277,7 +323,7 @@ class UiStringsTest {
     @Test
     void aPromptRewordedWithoutItsKeyKeepsItsKindAndABlockedOneWithAKeyStaysBlocked() {
         UiStrings edited = UiStrings.parse(UiStrings.PATH, TestTuning.withValue(TestTuning.withValue(
-            AssetText.read("data", UiStrings.PATH), "prompt.open_bulkhead", "OPEN THE BULKHEAD"),
+            TestTuning.text(UiStrings.PATH), "prompt.open_bulkhead", "OPEN THE BULKHEAD"),
             "blocked.needs_amber", "[{key:interact}] WILL NOT OPEN THIS"), TestTuning.FONT, TestTuning.BINDINGS::hint,
             TestTuning.TEXT_VALUES);
         assertEquals("OPEN THE BULKHEAD", edited.prompt(GameSimulation.InteractionPrompt.OPEN_BULKHEAD));
@@ -289,22 +335,22 @@ class UiStringsTest {
     @Test
     void keyNamesComeFromTheKeyLabelsAndTuningValuesFromTheTuning() {
         KeyLabels other = action -> "interact".equals(action) ? "F" : "alt_fire".equals(action) ? "MMB" : "K";
-        UiStrings rebound = UiStrings.parse(UiStrings.PATH, AssetText.read("data", UiStrings.PATH), TestTuning.FONT,
+        UiStrings rebound = UiStrings.parse(UiStrings.PATH, TestTuning.text(UiStrings.PATH), TestTuning.FONT,
             other, TestTuning.TEXT_VALUES);
         assertEquals("[F] OPEN BULKHEAD", rebound.prompt(GameSimulation.InteractionPrompt.OPEN_BULKHEAD));
         assertEquals("ENERGY [K: DASH]", rebound.get(UiText.HUD_ENERGY));
-        String briefing = Levels.stage("03_security_hub").briefing.get(2);
-        assertEquals("HOLD MMB FOR THE 1.8X ZOOM OPTIC, THEN EXTRACT.", rebound.fill(briefing, "here"));
+        String briefing = BRIEFING_LINE;
+        assertEquals("HOLD MMB FOR THE 1.8X ZOOM OPTIC AND BREACH TO EXTRACTION.", rebound.fill(briefing, "here"));
 
-        UiStrings zoomed = UiStrings.parse(UiStrings.PATH, AssetText.read("data", UiStrings.PATH), TestTuning.FONT,
+        UiStrings zoomed = UiStrings.parse(UiStrings.PATH, TestTuning.text(UiStrings.PATH), TestTuning.FONT,
             TestTuning.BINDINGS::hint, TextValues.of(TestTuning.weaponsWith("rail.zoom_factor", "2.0"),
                 TestTuning.DIFFICULTY, TestTuning.WORLD));
-        assertEquals("HOLD RMB FOR THE 2X ZOOM OPTIC, THEN EXTRACT.", zoomed.fill(briefing, "here"));
+        assertEquals("HOLD RMB FOR THE 2X ZOOM OPTIC AND BREACH TO EXTRACTION.", zoomed.fill(briefing, "here"));
 
         // A key name the font cannot draw stops the load, naming the line that uses it.
         KeyLabels undrawable = action -> "dash".equals(action) ? "\u00e9" : "K";
         String message = assertThrows(IllegalArgumentException.class, () -> UiStrings.parse(UiStrings.PATH,
-            AssetText.read("data", UiStrings.PATH), TestTuning.FONT, undrawable, TestTuning.TEXT_VALUES))
+            TestTuning.text(UiStrings.PATH), TestTuning.FONT, undrawable, TestTuning.TEXT_VALUES))
             .getMessage();
         assertTrue(message.endsWith("in 'hud.energy' in data/strings.txt at line " + lineOf("hud.energy")), message);
     }
@@ -313,31 +359,31 @@ class UiStringsTest {
     void theActionsAKeyPlaceholderMayNameAreTheActionsOfTheBindings() {
         assertEquals(new ArrayList<>(Action.ids()), new ArrayList<>(KeyLabels.ACTIONS));
         assertEquals(24, KeyLabels.ACTIONS.size());
-        KeyLabels shipped = TestTuning.BINDINGS::hint;
+        KeyLabels frozen = TestTuning.BINDINGS::hint;
         for (String action : KeyLabels.ACTIONS) {
-            String name = shipped.label(action);
+            String name = frozen.label(action);
             assertFalse(name.isEmpty(), action);
             assertEquals(-1, GlyphCheck.firstUndrawable(TestTuning.FONT, name), action + " is shown as " + name);
         }
-        assertThrows(IllegalArgumentException.class, () -> shipped.label("fly"));
-        assertEquals("Q", shipped.label("quit"));
-        assertEquals("Q", shipped.label("quick_swap"));
+        assertThrows(IllegalArgumentException.class, () -> frozen.label("fly"));
+        assertEquals("Q", frozen.label("quit"));
+        assertEquals("Q", frozen.label("quick_swap"));
     }
 
     @Test
     void difficultyRowsAreMadeFromTheLoadedMultipliers() {
         assertEquals("EASY - 70% DAMAGE / +25% PICKUPS", menu(MenuState.Screen.TITLE).difficultyRow(Difficulty.EASY));
 
-        MenuState gentler = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState gentler = new MenuState(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.DIFFICULTY_SELECT, TestTuning.difficultyWith("easy.damage_taken", "0.5"),
             TestTuning.WEAPONS, STRINGS);
         assertEquals("EASY - 50% DAMAGE / +25% PICKUPS", gentler.getOptions().get(0));
-        MenuState scarcer = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState scarcer = new MenuState(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.DIFFICULTY_SELECT, TestTuning.difficultyWith("hard.pickup", "0.5"),
             TestTuning.WEAPONS, STRINGS);
         assertEquals("HARD - 140% DAMAGE / -50% PICKUPS", scarcer.getOptions().get(2));
         // A difficulty that changes something is no longer the standard one, and the row says what it shows.
-        MenuState harderNormal = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState harderNormal = new MenuState(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.DIFFICULTY_SELECT, TestTuning.difficultyWith("normal.damage_taken", "1.1"),
             TestTuning.WEAPONS, STRINGS);
         assertEquals("NORMAL - 110% DAMAGE / +0% PICKUPS", harderNormal.getOptions().get(1));
@@ -351,7 +397,7 @@ class UiStringsTest {
 
     @Test
     void everyOptionRowOfTheLoadedTextFitsItsBoxWhenHighlighted() {
-        GameSettings widest = new GameSettings();
+        GameSettings widest = TestTuning.settings();
         widest.setFov(widest.defaults().fov.max);
         widest.setMasterVolume(widest.defaults().volume.max);
         SaveData save = new SaveData(new MapKeyValueStore());
@@ -378,12 +424,12 @@ class UiStringsTest {
     void aMissingUnknownOrEmptyLineFailsNamingTheFileAndTheKey() {
         assertEquals("Missing 'hud.hp' key in data/strings.txt", error("hud.hp", null));
         String unknown = assertThrows(IllegalArgumentException.class,
-            () -> parse("hud.mana: MANA\n" + AssetText.read("data", UiStrings.PATH))).getMessage();
+            () -> parse("hud.mana: MANA\n" + TestTuning.text(UiStrings.PATH))).getMessage();
         assertEquals("Unknown key 'hud.mana' in data/strings.txt at line 1", unknown);
         assertEquals("Invalid 'menu.deploy' in data/strings.txt at line " + lineOf("menu.deploy")
             + ": must not be empty, got ''", error("menu.deploy", ""));
         String twice = assertThrows(IllegalArgumentException.class,
-            () -> parse(AssetText.read("data", UiStrings.PATH) + "menu.deploy: GO\n")).getMessage();
+            () -> parse(TestTuning.text(UiStrings.PATH) + "menu.deploy: GO\n")).getMessage();
         assertTrue(twice.startsWith("Duplicate 'menu.deploy' key in data/strings.txt at line "), twice);
     }
 

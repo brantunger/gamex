@@ -1,0 +1,17 @@
+// Colours of the pistol viewmodel (assets/models/viewmodel-pistol.obj).
+// material.<name>: red, green, blue, gloss - one line for each material the game knows for this model, by the
+// name the model file uses in its usemtl lines. A material the model file does not use still needs its line.
+// Every number is from 0 to 1; gloss runs from 0 (matt) to 1 (polished). The weapons reuse material names with
+// their own colours, so each weapon has its own file; a line that repeats another file's colour says so.
+material.gunmetal: 0.23, 0.25, 0.30, 0.6
+// gunmetal_top, dark_metal, steel, bore and sight_dot have the same colours in palette-scattergun.txt, and bore in
+// palette-rail-lance.txt too. They are repeated because each weapon is coloured on its own.
+material.gunmetal_top: 0.28, 0.30, 0.36, 1
+material.dark_metal: 0.08, 0.09, 0.11, 0.4
+material.steel: 0.60, 0.62, 0.68, 1
+material.bore: 0.02, 0.02, 0.03, 0
+material.brass: 0.95, 0.66, 0.20, 0.6
+material.sight_dot: 0.88, 0.90, 0.86, 0
+material.polymer: 0.34, 0.29, 0.21, 0
+material.polymer_dark: 0.24, 0.205, 0.15, 0
+material.stipple: 0.41, 0.355, 0.26, 0

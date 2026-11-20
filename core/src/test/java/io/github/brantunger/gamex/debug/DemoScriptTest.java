@@ -8,150 +8,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.TestTuning;
-import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.settings.GameSettings;
-import io.github.brantunger.gamex.settings.MapKeyValueStore;
-import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
- * Checks the demo scripts in {@code assets/demos/}: that each plays the input and starts with the scene that
- * {@code DemoRun} and {@code MainGame} held in code before the scripts moved to files, that a changed file changes
- * the run, and that a file the game cannot read stops the load.
+ * Checks the demo scripts: that every script in {@code assets/demos/} loads and plays, that a script's header and
+ * timeline are the scene and the input played, and that a file the game cannot read stops the load.
  */
 class DemoScriptTest {
-
-    /** The scripts {@code DemoRun} and {@code MainGame} knew before the move, with the unset one. */
-    private static final String[] SCRIPTS = {
-        "", "action", "targets", "breach", "title", "lockdown", "stages", "scattergun", "raillance", "warden",
-        "wardenidle", "jump"
-    };
 
     private static final int FRAMES = 300;
 
     private static final String HEADER = "screen: playing\nstage: first_level\nloadout: fresh\n";
-
-    /** {@code DemoRun.nextFrame} as of 4cf075b, with its constants written out. */
-    private static void inputBeforeTheMove(String script, int frame, PlayerInput out) {
-        out.clear();
-        if ("action".equals(script)) {
-            if (frame == 1) out.yawDelta = -24f;
-            out.charge = frame >= 5 && frame < 50;
-            out.fire = frame >= 57;
-        } else if ("targets".equals(script)) {
-            if (frame == 1) out.yawDelta = 71.57f;
-            out.fire = frame >= 30;
-        } else if ("breach".equals(script)) {
-            out.moveForward = frame <= 155 ? 1f : 0f;
-            if (frame == 25) out.dash = true;
-            if (frame >= 115 && frame <= 135) out.moveStrafe = 1f;
-            if (frame > 135 && frame <= 150) out.yawDelta = -1.2f;
-            out.fire = frame >= 150;
-        } else if ("lockdown".equals(script)) {
-            if (frame <= 18) out.moveForward = 1f;
-            if (frame == 25) out.interact = true;
-            if (frame >= 45 && frame <= 85) out.moveForward = 1f;
-        } else if ("scattergun".equals(script)) {
-            if (frame <= 18) out.moveForward = 1f;
-            if (frame == 24) out.fire = true;
-        } else if ("raillance".equals(script)) {
-            out.charge = frame >= 6 && frame <= 38;
-            out.fire = frame == 24;
-        } else if ("warden".equals(script)) {
-            if (frame == 1 || frame == 3) out.fire = true;
-            if (frame >= 5 && frame <= 14) out.moveForward = 0.5f;
-        } else if ("jump".equals(script)) {
-            out.moveForward = 1f;
-            out.jump = frame >= 19 && frame < 19 + 5;
-        }
-    }
-
-    /** The screen {@code MainGame.create()} opened a script on, as of 4cf075b. */
-    private static MenuState.Screen screenBeforeTheMove(String script) {
-        return "title".equals(script) ? MenuState.Screen.TITLE
-            : ("stages".equals(script) ? MenuState.Screen.STAGE_SELECT : MenuState.Screen.PLAYING);
-    }
-
-    /** The level {@code MainGame.create()} built for a script, as of 4cf075b. */
-    private static GameSimulation simulationBeforeTheMove(String script) {
-        boolean showTitle = "title".equals(script);
-        boolean showStages = "stages".equals(script);
-        MenuState menuState = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
-            screenBeforeTheMove(script));
-        GameSimulation simulation;
-        if ("lockdown".equals(script) || showStages) {
-            Levels.Stage lockdown = Levels.stage("04_lockdown_wing");
-            simulation = new GameSimulation(lockdown.map, menuState.getActiveLoadout(),
-                lockdown.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-        } else if ("scattergun".equals(script)) {
-            Levels.Stage range = Levels.trainingRange();
-            simulation = new GameSimulation(range.map,
-                new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                range.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-        } else if ("raillance".equals(script)) {
-            Levels.Stage hub = Levels.stage("03_security_hub");
-            simulation = new GameSimulation(hub.map,
-                new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 8, true, 6, WeaponSlot.RAIL_LANCE),
-                hub.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-            simulation.player.position.set(4.5f, 4.5f);
-            simulation.player.look(0f, -1f);
-        } else if ("warden".equals(script)) {
-            Levels.Stage warden = Levels.stage("06_warden_core");
-            simulation = new GameSimulation(warden.map,
-                new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                warden.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-            simulation.player.position.set(23.5f, 13.6f);
-            simulation.player.look(-90f, -4f);
-        } else if ("wardenidle".equals(script)) {
-            Levels.Stage warden = Levels.stage("06_warden_core");
-            simulation = new GameSimulation(warden.map,
-                new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                warden.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-            for (Enemy enemy : simulation.enemies) {
-                if (enemy.getKind() != Enemy.Kind.WARDEN) enemy.damage(Float.MAX_VALUE);
-            }
-            simulation.player.position.set(26.8f, 5.2f);
-            simulation.player.look(135f, -4f);
-        } else if ("jump".equals(script)) {
-            Levels.Stage range = Levels.trainingRange();
-            simulation = new GameSimulation(range.map,
-                new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-                range.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-            simulation.player.position.set(9.8f, 15.5f);
-            simulation.player.look(0f, -14f);
-        } else if ("breach".equals(script) || showTitle) {
-            Levels.Stage breach = Levels.stage("01_outer_breach");
-            simulation = new GameSimulation(breach.map, menuState.getActiveLoadout(),
-                breach.completeOnAllTargets, TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS,
-                TestTuning.WORLD);
-        } else {
-            simulation = new GameSimulation(Levels.first(), PlayerLoadout.fresh(), false, TestTuning.ENEMIES,
-                TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
-        }
-        return simulation;
-    }
 
     private static void assertSameInput(PlayerInput expected, PlayerInput actual, String at) {
         assertEquals(expected.moveForward, actual.moveForward, 0f, "moveForward " + at);
@@ -164,47 +48,6 @@ class DemoScriptTest {
         assertEquals(expected.dash, actual.dash, "dash " + at);
         assertEquals(expected.interact, actual.interact, "interact " + at);
         assertEquals(expected.weaponSlot, actual.weaponSlot, "weaponSlot " + at);
-    }
-
-    private static void assertSameState(GameSimulation expected, GameSimulation actual, String at) {
-        assertEquals(expected.map.getWidth(), actual.map.getWidth(), "map width " + at);
-        assertEquals(expected.map.getHeight(), actual.map.getHeight(), "map height " + at);
-        assertEquals(expected.player.position.x, actual.player.position.x, 0f, "player x " + at);
-        assertEquals(expected.player.position.y, actual.player.position.y, 0f, "player y " + at);
-        assertEquals(expected.player.getYaw(), actual.player.getYaw(), 0f, "yaw " + at);
-        assertEquals(expected.player.getPitch(), actual.player.getPitch(), 0f, "pitch " + at);
-        assertEquals(expected.player.getHealth(), actual.player.getHealth(), 0f, "health " + at);
-        assertEquals(expected.player.getArmor(), actual.player.getArmor(), 0f, "armor " + at);
-        assertEquals(expected.player.getJumpHeight(), actual.player.getJumpHeight(), 0f, "jump height " + at);
-        assertEquals(expected.getActiveWeapon(), actual.getActiveWeapon(), "weapon " + at);
-        assertEquals(expected.hasScattergun(), actual.hasScattergun(), "scattergun " + at);
-        assertEquals(expected.getShells(), actual.getShells(), "shells " + at);
-        assertEquals(expected.hasRailLance(), actual.hasRailLance(), "rail lance " + at);
-        assertEquals(expected.getSlugs(), actual.getSlugs(), "slugs " + at);
-        assertEquals(expected.getZoom(), actual.getZoom(), 0f, "zoom " + at);
-        assertEquals(expected.getBlastChargeProgress(), actual.getBlastChargeProgress(), 0f, "charge " + at);
-        assertEquals(expected.getShotsFired(), actual.getShotsFired(), "shots fired " + at);
-        assertEquals(expected.getShotsHit(), actual.getShotsHit(), "shots hit " + at);
-        assertEquals(expected.getDamageTaken(), actual.getDamageTaken(), 0f, "damage taken " + at);
-        assertEquals(expected.getTargetsRemaining(), actual.getTargetsRemaining(), "targets " + at);
-        assertEquals(expected.getPickupsCollected(), actual.getPickupsCollected(), "pickups " + at);
-        assertEquals(expected.isLevelCleared(), actual.isLevelCleared(), "cleared " + at);
-        assertEquals(expected.projectiles.size(), actual.projectiles.size(), "projectiles " + at);
-        assertEquals(expected.enemyProjectiles.size(), actual.enemyProjectiles.size(), "enemy projectiles " + at);
-        assertEquals(expected.doors.size(), actual.doors.size(), "doors " + at);
-        assertEquals(expected.enemies.size(), actual.enemies.size(), "enemies " + at);
-        for (int i = 0; i < expected.enemies.size(); i++) {
-            Enemy before = expected.enemies.get(i);
-            Enemy after = actual.enemies.get(i);
-            String enemy = "enemy " + i + " " + at;
-            assertEquals(before.getKind(), after.getKind(), enemy);
-            assertEquals(before.isDestroyed(), after.isDestroyed(), enemy);
-            assertEquals(before.getHealth(), after.getHealth(), 0f, enemy);
-            assertEquals(before.getX(), after.getX(), 0f, enemy);
-            assertEquals(before.getZ(), after.getZ(), 0f, enemy);
-            assertEquals(before.getYaw(), after.getYaw(), 0f, enemy);
-            assertEquals(before.getState(), after.getState(), enemy);
-        }
     }
 
     private static IllegalArgumentException rejected(String text) {
@@ -223,61 +66,74 @@ class DemoScriptTest {
         return input;
     }
 
-    @Test
-    void everyShippedScriptPlaysTheInputDemoRunHeldInCodeBeforeTheMove() {
-        PlayerInput expected = new PlayerInput();
-        PlayerInput actual = new PlayerInput();
-        for (String script : SCRIPTS) {
-            DemoRun demo = DemoRun.forScript(script);
-            for (int frame = 1; frame <= FRAMES; frame++) {
-                inputBeforeTheMove(script, frame, expected);
-                // Left dirty, to see that the run clears what the frame before asked for.
-                actual.weaponSlot = 3;
-                actual.pitchDelta = 9f;
-                demo.nextFrame(actual);
-                assertSameInput(expected, actual, "of '" + script + "' on frame " + frame);
+    /** @return the names of the scripts in {@code assets/demos/}, without {@code .txt} */
+    private static Set<String> shippedScripts() throws IOException {
+        Path demos = null;
+        String assets = System.getProperty("gamex.assets");
+        for (Path candidate : new Path[] {assets == null ? null : Paths.get(assets), Paths.get("..", "assets"),
+            Paths.get("assets")}) {
+            if (candidate != null && Files.isDirectory(candidate.resolve(DemoScript.DEMOS_DIR))) {
+                demos = candidate.resolve(DemoScript.DEMOS_DIR);
+                break;
             }
         }
-    }
-
-    @Test
-    void everyShippedScriptStartsWithTheSceneMainGameBuiltInCodeBeforeTheMove() {
-        PlayerInput input = new PlayerInput();
-        for (String script : SCRIPTS) {
-            DemoScene scene = DemoRun.forScript(script).getScene();
-            assertEquals(screenBeforeTheMove(script), scene.startScreen, script);
-            assertEquals("stages".equals(script), scene.unlockAllStages, script);
-
-            GameSimulation expected = simulationBeforeTheMove(script);
-            GameSimulation actual = scene.createSimulation(TestTuning.ENEMIES, TestTuning.DIFFICULTY,
-                TestTuning.WEAPONS, TestTuning.WORLD);
-            assertSameState(expected, actual, "of '" + script + "' before the first frame");
-            // Played on, so that a difference the first frame does not show (ammunition caps, the level's
-            // completion rule, an enemy left standing) comes out.
-            DemoRun demo = DemoRun.forScript(script);
-            for (int frame = 1; frame <= FRAMES; frame++) {
-                demo.nextFrame(input);
-                expected.update(DemoRun.FRAME_TIME, input);
-                actual.update(DemoRun.FRAME_TIME, input);
-                if (frame % 20 == 0 || frame == FRAMES) {
-                    assertSameState(expected, actual, "of '" + script + "' after frame " + frame);
-                }
-            }
-        }
-    }
-
-    @Test
-    void theScriptsThatShipAreTheOnesTheCodeKnewBeforeTheMove() throws IOException {
-        Path demos = Paths.get(System.getProperty("gamex.assets"), DemoScript.DEMOS_DIR);
-        Set<String> shipped = new TreeSet<>();
+        assertTrue(demos != null, "the demos folder was not found");
+        Set<String> names = new TreeSet<>();
         try (Stream<Path> files = Files.list(demos)) {
-            files.forEach(file -> shipped.add(file.getFileName().toString()));
+            files.forEach(file -> {
+                String name = file.getFileName().toString();
+                assertTrue(name.endsWith(".txt"), name + " is a script");
+                names.add(name.substring(0, name.length() - ".txt".length()));
+            });
         }
-        Set<String> expected = new TreeSet<>();
-        for (String script : SCRIPTS) {
-            if (!script.isEmpty()) expected.add(script + ".txt");
+        return names;
+    }
+
+    /**
+     * Whatever the scripts in {@code assets/demos/} hold, each loads, names a stage the game has, and plays: its
+     * scene builds a level and its timeline gives every frame an input the simulation takes, on the tests' own
+     * balance and on the shipped one.
+     */
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void everyShippedScriptLoadsAndPlays(TestTuning.Balance balance) throws IOException {
+        Set<String> scripts = shippedScripts();
+        assertFalse(scripts.isEmpty());
+        PlayerInput input = new PlayerInput();
+        for (String script : scripts) {
+            DemoRun demo = DemoRun.forScript(script);
+            assertEquals(script, demo.getScript());
+            GameSimulation simulation = demo.getScene().createSimulation(balance.enemies(), balance.difficulty(),
+                balance.weapons(), balance.world());
+            for (int frame = 1; frame <= FRAMES; frame++) {
+                // Left dirty with values no script can ask for, to see that the run clears the frame before.
+                input.weaponSlot = Integer.MIN_VALUE;
+                input.pitchDelta = Float.NaN;
+                demo.nextFrame(input);
+                assertTrue(Float.isFinite(input.moveForward) && Float.isFinite(input.moveStrafe)
+                    && Float.isFinite(input.yawDelta) && Float.isFinite(input.pitchDelta),
+                    "'" + script + "' on frame " + frame);
+                assertTrue(input.weaponSlot != Integer.MIN_VALUE, "'" + script + "' clears the input");
+                simulation.update(DemoRun.FRAME_TIME, input);
+            }
+            assertTrue(Float.isFinite(simulation.player.position.x) && Float.isFinite(simulation.player.position.y),
+                script);
         }
-        assertEquals(expected, shipped);
+    }
+
+    /** A script with the {@code fresh} loadout starts as a new game does, whatever stage it names. */
+    @Test
+    void aFreshLoadoutIsTheOneANewGameStartsWith() {
+        PlayerLoadout fresh = PlayerLoadout.fresh();
+        PlayerLoadout loadout = DemoScript.parse("demos/test.txt", HEADER).scene.loadout;
+        assertEquals(fresh.health, loadout.health, 0f);
+        assertEquals(fresh.armor, loadout.armor, 0f);
+        assertEquals(fresh.difficulty, loadout.difficulty);
+        assertEquals(fresh.hasScattergun, loadout.hasScattergun);
+        assertEquals(fresh.shells, loadout.shells);
+        assertEquals(fresh.hasRailLance, loadout.hasRailLance);
+        assertEquals(fresh.slugs, loadout.slugs);
+        assertEquals(fresh.activeWeapon, loadout.activeWeapon);
     }
 
     @Test
@@ -311,11 +167,10 @@ class DemoScriptTest {
 
     @Test
     void aChangedTimelineChangesTheInputPlayed() {
-        String shipped = AssetText.read("demo", DemoScript.path("jump"));
-        assertTrue(shipped.contains("19-23: jump"), shipped);
-        DemoScript before = DemoScript.parse("demos/test.txt", shipped);
+        String text = HEADER + "\n1-: move_forward\n19-23: jump\n";
+        DemoScript before = DemoScript.parse("demos/test.txt", text);
         DemoScript after = DemoScript.parse("demos/test.txt",
-            shipped.replace("19-23: jump", "30-31: jump\n40-: move_right 0.25"));
+            text.replace("19-23: jump", "30-31: jump\n40-: move_right 0.25"));
 
         assertTrue(frame(before, 19).jump);
         assertTrue(frame(before, 23).jump);
@@ -378,15 +233,16 @@ class DemoScriptTest {
 
     @Test
     void keepEnemiesDestroysEveryEnemyOfAnotherKind() {
-        GameSimulation all = DemoRun.forScript("warden").getScene().createSimulation(TestTuning.ENEMIES,
-            TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
-        GameSimulation kept = DemoRun.forScript("wardenidle").getScene().createSimulation(TestTuning.ENEMIES,
-            TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
+        String wardenCore = "screen: playing\nstage: 06_warden_core\nloadout: fresh\n";
+        GameSimulation all = DemoScript.parse("demos/test.txt", wardenCore).scene.createSimulation(
+            TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
+        GameSimulation kept = DemoScript.parse("demos/test.txt", wardenCore + "keep_enemies: warden\n").scene
+            .createSimulation(TestTuning.ENEMIES, TestTuning.DIFFICULTY, TestTuning.WEAPONS, TestTuning.WORLD);
         assertEquals(all.enemies.size(), kept.enemies.size());
         int wardens = 0;
         int others = 0;
         for (int i = 0; i < all.enemies.size(); i++) {
-            assertFalse(all.enemies.get(i).isDestroyed(), "enemy " + i + " of the warden script");
+            assertFalse(all.enemies.get(i).isDestroyed(), "enemy " + i + " of the script that keeps all");
             Enemy enemy = kept.enemies.get(i);
             if (enemy.getKind() == Enemy.Kind.WARDEN) {
                 wardens++;
@@ -523,30 +379,5 @@ class DemoScriptTest {
         // The timeline starts after a blank line: a timeline line inside the header block is no header.
         assertRejected(HEADER + "1: fire\n", "'1'", "at line 4");
         assertThrows(IllegalArgumentException.class, () -> DemoScript.parse("demos/test.txt", null));
-    }
-
-    @Test
-    void theShippedScenesCarryWhatTheirFilesSay() {
-        List<String> fresh = List.of("action", "targets", "breach", "title", "lockdown", "stages");
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
-            MenuState.Screen.PLAYING);
-        PlayerLoadout menuLoadout = menu.getActiveLoadout();
-        for (String script : fresh) {
-            PlayerLoadout loadout = DemoRun.forScript(script).getScene().loadout;
-            // MainGame gave four of these the menu's loadout, which is the fresh one on a new save.
-            assertEquals(menuLoadout.health, loadout.health, 0f, script);
-            assertEquals(menuLoadout.armor, loadout.armor, 0f, script);
-            assertEquals(menuLoadout.difficulty, loadout.difficulty, script);
-            assertEquals(menuLoadout.hasScattergun, loadout.hasScattergun, script);
-            assertEquals(menuLoadout.shells, loadout.shells, script);
-            assertEquals(menuLoadout.hasRailLance, loadout.hasRailLance, script);
-            assertEquals(menuLoadout.slugs, loadout.slugs, script);
-            assertEquals(menuLoadout.activeWeapon, loadout.activeWeapon, script);
-        }
-        PlayerLoadout rail = DemoRun.forScript("raillance").getScene().loadout;
-        assertEquals(50f, rail.armor, 0f);
-        assertEquals(8, rail.shells);
-        assertEquals(6, rail.slugs);
-        assertEquals(WeaponSlot.RAIL_LANCE, rail.activeWeapon);
     }
 }

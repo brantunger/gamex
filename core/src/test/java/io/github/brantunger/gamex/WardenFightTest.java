@@ -17,13 +17,19 @@ import io.github.brantunger.gamex.world.Door;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Levels;
-import org.junit.jupiter.api.Test;
+import io.github.brantunger.gamex.world.WardenTuning;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Fights the Warden through the whole simulation, with a player driven by the same input a person gives. */
+/**
+ * Fights the Warden through the whole simulation, with a player driven by the same input a person gives. Every
+ * fight is fought on the tests' own balance and on the shipped one ({@link TestTuning.Balance}): what it says of the
+ * Warden is a promise of the game's design, which a tuned value may not break.
+ */
 class WardenFightTest {
 
     private static final float DT = 1f / 60f;
@@ -66,15 +72,17 @@ class WardenFightTest {
         return Vector2.dst(warden.getX(), warden.getZ(), sim.player.position.x, sim.player.position.y);
     }
 
-    @Test
-    void theWardenReachesAPlayerAnywhereInItsArenaOnStageSixWithoutOpeningADoor() {
-        assertTrue(cellsTheWardenReachesOnStageSix(false) > 140);
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void theWardenReachesAPlayerAnywhereInItsArenaOnStageSixWithoutOpeningADoor(TestTuning.Balance balance) {
+        assertTrue(cellsTheWardenReachesOnStageSix(balance, false) > 140);
     }
 
-    @Test
-    void withTheLockdownDoorsOpenTheWardenReachesAPlayerInTheRoomsBeyondThemToo() {
-        int shut = cellsTheWardenReachesOnStageSix(false);
-        int open = cellsTheWardenReachesOnStageSix(true);
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void withTheLockdownDoorsOpenTheWardenReachesAPlayerInTheRoomsBeyondThemToo(TestTuning.Balance balance) {
+        int shut = cellsTheWardenReachesOnStageSix(balance, false);
+        int open = cellsTheWardenReachesOnStageSix(balance, true);
         assertTrue(open > shut + 50, "the open doors let it out of its arena: " + shut + " -> " + open + " cells");
     }
 
@@ -85,9 +93,9 @@ class WardenFightTest {
      *     every door is as the stage starts it, shut
      * @return how many cells a player was stood in
      */
-    private static int cellsTheWardenReachesOnStageSix(boolean lockdownOpen) {
+    private static int cellsTheWardenReachesOnStageSix(TestTuning.Balance balance, boolean lockdownOpen) {
         Levels.Stage stage = Levels.stage("06_warden_core");
-        GameSimulation survey = new GameSimulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
+        GameSimulation survey = balance.simulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
         openLockdown(survey, lockdownOpen);
         Enemy boss = warden(survey);
         List<Damageable> props = new ArrayList<>();
@@ -125,7 +133,7 @@ class WardenFightTest {
             at.set(cell[0] + 0.5f, cell[1] + 0.5f);
             // A player cannot stand in a canister or a console, and does not stand on a live shock grate.
             if (Collision.overlapsSolid(props, at, Player.RADIUS) || stage.map.isHazard(cell[0], cell[1])) continue;
-            GameSimulation sim = new GameSimulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
+            GameSimulation sim = balance.simulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
             Enemy subject = warden(sim);
             for (Enemy enemy : sim.enemies) {
                 if (enemy != subject) enemy.damage(99999f);
@@ -164,10 +172,11 @@ class WardenFightTest {
         for (int i = 0; i < 180; i++) sim.update(DT, idle);
     }
 
-    @Test
-    void aPlayerWhoOnlyBackpedalsIsRunDownAndPunched() {
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void aPlayerWhoOnlyBackpedalsIsRunDownAndPunched(TestTuning.Balance balance) {
         // The Warden starts 3 away and gains 0.5 a second, so it is on them well before the far wall, 24 away.
-        GameSimulation sim = new GameSimulation(room(12), PlayerLoadout.fresh(Difficulty.NORMAL), false);
+        GameSimulation sim = balance.simulation(room(12), PlayerLoadout.fresh(Difficulty.NORMAL), false);
         Enemy boss = warden(sim);
         PlayerInput input = new PlayerInput();
         float startGap = gap(sim, boss);
@@ -197,8 +206,8 @@ class WardenFightTest {
      * {@code dodge} changes that to, until the combo is over.
      * @return how many of the combo's three punches landed
      */
-    private static int punchesLandedOnAPlayerWho(Dodge dodge) {
-        GameSimulation sim = new GameSimulation(room(), PlayerLoadout.fresh(Difficulty.NORMAL), false);
+    private static int punchesLandedOnAPlayerWho(TestTuning.Balance balance, Dodge dodge) {
+        GameSimulation sim = balance.simulation(room(), PlayerLoadout.fresh(Difficulty.NORMAL), false);
         Enemy boss = warden(sim);
         PlayerInput input = new PlayerInput();
         boolean inCombo = false;
@@ -229,20 +238,23 @@ class WardenFightTest {
         void steer(PlayerInput input, boolean first);
     }
 
-    @Test
-    void walkingStraightBackFromAComboStillTakesAPunch() {
-        assertTrue(punchesLandedOnAPlayerWho((input, first) -> { }) >= 1);
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void walkingStraightBackFromAComboStillTakesAPunch(TestTuning.Balance balance) {
+        assertTrue(punchesLandedOnAPlayerWho(balance, (input, first) -> { }) >= 1);
     }
 
-    @Test
-    void aDashBackAsTheComboStartsAvoidsEveryPunch() {
-        assertEquals(0, punchesLandedOnAPlayerWho((input, first) -> input.dash = first));
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void aDashBackAsTheComboStartsAvoidsEveryPunch(TestTuning.Balance balance) {
+        assertEquals(0, punchesLandedOnAPlayerWho(balance, (input, first) -> input.dash = first));
     }
 
-    @Test
-    void sidesteppingThroughTheComboAvoidsEveryPunch() {
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void sidesteppingThroughTheComboAvoidsEveryPunch(TestTuning.Balance balance) {
         for (float side : new float[] {-1f, 1f}) {
-            assertEquals(0, punchesLandedOnAPlayerWho((input, first) -> {
+            assertEquals(0, punchesLandedOnAPlayerWho(balance, (input, first) -> {
                 input.moveForward = 0f;
                 input.moveStrafe = side;
             }), "sidestepping to side " + side);
@@ -254,19 +266,22 @@ class WardenFightTest {
      * to the other side each combo.
      * @return the simulation when the Warden is destroyed, the player is dead or two minutes have passed
      */
-    private static GameSimulation fight(PlayerLoadout loadout) {
-        GameSimulation sim = new GameSimulation(room(), loadout, false);
+    private static GameSimulation fight(TestTuning.Balance balance, PlayerLoadout loadout) {
+        GameSimulation sim = balance.simulation(room(), loadout, false);
         Enemy boss = warden(sim);
         PlayerInput input = new PlayerInput();
         float side = 1f;
         boolean wasCombo = false;
+        // The sidestep lasts until a little after the last punch of the clip.
+        WardenTuning fightTuning = balance.warden();
+        float sidestepFor = fightTuning.punchTime(fightTuning.punchCount() - 1) + 0.13f;
         for (int i = 0; i < 120 * 60 && !boss.isDestroyed() && !sim.player.isDead(); i++) {
             aimAt(sim, boss, input);
             boolean combo = boss.getState() == Enemy.State.WINDUP;
             if (combo && !wasCombo) side = -side;
             wasCombo = combo;
             input.moveForward = 0f;
-            input.moveStrafe = combo && boss.getComboTime() < 1.4f ? side : 0f;
+            input.moveStrafe = combo && boss.getComboTime() < sidestepFor ? side : 0f;
             // A trigger pulled and let go, every other frame.
             input.fire = i % 2 == 0;
             sim.update(DT, input);
@@ -282,29 +297,34 @@ class WardenFightTest {
         assertTrue(sim.getTime() < 90f, "the " + weapon + " took " + sim.getTime() + " s");
     }
 
-    @Test
-    void thePistolAloneBeatsTheWarden() {
-        assertWardenBeaten(fight(new PlayerLoadout(100f, 50f, Difficulty.NORMAL)), "pistol");
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void thePistolAloneBeatsTheWarden(TestTuning.Balance balance) {
+        assertWardenBeaten(fight(balance, new PlayerLoadout(100f, 50f, Difficulty.NORMAL)), "pistol");
     }
 
-    @Test
-    void theScattergunAloneBeatsTheWarden() {
-        GameSimulation sim = fight(new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 24, WeaponSlot.SCATTERGUN));
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void theScattergunAloneBeatsTheWarden(TestTuning.Balance balance) {
+        GameSimulation sim = fight(balance,
+            new PlayerLoadout(100f, 50f, Difficulty.NORMAL, true, 24, WeaponSlot.SCATTERGUN));
         assertEquals(WeaponSlot.SCATTERGUN, sim.getActiveWeapon());
         assertWardenBeaten(sim, "scattergun");
     }
 
-    @Test
-    void theRailLanceAloneBeatsTheWarden() {
-        GameSimulation sim = fight(
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void theRailLanceAloneBeatsTheWarden(TestTuning.Balance balance) {
+        GameSimulation sim = fight(balance,
             new PlayerLoadout(100f, 50f, Difficulty.NORMAL, false, 0, true, 15, WeaponSlot.RAIL_LANCE));
         assertEquals(WeaponSlot.RAIL_LANCE, sim.getActiveWeapon());
         assertWardenBeaten(sim, "rail lance");
     }
 
-    @Test
-    void theWardenIsDangerousToAPlayerWhoStandsAndShoots() {
-        GameSimulation sim = new GameSimulation(room(), new PlayerLoadout(100f, 0f, Difficulty.NORMAL), false);
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void theWardenIsDangerousToAPlayerWhoStandsAndShoots(TestTuning.Balance balance) {
+        GameSimulation sim = balance.simulation(room(), new PlayerLoadout(100f, 0f, Difficulty.NORMAL), false);
         Enemy boss = warden(sim);
         PlayerInput input = new PlayerInput();
         for (int i = 0; i < 60 * 60 && !boss.isDestroyed() && !sim.player.isDead(); i++) {

@@ -9,7 +9,7 @@ import java.nio.file.Path;
  * The size of the game's window when nothing else sets one, read from {@code assets/data/window.txt}. The desktop
  * launcher opens the window with it unless {@code GAMEX_WINDOW} names another size, and the renderers size their
  * cameras and the HUD its overlay with it until the window reports its own size. The launcher loads it once and
- * hands it to the game. Tests read the shipped file or hand their own text to {@link #parse}.
+ * hands it to the game. Tests take their own copy from {@code TestTuning} or hand text to {@link #parse}.
  *
  * <p>The file holds {@code window.width} and {@code window.height}, in pixels, and nothing else. There is no size
  * behind the file: a missing file, a missing key, a key this class does not list and a size smaller than

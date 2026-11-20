@@ -20,16 +20,17 @@ import java.nio.file.Paths;
 import java.util.List;
 
 /**
- * Checks the measuring of the menu and HUD text at start-up ({@link TextFit}): the shipped files pass, and a line
- * made too long for its box, in {@code strings.txt} or through a long key name of {@code bindings.txt}, stops the
- * start with a message that names it.
+ * Checks the measuring of the menu and HUD text at start-up ({@link TextFit}): the tests' own text, bindings and
+ * stage files pass (the shipped ones are measured in {@link ShippedTextTest}), and a line made too long for its
+ * box, in {@code strings.txt} or through a long key name of {@code bindings.txt}, stops the start with a message
+ * that names it.
  */
 class TextFitTest {
 
-    private static final SettingsDefaults SETTINGS = SettingsDefaults.load();
+    private static final SettingsDefaults SETTINGS = TestTuning.SETTINGS;
 
     private static void require(UiStrings strings) {
-        TextFit.require(strings, TestTuning.DIFFICULTY, SETTINGS, Levels.campaign(), Levels.trainingRange());
+        TextFit.require(strings, TestTuning.DIFFICULTY, SETTINGS, TestTuning.CAMPAIGN, TestTuning.TRAINING_RANGE);
     }
 
     private static String rejected(UiStrings strings) {
@@ -43,9 +44,9 @@ class TextFitTest {
         return text.toString();
     }
 
-    /** @return the number of the line that holds a key in the shipped {@code strings.txt} */
+    /** @return the number of the line that holds a key in the tests' own {@code strings.txt} */
     private static int lineOf(String key) {
-        List<String> lines = AssetText.splitLines(AssetText.read("data", UiStrings.PATH));
+        List<String> lines = AssetText.splitLines(TestTuning.text(UiStrings.PATH));
         for (int i = 0; i < lines.size(); i++) {
             if (lines.get(i).startsWith(key + ":")) return i + 1;
         }
@@ -61,7 +62,7 @@ class TextFitTest {
     }
 
     @Test
-    void theShippedTextFitsWithTheShippedKeyNames() {
+    void theTestsOwnTextFitsWithItsKeyNames() {
         assertDoesNotThrow(() -> require(TestTuning.STRINGS));
     }
 
@@ -126,7 +127,7 @@ class TextFitTest {
     @Test
     void aLineWithValuesIsMeasuredWithTheLongestItCanHold() {
         // The objective line is "OBJECTIVE: " and the objective's words: 382 from the status column's edge to the
-        // limit, at 2.4, is 40 characters, 11 of them the shipped caption.
+        // limit, at 2.4, is 40 characters, 11 of them the caption of the tests' own text.
         assertDoesNotThrow(() -> require(TestTuning.stringsWith("objective.exit", ofLength(29))));
         String objective = rejected(TestTuning.stringsWith("objective.exit", ofLength(30)));
         assertTrue(objective.startsWith("Invalid 'objective.exit' in data/strings.txt at line "
@@ -173,16 +174,16 @@ class TextFitTest {
             + ": too long for the Intermission Tally panel by "), stats);
         assertTrue(stats.contains("\"DAMAGE TAKEN: 9999    PICKUPS COLLECTED: 999/999    ACCURACY: 100%\""), stats);
 
-        // A Settings row is measured with the end of its range that is longer to write: 110 degrees as shipped,
-        // and two digits when the file's range ends at 90.
+        // A Settings row is measured with the end of its range that is longer to write: 110 degrees in the tests'
+        // own file, and two digits when the file's range ends at 90.
         UiStrings longRow = TestTuning.stringsWith("menu.settings.fov", ofLength(35) + " < {value} >");
         String row = rejected(longRow);
         assertTrue(row.startsWith("Invalid 'menu.settings.fov' in data/strings.txt at line "
             + lineOf("menu.settings.fov") + ": too long for a highlighted menu row by 1 character: "), row);
         assertTrue(row.contains(" < 110 > <\" is "), row);
-        String narrower = TestTuning.withValue(AssetText.read("data", SettingsDefaults.PATH), "fov.max", "90");
+        String narrower = TestTuning.withValue(TestTuning.text(SettingsDefaults.PATH), "fov.max", "90");
         assertDoesNotThrow(() -> TextFit.require(longRow, TestTuning.DIFFICULTY,
-            SettingsDefaults.parse(SettingsDefaults.PATH, narrower), Levels.campaign(), Levels.trainingRange()));
+            SettingsDefaults.parse(SettingsDefaults.PATH, narrower), TestTuning.CAMPAIGN, TestTuning.TRAINING_RANGE));
 
         // The Select Difficulty rows are measured with the multipliers that were loaded.
         DifficultyTuning steep = TestTuning.difficultyWith("hard.damage_taken", "125000");
@@ -190,7 +191,7 @@ class TextFitTest {
             "{label} - {damage} DAMAGE TAKEN / {pickups} PICKUPS");
         assertDoesNotThrow(() -> require(longDifficulty));
         String difficulty = assertThrows(IllegalArgumentException.class, () -> TextFit.require(longDifficulty, steep,
-            SETTINGS, Levels.campaign(), Levels.trainingRange())).getMessage();
+            SETTINGS, TestTuning.CAMPAIGN, TestTuning.TRAINING_RANGE)).getMessage();
         assertTrue(difficulty.startsWith("Invalid 'menu.difficulty.row' in data/strings.txt at line "
             + lineOf("menu.difficulty.row") + ": too long for a highlighted menu row by 2 characters: "
             + "\"> HARD - 12500000% DAMAGE TAKEN / -20% PICKUPS <\""), difficulty);
@@ -198,40 +199,36 @@ class TextFitTest {
 
     @Test
     void aStageWithMoreBriefingLinesThanTheBoxHoldsStopsTheStartNamingItsFile() {
-        String shipped = AssetText.read("level", "levels/03-security-hub.map");
+        String stageText = TestTuning.text("levels/03-security-hub.map");
         String third = "briefing: HOLD {key:alt_fire} FOR THE {rail.zoom_factor}X ZOOM OPTIC, THEN EXTRACT.\n";
-        assertTrue(shipped.contains(third), "the shipped stage ends its briefing with the line the test splits");
-        Levels.Stage fourLines = Levels.parseStage("levels/03-security-hub.map", shipped.replace(third,
+        assertTrue(stageText.contains(third), "the tests' own stage ends its briefing with the line the test splits");
+        Levels.Stage fourLines = Levels.parseStage("levels/03-security-hub.map", stageText.replace(third,
             "briefing: HOLD {key:alt_fire} FOR THE {rail.zoom_factor}X ZOOM OPTIC.\nbriefing: THEN EXTRACT.\n"));
         assertEquals(4, fourLines.briefing.size());
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
             () -> TextFit.require(TestTuning.STRINGS, TestTuning.DIFFICULTY, SETTINGS, List.of(fourLines),
-                Levels.trainingRange()));
+                TestTuning.TRAINING_RANGE));
         assertEquals("Invalid briefing of stage 03_security_hub in levels/03-security-hub.map: it has 4 lines and "
             + "the briefing's box has room for 3", error.getMessage());
-
-        // Every shipped stage has the three lines the box holds.
-        for (Levels.Stage stage : Levels.campaign()) assertEquals(3, stage.briefing.size(), stage.id);
-        assertEquals(3, Levels.trainingRange().briefing.size());
     }
 
     @Test
     void aParTimeOfAHundredMinutesIsMeasuredAsItIsWritten() {
-        String shipped = AssetText.read("level", "levels/03-security-hub.map");
-        assertTrue(shipped.contains("\npar: 80\n"), "the shipped stage has the par the test replaces");
+        String stageText = TestTuning.text("levels/03-security-hub.map");
+        assertTrue(stageText.contains("\npar: 80\n"), "the tests' own stage has the par the test replaces");
         Levels.Stage slow = Levels.parseStage("levels/03-security-hub.map",
-            shipped.replace("\npar: 80\n", "\npar: 6000\n"));
+            stageText.replace("\npar: 80\n", "\npar: 6000\n"));
         assertEquals("100:00.0", TextFormat.stopwatch(slow.parSeconds));
 
-        // The shipped lines have room for it.
+        // The tests' own lines have room for it.
         assertDoesNotThrow(() -> TextFit.require(TestTuning.STRINGS, TestTuning.DIFFICULTY, SETTINGS, List.of(slow),
-            Levels.trainingRange()));
+            TestTuning.TRAINING_RANGE));
 
         // A line under the briefing's title that is full with 99:59.9 is one character short for 100:00.0.
         UiStrings fullMeta = TestTuning.stringsWith("screen.briefing.meta", ofLength(48) + "{difficulty} {par}");
         assertDoesNotThrow(() -> require(fullMeta));
         String meta = assertThrows(IllegalArgumentException.class, () -> TextFit.require(fullMeta,
-            TestTuning.DIFFICULTY, SETTINGS, List.of(slow), Levels.trainingRange())).getMessage();
+            TestTuning.DIFFICULTY, SETTINGS, List.of(slow), TestTuning.TRAINING_RANGE)).getMessage();
         assertTrue(meta.startsWith("Invalid 'screen.briefing.meta' in data/strings.txt at line "
             + lineOf("screen.briefing.meta") + ": too long for the Briefing panel by 1 character: "), meta);
         assertTrue(meta.contains("NORMAL 100:00.0\" is "), meta);
@@ -240,7 +237,7 @@ class TextFitTest {
         UiStrings fullTime = TestTuning.stringsWith("tally.clear_time", ofLength(42) + "{time} {par}");
         assertDoesNotThrow(() -> require(fullTime));
         String time = assertThrows(IllegalArgumentException.class, () -> TextFit.require(fullTime,
-            TestTuning.DIFFICULTY, SETTINGS, List.of(slow), Levels.trainingRange())).getMessage();
+            TestTuning.DIFFICULTY, SETTINGS, List.of(slow), TestTuning.TRAINING_RANGE)).getMessage();
         assertTrue(time.startsWith("Invalid 'tally.clear_time' in data/strings.txt at line "
             + lineOf("tally.clear_time") + ": too long for the Intermission Tally panel by 1 character: "), time);
         assertTrue(time.contains("99:59.9 100:00.0\" is "), time);
@@ -254,7 +251,8 @@ class TextFitTest {
         KeyBindings longest = TestTuning.bindingsWith("alt_fire", "Forward Delete");
         assertDoesNotThrow(() -> require(TestTuning.stringsFor(TestTuning.bindingsWith("alt_fire", "Numpad 1"))));
         assertDoesNotThrow(() -> require(TestTuning.stringsFor(longest)));
-        UiStrings remapped = UiStrings.load(TestTuning.FONT, longest::hint, TextValues.of(
+        UiStrings remapped = UiStrings.parse(UiStrings.PATH, TestTuning.text(UiStrings.PATH), TestTuning.FONT,
+            longest::hint, TextValues.of(
             TestTuning.weaponsWith("rail.zoom_factor", "1.875"), TestTuning.DIFFICULTY, TestTuning.WORLD));
         assertEquals("Invalid briefing line 3 of stage 03_security_hub in levels/03-security-hub.map: too long for "
             + "the briefing's box by 2 characters: \"> HOLD FORWARD DELETE FOR THE 1.875X ZOOM OPTIC, THEN EXTRACT.\" "

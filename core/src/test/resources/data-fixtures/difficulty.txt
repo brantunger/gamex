@@ -1,0 +1,13 @@
+// A test's own difficulty multipliers, with the keys of assets/data/difficulty.txt. Every number differs from the
+// shipped one
+// and from every other number here, so a test that reads it can tell each key from the next and from a value held
+// in code. DifficultyTuningTest reads it; it is not the game's balance and never needs to follow it.
+easy.damage_taken: 0.714
+easy.pickup: 1.2875
+easy.enemy_speed: 0.884
+normal.damage_taken: 1.05
+normal.pickup: 1.06
+normal.enemy_speed: 1.07
+hard.damage_taken: 1.512
+hard.pickup: 0.872
+hard.enemy_speed: 1.32

@@ -1,13 +1,14 @@
 package io.github.brantunger.gamex.hud;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Gdx;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
 import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
@@ -24,7 +25,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -33,17 +38,7 @@ import java.util.stream.Stream;
  */
 class StageLoadoutFileTest {
 
-    private static final String[] STAGE_IDS = {
-        "01_outer_breach", "02_coolant_core", "03_security_hub", "04_lockdown_wing", "05_command_vault",
-        "06_warden_core"
-    };
-    /** Whether each stage of {@link #STAGE_IDS} starts with the Scattergun, and with the Rail Lance. */
-    private static final boolean[] SCATTERGUN = {false, true, true, true, true, true};
-    private static final boolean[] RAIL_LANCE = {false, false, false, true, true, true};
-    /** One weapon pickup's 8 shells and 5 slugs, scaled by 1.25 on Easy, 1 on Normal and 0.8 on Hard. */
     private static final Difficulty[] DIFFICULTIES = {Difficulty.EASY, Difficulty.NORMAL, Difficulty.HARD};
-    private static final int[] SHELLS = {10, 8, 6};
-    private static final int[] SLUGS = {6, 5, 4};
 
     private com.badlogic.gdx.Files previousFiles;
     private String previousAssets;
@@ -103,7 +98,7 @@ class StageLoadoutFileTest {
         assertTrue(index >= 0, stageId + " is in the campaign");
         SaveData save = new SaveData(new MapKeyValueStore());
         save.unlockStage(campaign.size() - 1);
-        MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.TITLE);
         assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
         menu.confirm();
         assertTrue(menu.selectId(MenuState.OptionId.STAGE, index));
@@ -115,8 +110,20 @@ class StageLoadoutFileTest {
         return menu.getActiveLoadout();
     }
 
-    private static void assertLoadout(PlayerLoadout loadout, Difficulty difficulty, boolean scattergun, int shells,
-                                      boolean railLance, int slugs, WeaponSlot inHand, String message) {
+    /**
+     * Checks a loadout against the weapons a stage file lists: full health, no armor, each weapon listed with the
+     * ammunition of its pickup scaled by the difficulty, and in hand the Scattergun, else the Rail Lance, else the
+     * pistol. The menus of these tests run on the tests' own tuning.
+     */
+    private static void assertLoadout(PlayerLoadout loadout, Difficulty difficulty, Set<WeaponSlot> granted,
+                                      String message) {
+        float pickupScale = TestTuning.DIFFICULTY.of(difficulty).pickupScale;
+        boolean scattergun = granted.contains(WeaponSlot.SCATTERGUN);
+        boolean railLance = granted.contains(WeaponSlot.RAIL_LANCE);
+        int shells = !scattergun ? 0 : Math.min(TestTuning.WEAPONS.scattergunMaxShells,
+            Math.max(1, Math.round(TestTuning.WEAPONS.scattergunWeaponPickupShells * pickupScale)));
+        int slugs = !railLance ? 0 : Math.min(TestTuning.WEAPONS.railMaxSlugs,
+            Math.max(1, Math.round(TestTuning.WEAPONS.railWeaponPickupSlugs * pickupScale)));
         assertEquals(Player.MAX_HEALTH, loadout.health, 1e-4f, message + ": health");
         assertEquals(0f, loadout.armor, 1e-4f, message + ": armor");
         assertEquals(difficulty, loadout.difficulty, message + ": difficulty");
@@ -124,73 +131,102 @@ class StageLoadoutFileTest {
         assertEquals(shells, loadout.shells, message + ": shells");
         assertEquals(railLance, loadout.hasRailLance, message + ": rail lance");
         assertEquals(slugs, loadout.slugs, message + ": slugs");
-        assertEquals(inHand, loadout.activeWeapon, message + ": weapon in hand");
+        assertEquals(scattergun ? WeaponSlot.SCATTERGUN : railLance ? WeaponSlot.RAIL_LANCE : WeaponSlot.PISTOL,
+            loadout.activeWeapon, message + ": weapon in hand");
     }
 
-    /** Checks every stage on every difficulty against the loadouts the campaign has always started with. */
-    private static void assertEveryStageStartsAsShipped(String message) {
-        for (int stage = 0; stage < STAGE_IDS.length; stage++) {
-            for (int d = 0; d < DIFFICULTIES.length; d++) {
-                assertLoadout(selectStage(STAGE_IDS[stage], DIFFICULTIES[d]), DIFFICULTIES[d],
-                    SCATTERGUN[stage], SCATTERGUN[stage] ? SHELLS[d] : 0,
-                    RAIL_LANCE[stage], RAIL_LANCE[stage] ? SLUGS[d] : 0,
-                    SCATTERGUN[stage] ? WeaponSlot.SCATTERGUN : WeaponSlot.PISTOL,
-                    message + ", " + STAGE_IDS[stage] + " on " + DIFFICULTIES[d]);
+    /** @return the weapons each stage of the campaign being read starts with, by stage id, in campaign order */
+    private static Map<String, Set<WeaponSlot>> weaponsByStage() {
+        Map<String, Set<WeaponSlot>> weapons = new LinkedHashMap<>();
+        for (Levels.Stage stage : Levels.campaign()) weapons.put(stage.id, stage.startingWeapons);
+        return weapons;
+    }
+
+    /** Checks that every stage deploys, on every difficulty, with the weapons {@code expected} gives its id. */
+    private static void assertEveryStageDeploysWith(Map<String, Set<WeaponSlot>> expected, String message) {
+        for (Map.Entry<String, Set<WeaponSlot>> stage : expected.entrySet()) {
+            for (Difficulty difficulty : DIFFICULTIES) {
+                assertLoadout(selectStage(stage.getKey(), difficulty), difficulty, stage.getValue(),
+                    message + ", " + stage.getKey() + " on " + difficulty);
             }
         }
     }
 
+    /** @return the text of a stage file with its loadout header, if it has one, replaced by {@code header} */
+    private static String withLoadoutHeader(String stageText, String header) {
+        String headerEnd = "complete_on_all_targets: ";
+        List<String> lines = new ArrayList<>();
+        boolean placed = false;
+        for (String line : stageText.split("\n", -1)) {
+            if (line.startsWith("loadout:")) continue;
+            lines.add(line);
+            if (line.startsWith(headerEnd)) {
+                if (!header.isEmpty()) lines.add(header);
+                placed = true;
+            }
+        }
+        assertTrue(placed, "the stage file has a " + headerEnd + "line");
+        return String.join("\n", lines);
+    }
+
+    /** Whatever weapons the shipped stage files list, the menu deploys each stage with the ones its file lists. */
     @Test
-    void everyShippedStageStartsWithTheLoadoutItAlwaysHad() {
-        List<String> ids = new ArrayList<>();
-        for (Levels.Stage stage : Levels.campaign()) ids.add(stage.id);
-        assertEquals(List.of(STAGE_IDS), ids);
-        assertEveryStageStartsAsShipped("shipped campaign");
+    void everyShippedStageDeploysWithTheWeaponsItsFileLists() {
+        Map<String, Set<WeaponSlot>> shipped = weaponsByStage();
+        assertFalse(shipped.isEmpty());
+        assertEveryStageDeploysWith(shipped, "shipped campaign");
     }
 
     @Test
     void reorderingTheCampaignMovesNoLoadout(@TempDir Path temp) throws IOException {
         Path levels = useACopyOfTheAssets(temp);
+        Map<String, Set<WeaponSlot>> before = weaponsByStage();
+        List<String> ids = new ArrayList<>(before.keySet());
         Path manifest = levels.resolve("campaign.txt");
         List<String> entries = new ArrayList<>();
         for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
             if (line.trim().endsWith(".map")) entries.add(line.trim());
         }
-        assertEquals(STAGE_IDS.length, entries.size());
+        assertEquals(ids.size(), entries.size());
+        assertTrue(ids.size() > 1, "a campaign of one stage cannot be reordered");
         Collections.reverse(entries);
         Files.write(manifest, (String.join("\n", entries) + "\n").getBytes(StandardCharsets.UTF_8));
 
-        assertEquals("06_warden_core", Levels.campaign().get(0).id, "the copy of the campaign is the one read");
-        assertEquals("01_outer_breach", Levels.campaign().get(5).id);
-        assertEveryStageStartsAsShipped("reversed campaign");
+        assertEquals(ids.get(ids.size() - 1), Levels.campaign().get(0).id, "the copy of the campaign is the one read");
+        assertEquals(ids.get(0), Levels.campaign().get(ids.size() - 1).id);
+        assertEveryStageDeploysWith(before, "reversed campaign");
     }
 
     @Test
     void editingAStageFilesLoadoutHeaderChangesTheLoadout(@TempDir Path temp) throws IOException {
         Path levels = useACopyOfTheAssets(temp);
-        String headerEnd = "complete_on_all_targets: false\n";
-
-        // Stage 01 has no loadout header, and so the pistol alone; give it the Rail Lance.
-        Path first = levels.resolve("01-outer-breach.map");
-        String firstText = new String(Files.readAllBytes(first), StandardCharsets.UTF_8);
-        assertTrue(firstText.contains(headerEnd) && !firstText.contains("loadout:"), firstText);
-        Files.write(first, firstText.replace(headerEnd, headerEnd + "loadout: raillance\n")
-            .getBytes(StandardCharsets.UTF_8));
-        assertLoadout(selectStage("01_outer_breach", Difficulty.NORMAL), Difficulty.NORMAL, false, 0, true, 5,
-            WeaponSlot.RAIL_LANCE, "stage 01 with a loadout header");
-
-        // Stage 06 without its loadout header starts as a stage with none does.
-        Path last = levels.resolve("06-warden-core.map");
-        List<String> kept = new ArrayList<>();
-        for (String line : Files.readAllLines(last, StandardCharsets.UTF_8)) {
-            if (!line.startsWith("loadout:")) kept.add(line);
+        Map<String, Set<WeaponSlot>> before = weaponsByStage();
+        List<String> ids = new ArrayList<>(before.keySet());
+        List<String> files = new ArrayList<>();
+        for (String line : Files.readAllLines(levels.resolve("campaign.txt"), StandardCharsets.UTF_8)) {
+            if (line.trim().endsWith(".map")) files.add(line.trim());
         }
-        Files.write(last, (String.join("\n", kept) + "\n").getBytes(StandardCharsets.UTF_8));
-        assertLoadout(selectStage("06_warden_core", Difficulty.NORMAL), Difficulty.NORMAL, false, 0, false, 0,
-            WeaponSlot.PISTOL, "stage 06 without a loadout header");
+        assertTrue(files.size() >= 3, "the campaign has a first, a last and a stage between them");
 
-        // The other stages are untouched.
-        assertLoadout(selectStage("04_lockdown_wing", Difficulty.HARD), Difficulty.HARD, true, 6, true, 4,
-            WeaponSlot.SCATTERGUN, "stage 04");
+        // Whatever the first stage started with, its file now lists the Rail Lance alone.
+        Path first = levels.resolve(files.get(0));
+        Files.write(first, withLoadoutHeader(new String(Files.readAllBytes(first), StandardCharsets.UTF_8),
+            "loadout: raillance").getBytes(StandardCharsets.UTF_8));
+        assertLoadout(selectStage(ids.get(0), Difficulty.NORMAL), Difficulty.NORMAL,
+            EnumSet.of(WeaponSlot.PISTOL, WeaponSlot.RAIL_LANCE), "the first stage with a loadout header");
+        assertEquals(WeaponSlot.RAIL_LANCE, selectStage(ids.get(0), Difficulty.NORMAL).activeWeapon);
+
+        // The last stage without a loadout header starts with the pistol alone.
+        Path last = levels.resolve(files.get(files.size() - 1));
+        Files.write(last, withLoadoutHeader(new String(Files.readAllBytes(last), StandardCharsets.UTF_8), "")
+            .getBytes(StandardCharsets.UTF_8));
+        assertLoadout(selectStage(ids.get(ids.size() - 1), Difficulty.NORMAL), Difficulty.NORMAL,
+            EnumSet.of(WeaponSlot.PISTOL), "the last stage without a loadout header");
+
+        // The stages between them are untouched.
+        for (int i = 1; i < ids.size() - 1; i++) {
+            assertLoadout(selectStage(ids.get(i), Difficulty.HARD), Difficulty.HARD, before.get(ids.get(i)),
+                "the untouched " + ids.get(i));
+        }
     }
 }

@@ -7,10 +7,11 @@ import java.nio.file.Path;
 
 /**
  * What each setting is while nothing is saved, and how far and in what steps the Settings screen moves it.
- * Loaded once at start-up from {@code assets/data/settings.txt} and passed to {@link GameSettings}; tests read the
- * shipped file or hand their own text to {@link #parse}. The player's own choices are not here: they are kept in the
- * saved preferences, which {@link GameSettings#load(KeyValueStore, SettingsDefaults)} reads. The game saves every
- * setting together, changed or not, so a default counts until the settings are first saved and not after.
+ * Loaded once at start-up from {@code assets/data/settings.txt} and passed to {@link GameSettings}; tests take
+ * their own copy from {@code TestTuning} or hand text to {@link #parse}. The player's own choices are not here:
+ * they are kept in the saved preferences, which {@link GameSettings#load(KeyValueStore, SettingsDefaults)} reads.
+ * The game saves every setting together, changed or not, so a default counts until the settings are first saved
+ * and not after.
  *
  * <p>The file holds the keys below and nothing else.
  * <ul>

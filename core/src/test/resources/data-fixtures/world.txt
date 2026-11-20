@@ -1,0 +1,24 @@
+// A test's own world rules, with the keys of assets/data/world.txt. Every number differs from the shipped one
+// and from every other number here, so a test that reads it can tell each key from the next and from a value held
+// in code. WorldTuningTest reads it; it is not the game's balance and never needs to follow it.
+pickup.medkit: 26
+pickup.armor: 27
+pickup.energy_cell: 36
+canister.blast_radius: 2.244
+canister.blast_damage: 81
+canister.self_damage_scale: 0.515
+grate.damage: 9
+grate.interval: 0.364
+grate.clearance_height: 0.063
+feedback.hit_marker_time: 0.1696
+feedback.toast_time: 2.14
+noise.blast_detonation: 12, 5.94
+noise.console_override: 13, 8
+noise.pistol_shot: 10, 4.905
+noise.pistol_hit: 6, 4
+noise.rail_shot: 16, 8.25
+noise.rail_hit: 11, 5
+noise.scattergun_shot: 14, 6.105
+noise.scattergun_double_shot: 15, 7.28
+noise.scattergun_hit: 7, 17
+noise.canister_explosion: 18, 6.215

@@ -1,0 +1,23 @@
+// Colours of the Combat Scattergun viewmodel (assets/models/viewmodel-scattergun.obj).
+// material.<name>: red, green, blue, gloss - one line for each material the game knows for this model, by the
+// name the model file uses in its usemtl lines. A material the model file does not use still needs its line.
+// Every number is from 0 to 1; gloss runs from 0 (matt) to 1 (polished). The weapons reuse material names with
+// their own colours, so each weapon has its own file; a line that repeats another file's colour says so.
+material.gunmetal: 0.22, 0.25, 0.30, 0.6
+// gunmetal_top, dark_metal, steel, bore and sight_dot have the same colours in palette-pistol.txt, and bore in
+// palette-rail-lance.txt too. They are repeated because each weapon is coloured on its own.
+material.gunmetal_top: 0.28, 0.30, 0.36, 1
+material.dark_metal: 0.08, 0.09, 0.11, 0.4
+material.steel: 0.60, 0.62, 0.68, 1
+material.bore: 0.02, 0.02, 0.03, 0
+material.brass: 0.95, 0.68, 0.22, 0.7
+material.sight_dot: 0.88, 0.90, 0.86, 0
+material.sight_amber: 1.00, 0.66, 0.14, 0.3
+material.polymer: 0.24, 0.26, 0.30, 0.15
+material.polymer_dark: 0.14, 0.15, 0.18, 0.10
+material.stipple: 0.30, 0.32, 0.36, 0.10
+material.shell_red: 0.84, 0.16, 0.20, 0.45
+material.heatshield: 0.16, 0.18, 0.22, 0.60
+// Same colour as material.shotgun_wood in palette-world.txt: the pickup matches the weapon in hand.
+material.wood: 0.46, 0.27, 0.14, 0.22
+material.wood_dark: 0.31, 0.17, 0.09, 0.15

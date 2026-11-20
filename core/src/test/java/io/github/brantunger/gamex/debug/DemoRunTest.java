@@ -18,12 +18,11 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.LogCapture;
 import io.github.brantunger.gamex.TestTuning;
-import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerInput;
-import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
@@ -62,25 +61,42 @@ class DemoRunTest {
         assertNull(DemoRun.parseOrbit(",,"));
     }
 
-    @Test
-    void jumpScriptVaultsTheTrainingRangeShockGrateWithoutTakingDamage() {
-        // The same setup MainGame gives the "jump" script.
+    /**
+     * The jump demo vaults the Training Range's shock grate. On the tests' own balance it is played from a script
+     * of the test's own, as the jump script was when this was written: the walk from x = 9.8 is a quarter of a cell
+     * short of the grate on frame 19. On the shipped balance it is the shipped {@code jump} script that is played,
+     * so a retimed script or a tuned jump that no longer clears the grate fails here.
+     */
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void aScriptedJumpVaultsTheTrainingRangeShockGrateWithoutTakingDamage(TestTuning.Balance balance) {
+        DemoScript script = balance == TestTuning.Balance.SHIPPED ? DemoScript.load("jump")
+            : DemoScript.parse("demos/test-jump.txt", String.join("\n",
+            "screen: playing",
+            "stage: training_range",
+            "loadout: custom",
+            "loadout.health: 100",
+            "loadout.armor: 0",
+            "loadout.shells: 16",
+            "loadout.weapon: scattergun",
+            "position: 9.8, 15.5",
+            "look: 0, -14",
+            "",
+            "1-: move_forward",
+            "19-23: jump"));
         Levels.Stage range = Levels.trainingRange();
-        GameSimulation simulation = new GameSimulation(range.map,
-            new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 16, WeaponSlot.SCATTERGUN),
-            range.completeOnAllTargets);
-        simulation.player.position.set(9.8f, 15.5f);
-        simulation.player.look(0f, -14f);
+        GameSimulation simulation = script.scene.createSimulation(balance.enemies(), balance.difficulty(),
+            balance.weapons(), balance.world());
 
-        DemoRun demo = DemoRun.forScript("jump");
         PlayerInput input = new PlayerInput();
         boolean wasOverTheGrate = false;
         for (int frame = 0; frame < 240; frame++) {
-            demo.nextFrame(input);
+            input.clear();
+            script.apply(frame + 1, input);
             simulation.update(DemoRun.FRAME_TIME, input);
             if (range.map.isHazardAt(simulation.player.position.x, simulation.player.position.y)) {
                 wasOverTheGrate = true;
-                assertTrue(simulation.player.getJumpHeight() > TestTuning.WORLD.grateClearanceHeight,
+                assertTrue(simulation.player.getJumpHeight() > balance.world().grateClearanceHeight,
                     "airborne over the grate on frame " + (frame + 1));
             }
         }

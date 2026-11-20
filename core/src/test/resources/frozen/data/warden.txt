@@ -1,0 +1,62 @@
+// The Warden's fight: its chase, its three-punch combo and its overdrive. Its health, walk speed and the other
+// per-kind values are in enemies.txt. Read once when the game starts. Every key must be present.
+// Distances are in map cells, times in seconds, angles in degrees, turn rates in degrees per second.
+
+// The Warden is in overdrive, its second phase, at or below this share of its health.
+overdrive_health_ratio: 0.5
+
+// Chase.
+// How fast it runs at a player it can see. The player moves at 3.2, so walking away does not work.
+run_speed: 3.70
+// How long it keeps running after it loses sight of the player. A sightline that grazes a pillar comes and goes
+// from step to step, and without this it would stutter between walk and run.
+chase_memory: 0.5
+// How fast it turns while it chases a player in sight, and along its route to one out of sight.
+turn_rate: 320
+path_turn_rate: 280
+// It starts its combo when the player's centre is this close, in sight, and within attack_facing of its facing.
+attack_range: 0.90
+attack_facing: 15
+
+// Combo timing. THESE TWO ARE MEASURED FROM THE MODEL, NOT BALANCE: change them only together with the
+// Punch_Combo clip of assets/models/enemy-warden.glb, or the hits no longer land when the fists do.
+// combo_time is the length of the clip; a test compares it with the model.
+combo_time: 2.4666667
+// When each punch lands, in seconds of the clip, found by following the hand joints through it: a left hook
+// furthest forward at 0.600 (its speed peaks at 0.633), a left backhand furthest forward at 1.100, and a right
+// uppercut furthest forward at 1.267 (its speed peaks at 1.233, the fastest move of the clip). From 2.07 the
+// clip is back in its guard stance. The lists below hold one value per punch, in the same order.
+punch_times: 0.60, 1.10, 1.27
+
+// Combo balance.
+// The damage of each punch; the uppercut that ends the combo is the heavy one.
+punch_damage: 16, 16, 28
+// How far it lunges along its facing into each punch, at most: it stops at the player. The first is long enough
+// to catch a player who walks straight back from the start of the combo. In the 0.6 s before it lands they get
+// 1.92 further away, and on the easy difficulty, where the combo is slower, 2.26.
+lunge_distance: 2.30, 0.70, 0.70
+// How long before each punch lands its lunge starts, in seconds of the clip.
+lunge_time: 0.30, 0.20, 0.14
+// A punch hits a player whose centre is within punch_reach of the Warden's when it lands, and within punch_arc
+// of its facing to either side.
+punch_reach: 1.10
+punch_arc: 50
+// How fast it turns during its combo: slowly, so a sidestep gets round it.
+combo_turn_rate: 45
+// How long before a punch lands its telegraph builds up, in seconds of the clip.
+telegraph_time: 0.22
+// How long it stands open after its combo before it chases again.
+recover_time: 0.90
+// Volume of the sound of each punch.
+punch_sound_gain: 1.15
+
+// Overdrive. It runs and turns this much faster, every punch does this much more damage, the combo plays this
+// much faster (its punches and lunges with it), and the recovery lasts this share of its time.
+overdrive_speed_scale: 1.25
+overdrive_turn_scale: 1.50
+overdrive_damage_scale: 1.35
+overdrive_combo_rate: 1.15
+overdrive_recover_scale: 0.60
+// Volume of the sound and size of the burst when it enters overdrive.
+overdrive_sound_gain: 1.25
+overdrive_burst_size: 1.6

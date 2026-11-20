@@ -1,0 +1,164 @@
+// Every line of text the menus and the HUD show. Read once when the game starts. Every key must be present.
+// A value is drawn with the pixel font (data/pixel-font.txt), which draws lower case as capitals; a character
+// the font lacks stops the game at start-up, as does a mistake in a placeholder.
+//
+// Placeholders are names in braces:
+//   {key:action}        the name of the key bound to an action: pause, retry, move_forward, move_back,
+//                       move_left, move_right, dash, jump, interact, weapon_1, weapon_2, weapon_3, quick_swap,
+//                       weapon_next, weapon_prev, fire, alt_fire, menu_up, menu_down, menu_left, menu_right,
+//                       menu_confirm, quit, menu_click
+//   {rail.zoom_factor}  the value of that key in data/weapons.txt
+//   any other name      a value the game fills in. Each line has its own fixed set, the ones it uses below: a
+//                       line must keep every one of them and can take no others.
+// A value loses the spaces at its ends, and braces cannot be written as plain text.
+//
+// What an option does never depends on its text: the menus tell their options apart by fixed ids in code.
+
+// Menu options
+menu.continue_campaign: CONTINUE CAMPAIGN
+menu.start_campaign: START CAMPAIGN
+menu.select_stage: SELECT STAGE
+menu.training_range: TRAINING RANGE
+menu.settings: SETTINGS
+menu.quit: QUIT
+menu.back: BACK
+menu.deploy: DEPLOY
+menu.return_to_title: RETURN TO TITLE
+menu.resume: RESUME
+menu.restart_stage: RESTART STAGE
+menu.retry_stage: RETRY STAGE ({key:retry})
+menu.next_stage: NEXT STAGE
+menu.play_again: PLAY AGAIN
+menu.quit_prompt: PRESS {key:quit} AGAIN TO QUIT
+
+// Select Stage rows: never cleared, cleared with no time stored, cleared, and not yet unlocked. Under them, the
+// medals of the highlighted stage; {counts} is one medal_count per difficulty, two spaces apart.
+menu.stage.ready: {title} [READY]
+menu.stage.best: {title} [BEST: {rank}]
+menu.stage.best_time: {title} [BEST: {rank}] {time} ({difficulty})
+menu.stage.locked: {title} [LOCKED]
+menu.stage.medals: MEDALS: {counts}
+menu.stage.medal_count: {difficulty} {earned}/{total}
+
+// Select Difficulty rows. {damage} and {pickups} come from data/difficulty.txt: 0.7 reads 70% and 1.25 reads
+// +25%. row_standard is the row of a difficulty that multiplies everything by 1.
+menu.difficulty.row: {label} - {damage} DAMAGE / {pickups} PICKUPS
+menu.difficulty.row_standard: {label} - STANDARD CHALLENGE
+
+// Settings rows; {value} is a number, a percentage, or the on or off text below.
+menu.settings.sensitivity: SENSITIVITY: < {value} >
+menu.settings.invert_y: INVERT LOOK Y: < {value} >
+menu.settings.fov: FIELD OF VIEW: < {value} >
+menu.settings.view_bob: VIEW BOB: < {value} >
+menu.settings.volume: MASTER VOLUME: < {value} >
+menu.settings.fullscreen: FULLSCREEN: < {value} >
+menu.settings.on: ON
+menu.settings.off: OFF
+
+// Combat HUD
+hud.low_energy: LOW ENERGY
+hud.charge: CHARGE
+hud.energy: ENERGY [{key:dash}: DASH]
+hud.hp: HP {value}
+hud.armor: ARMOR {value}
+hud.weapon.pistol: {key:weapon_1}: PISTOL [INF]
+hud.weapon.scattergun: {key:weapon_2}: SCATTERGUN [{ammo}/{max}]
+hud.weapon.rail_lance: {key:weapon_3}: RAIL LANCE [{ammo}/{max}]
+hud.ammo.shells: SHELLS [{ammo}/{max}]
+hud.ammo.slugs: SLUGS [{ammo}/{max}]
+hud.key.amber: [AMBER KEY]
+hud.key.cyan: [CYAN KEY]
+hud.hostiles: HOSTILES {remaining}/{total}
+hud.targets: TARGETS {remaining}/{total}
+hud.time: TIME {time}
+hud.objective: OBJECTIVE: {text}
+hud.boss: WARDEN
+hud.boss_overdrive: WARDEN // OVERDRIVE
+
+// Screen titles and captions
+screen.title.name: GAMEX
+screen.title.subtitle: SECTOR BREACH // TACTICAL FPS
+screen.title.footer: {key:move_forward}{key:move_left}{key:move_back}{key:move_right}: MOVE  {key:jump}: JUMP  {key:dash}: DASH  {key:interact}: USE  {key:weapon_1}-{key:weapon_3}/{key:quick_swap}/{key:weapon_next}: WEAPON  {key:fire}/{key:alt_fire}: FIRE/ALT
+screen.stage_select.title: SELECT STAGE
+screen.stage_select.hint: CHOOSE ANY UNLOCKED STAGE TO DEPLOY
+screen.difficulty.title: SELECT DIFFICULTY
+screen.briefing.meta: DIFFICULTY: {difficulty}   //   PAR TIME: {par}
+screen.paused.title: PAUSED
+screen.settings.title: SETTINGS
+screen.settings.help: {key:menu_left}/{key:menu_right} OR CLICK TO ADJUST - {key:pause} TO SAVE
+screen.dead.title: SIGNAL LOST
+// {tally} is the hostiles line below on a stage with hostiles and the targets line on one without.
+screen.dead.survived: SURVIVED {time}   //   {tally}
+screen.dead.hostiles: HOSTILES {destroyed}/{total}
+screen.dead.targets: TARGETS {destroyed}/{total}
+screen.complete.stage: STAGE COMPLETE
+screen.complete.campaign: CAMPAIGN COMPLETE
+screen.complete.campaign_note: SECTOR CLEARED - ALL STAGES COMPLETE
+
+// Intermission Tally. best_new is the best time line of a run that set the best time. {accuracy} is a
+// percentage, or no_accuracy when no shot was fired. {list} is the labels of the medals earned, two spaces
+// apart, a medal earned for the first time written as medal_new.
+tally.clear_time: CLEAR TIME: {time}  (PAR {par})
+tally.best: BEST ({difficulty}): {time}
+tally.best_new: BEST ({difficulty}): {time}  *NEW BEST!*
+tally.hostiles_cleared: HOSTILES CLEARED: {destroyed}/{total} ({percent}%)
+tally.targets_cleared: TARGETS CLEARED: {destroyed}/{total} ({percent}%)
+tally.stats: DAMAGE TAKEN: {damage}   PICKUPS: {collected}/{total}   ACCURACY: {accuracy}
+tally.no_accuracy: --
+tally.rank: RANK: [{rank}]   BEST: [{best}]
+tally.medals: MEDALS: {list}
+tally.medal_new: *{label}*
+tally.medals_none: MEDALS: NONE
+tally.medals_training: TRAINING RUN - NO MEDALS
+
+// Objectives, shown after hud.objective
+objective.amber_keycard: FIND THE AMBER KEYCARD
+objective.cyan_keycard: FIND THE CYAN KEYCARD
+objective.console: OVERRIDE THE SECURITY CONSOLE
+objective.warden: DESTROY THE WARDEN
+objective.exit: REACH EXIT PAD
+objective.all_targets: DESTROY ALL TARGETS
+objective.all_hostiles: DESTROY ALL HOSTILES
+objective.all_targets_and_hostiles: DESTROY TARGETS AND HOSTILES
+
+// Interaction prompts of something the player can use now
+prompt.override_console: [{key:interact}] OVERRIDE LOCKDOWN
+prompt.unlock_amber: [{key:interact}] UNLOCK AMBER BULKHEAD
+prompt.unlock_cyan: [{key:interact}] UNLOCK CYAN BULKHEAD
+prompt.open_bulkhead: [{key:interact}] OPEN BULKHEAD
+
+// Why a bulkhead stays shut: the prompt in front of it and the toast on trying it
+blocked.needs_amber: NEEDS AMBER KEYCARD
+blocked.needs_cyan: NEEDS CYAN KEYCARD
+blocked.sealed_console: SEALED BY SECURITY CONSOLE
+blocked.sealed_warden: SEALED BY THE WARDEN
+
+// Toasts
+toast.out_of_shells: OUT OF SHELLS
+toast.out_of_slugs: OUT OF SLUGS
+toast.warden_overdrive: WARDEN OVERDRIVE
+toast.lockdown_overridden: LOCKDOWN OVERRIDDEN
+toast.amber_unlocked: AMBER BULKHEAD UNLOCKED
+toast.cyan_unlocked: CYAN BULKHEAD UNLOCKED
+toast.warden_destroyed: WARDEN DESTROYED - EXTRACTION UNSEALED
+// A pickup that gave an amount of something, and one that gave a keycard or a weapon
+pickup.gain: +{amount} {label}
+pickup.grant: + {label}
+
+// Labels
+pickup.label.medkit: HEALTH
+pickup.label.armor: ARMOR
+pickup.label.energy_cell: ENERGY
+pickup.label.amber_keycard: AMBER KEYCARD
+pickup.label.cyan_keycard: CYAN KEYCARD
+pickup.label.scattergun: SCATTERGUN
+pickup.label.shells: SHELLS
+pickup.label.rail_lance: RAIL LANCE
+pickup.label.rail_slugs: SLUGS
+difficulty.label.easy: EASY
+difficulty.label.normal: NORMAL
+difficulty.label.hard: HARD
+medal.label.untouched: UNTOUCHED
+medal.label.sweep: SWEEP
+medal.label.under_par: UNDER PAR
+medal.label.sharpshooter: SHARPSHOOTER

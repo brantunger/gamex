@@ -1,0 +1,52 @@
+// A test's own weapon balance, with the keys of assets/data/weapons.txt. Every number differs from the shipped one
+// and from every other number here, so a test that reads it can tell each key from the next and from a value held
+// in code. WeaponTuningTest reads it; it is not the game's balance and never needs to follow it.
+pistol.fire_interval: 0.306
+pistol.damage: 21
+pistol.range: 61
+pistol.flash_time: 0.0721
+pistol.recoil_kick: 2
+scattergun.max_shells: 25
+scattergun.weapon_pickup_shells: 9
+scattergun.box_pickup_shells: 7
+scattergun.primary.ring: 8, 4.368, 1
+scattergun.primary.interval: 0.7875
+scattergun.primary.recoil_kick: 1.696
+scattergun.primary.pump_delay: 0.0856
+scattergun.primary.pump_time: 0.5184
+scattergun.alt.ring: 6, 3.706, 3
+scattergun.alt.ring: 11, 7.48, 19
+scattergun.alt.interval: 1.2765
+scattergun.alt.recoil_kick: 2.688
+scattergun.alt.pump_delay: 0.1356
+scattergun.alt.pump_time: 0.7752
+scattergun.pellet_damage: 13
+scattergun.falloff_start: 10
+scattergun.range: 27
+scattergun.min_falloff_scale: 0.4025
+scattergun.flash_time: 0.1044
+scattergun.pump_pull_share: 0.4095
+rail.max_slugs: 16
+rail.weapon_pickup_slugs: 12
+rail.pack_pickup_slugs: 4
+rail.damage: 121
+rail.range: 62
+rail.fire_interval: 1.298
+rail.flash_time: 0.119
+rail.bolt_delay: 0.048
+rail.bolt_time: 0.8228
+rail.bolt_pull_share: 0.305
+rail.zoom_factor: 2.214
+rail.zoom_speed: 7.575
+rail.recoil_kick: 2.652
+blast.full_charge_time: 1.236
+blast.min_charge: 0.26
+blast.min_cost: 22
+blast.max_cost: 63
+blast.min_radius: 5
+blast.max_radius: 14
+blast.min_damage: 31
+blast.max_damage: 131
+blast.recoil_kick: 15
+energy.capacity: 101
+energy.regen: 17

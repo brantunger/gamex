@@ -9,6 +9,7 @@ import ch.qos.logback.classic.Level;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.LogCapture;
+import io.github.brantunger.gamex.TestTuning;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -126,7 +127,7 @@ class GdxPreferencesStoreTest {
         stub.flushFailure = new GdxRuntimeException("Error writing preferences: read-only .prefs");
         GdxPreferencesStore store = new GdxPreferencesStore(stub.prefs);
 
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         settings.setFov(100f);
         settings.setMasterVolume(0.4f);
         settings.setFullscreen(true);
@@ -135,7 +136,7 @@ class GdxPreferencesStoreTest {
             assertDoesNotThrow(() -> settings.save(store));
             assertEquals(1, stub.flushCalls);
 
-            GameSettings reloadedInSession = GameSettings.load(store, SettingsDefaults.load());
+            GameSettings reloadedInSession = GameSettings.load(store, TestTuning.SETTINGS);
             assertEquals(100f, reloadedInSession.getFov(), 1e-6f);
             assertEquals(0.4f, reloadedInSession.getMasterVolume(), 1e-6f);
             assertTrue(reloadedInSession.isFullscreen());

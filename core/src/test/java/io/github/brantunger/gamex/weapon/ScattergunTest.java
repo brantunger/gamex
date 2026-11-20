@@ -12,7 +12,7 @@ import java.util.List;
 
 class ScattergunTest {
 
-    /** The shipped weapon balance. */
+    /** The tests' own weapon balance. */
     private static final WeaponTuning W = TestTuning.WEAPONS;
     /** A scattergun that is only asked for its pellet pattern and damage, never fired. */
     private static final Scattergun GUN = new Scattergun(W);

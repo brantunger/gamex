@@ -1,0 +1,31 @@
+// The defaults and the ranges of the Settings screen. Every key needs exactly one line; a key the game does not
+// know stops the start. The player's own choices are kept in the saved preferences, not here. The defaults apply
+// until the game first saves the settings, which it does when the player leaves the Settings screen, switches
+// fullscreen or closes the game (a screenshot run saves nothing): all six are saved as they then stand, changed or
+// not, and after that a default changed here no longer reaches that player. A saved value outside a range is
+// brought back into it.
+
+// Mouse sensitivity: the default, the least, the most and one step of the Settings row. It is kept to two decimal
+// places, so a step is at least 0.01 and the other three have no third decimal.
+sensitivity.default: 0.12
+sensitivity.min: 0.03
+sensitivity.max: 0.40
+sensitivity.step: 0.01
+
+// Field of view of the 3D view, in whole degrees, so a step is at least 1 and the other three are whole numbers.
+fov.default: 70
+fov.min: 60
+fov.max: 110
+fov.step: 5
+
+// Master volume from 0 (silent) to 1, kept to two decimal places, so a step is at least 0.01 and the other three
+// have no third decimal.
+volume.default: 0.80
+volume.min: 0.0
+volume.max: 1.0
+volume.step: 0.10
+
+// The on/off settings while nothing is saved: true or false.
+invert_y.default: false
+view_bob.default: true
+fullscreen.default: false

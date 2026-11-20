@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 /**
- * Checks {@code assets/data/window.txt}: that it holds the size the launcher and the renderers held as constants
- * before it moved there, and that a file without a usable size stops the load instead of falling back to one.
+ * Checks the window file: that the shipped file loads, that the size is the one the file holds, and that a file
+ * without a usable size stops the load instead of falling back to one.
  */
 class WindowDefaultsTest {
 
@@ -25,12 +25,12 @@ class WindowDefaultsTest {
         assertTrue(error.getMessage().contains("'" + key + "'"), error.getMessage());
     }
 
+    /** Whatever size the shipped file holds, it loads and is one a window can have. */
     @Test
-    void theShippedFileHoldsTheSizeTheCodeHeldBeforeTheMove() {
-        // DesktopLauncher.windowSize's fallback and the DEFAULT_VIEWPORT_* of both renderers, as of 4cf075b.
+    void theShippedFileLoads() {
         WindowDefaults window = WindowDefaults.load();
-        assertEquals(1280, window.width);
-        assertEquals(720, window.height);
+        assertTrue(window.width >= WindowDefaults.MIN_WIDTH && window.width <= WindowDefaults.MAX_WIDTH);
+        assertTrue(window.height >= WindowDefaults.MIN_HEIGHT && window.height <= WindowDefaults.MAX_HEIGHT);
     }
 
     @Test

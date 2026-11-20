@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.GameSimulation;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -145,15 +146,15 @@ class SoundManagerTest {
 
     @Test
     void mutedSoundManagerDrainsMenuAndSimulationEventsWithoutAudioBackend() {
-        GameSettings settings = new GameSettings();
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        GameSettings settings = TestTuning.settings();
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         menu.moveSelection(1);
-        GameSimulation sim = new GameSimulation(Levels.first());
+        GameSimulation sim = TestTuning.simulation(Levels.first());
         PlayerInput input = new PlayerInput();
         input.fire = true;
         sim.update(1f / 60f, input);
 
-        SoundManager manager = new SoundManager(true, SoundVolumes.load());
+        SoundManager manager = new SoundManager(true, TestTuning.SOUNDS);
         manager.update(sim, menu, settings);
         assertTrue(sim.drainSoundEvents().isEmpty(), "simulation events drained");
         List<SoundEvent> remainingMenu = new ArrayList<>();

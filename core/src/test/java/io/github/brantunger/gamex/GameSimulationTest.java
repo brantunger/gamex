@@ -27,6 +27,8 @@ import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.Target;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,14 +39,14 @@ class GameSimulationTest {
 
     /** The player faces east along a corridor with a canister two cells ahead. */
     private static GameSimulation corridorWithCanister() {
-        return new GameSimulation(GameMap.parse(
+        return TestTuning.simulation(GameMap.parse(
             "##########",
             "#>.o.....#",
             "##########"));
     }
 
     private static GameSimulation emptyCorridor() {
-        return new GameSimulation(GameMap.parse(
+        return TestTuning.simulation(GameMap.parse(
             "##########",
             "#>.......#",
             "##########"));
@@ -68,7 +70,7 @@ class GameSimulationTest {
 
     @Test
     void startsWithThePlayerAtTheSpawnAndEveryTargetAlive() {
-        GameSimulation simulation = new GameSimulation(Levels.first());
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
 
         assertEquals(simulation.map.getSpawnX(), simulation.player.position.x, 1e-6f);
         assertEquals(simulation.map.getSpawnZ(), simulation.player.position.y, 1e-6f);
@@ -293,7 +295,7 @@ class GameSimulationTest {
             "##########",
             "#>.oo....#",
             "##########");
-        GameSimulation simulation = new GameSimulation(chainMap);
+        GameSimulation simulation = TestTuning.simulation(chainMap);
         PlayerInput input = new PlayerInput();
         input.fire = true;
 
@@ -311,7 +313,8 @@ class GameSimulationTest {
             "##########",
             "#>+aeX...#",
             "##########");
-        GameSimulation simulation = new GameSimulation(pickupHall, new PlayerLoadout(60f, 0f, Difficulty.EASY), false);
+        GameSimulation simulation =
+            TestTuning.simulation(pickupHall, new PlayerLoadout(60f, 0f, Difficulty.EASY), false);
         simulation.energy.setEnergy(60f);
         PlayerInput input = new PlayerInput();
 
@@ -343,7 +346,7 @@ class GameSimulationTest {
             "#######",
             "#>.o..#",
             "#######");
-        GameSimulation simulation = new GameSimulation(tinyRange, PlayerLoadout.fresh(), true);
+        GameSimulation simulation = TestTuning.simulation(tinyRange, PlayerLoadout.fresh(), true);
         PlayerInput input = new PlayerInput();
         input.fire = true;
 
@@ -363,7 +366,7 @@ class GameSimulationTest {
             "#............#",
             "#.......oG...#",
             "##############");
-        GameSimulation simulation = new GameSimulation(combatHall);
+        GameSimulation simulation = TestTuning.simulation(combatHall);
         assertEquals(2, simulation.enemies.size());
         assertEquals(2, simulation.getEnemiesRemaining());
 
@@ -379,7 +382,7 @@ class GameSimulationTest {
             "#########",
             "#>..oD..#",
             "#########");
-        GameSimulation trapSim = new GameSimulation(trapHall);
+        GameSimulation trapSim = TestTuning.simulation(trapHall);
         for (int i = 0; i < 45; i++) trapSim.update(FRAME, input);
         assertTrue(trapSim.targets.get(0).isDestroyed(), "canister destroyed by pistol");
         assertTrue(trapSim.enemies.get(0).isDestroyed(), "adjacent drone destroyed by canister blast");
@@ -391,7 +394,7 @@ class GameSimulationTest {
             "############",
             "#>.....T...#",
             "############");
-        GameSimulation simulation = new GameSimulation(alertRoom);
+        GameSimulation simulation = TestTuning.simulation(alertRoom);
         PlayerInput input = new PlayerInput();
         input.fire = true;
         simulation.update(FRAME, input);
@@ -412,7 +415,7 @@ class GameSimulationTest {
             "##############",
             "#>.......O...#",
             "##############");
-        GameSimulation simulation = new GameSimulation(range);
+        GameSimulation simulation = TestTuning.simulation(range);
         PlayerInput input = new PlayerInput();
         input.charge = true;
         for (int i = 0; i < 40; i++) simulation.update(FRAME, input);
@@ -442,7 +445,7 @@ class GameSimulationTest {
         // Long range beyond the pistol's range hits nothing: only PISTOL_SHOT.
         String wallRow = "#".repeat(70);
         String openRow = "#>" + ".".repeat(67) + "#";
-        GameSimulation longSim = new GameSimulation(GameMap.parse(wallRow, openRow, wallRow));
+        GameSimulation longSim = TestTuning.simulation(GameMap.parse(wallRow, openRow, wallRow));
         PlayerInput input = new PlayerInput();
         input.fire = true;
         longSim.update(FRAME, input);
@@ -473,7 +476,7 @@ class GameSimulationTest {
         assertEquals(1, countSound(lethalHits, SoundEvent.Type.EXPLOSION));
 
         // Ring board (120 HP = 6 shots): final shot emits TARGET_DESTROYED.
-        GameSimulation boardSim = new GameSimulation(GameMap.parse("#########", "#>.O....#", "#########"));
+        GameSimulation boardSim = TestTuning.simulation(GameMap.parse("#########", "#>.O....#", "#########"));
         for (int i = 0; i < 100 && !boardSim.targets.get(0).isDestroyed(); i++) {
             boardSim.update(FRAME, input);
         }
@@ -556,7 +559,7 @@ class GameSimulationTest {
 
     @Test
     void pickupsAndEnemyCombatEmitExpectedPlayerAndSpatialSounds() {
-        GameSimulation pickupSim = new GameSimulation(
+        GameSimulation pickupSim = TestTuning.simulation(
             GameMap.parse("#########", "#>+ae...#", "#########"),
             new PlayerLoadout(60f, 0f, Difficulty.NORMAL), false);
         pickupSim.energy.setEnergy(50f);
@@ -569,7 +572,7 @@ class GameSimulationTest {
         assertEquals(1, countSound(pickupEvents, SoundEvent.Type.PICKUP_ENERGY));
 
         // Guard (100 HP): pistol hit emits ENEMY_HIT, charged blast kill emits ENEMY_DESTROYED.
-        GameSimulation guardSim = new GameSimulation(GameMap.parse("###########", "#>.G......#", "###########"));
+        GameSimulation guardSim = TestTuning.simulation(GameMap.parse("###########", "#>.G......#", "###########"));
         input.clear();
         input.fire = true;
         guardSim.update(FRAME, input);
@@ -585,14 +588,14 @@ class GameSimulationTest {
         assertEquals(1, countSound(guardSim.drainSoundEvents(), SoundEvent.Type.ENEMY_DESTROYED));
 
         // Drone lunge & Turret shoot/player hurt/death.
-        GameSimulation droneSim = new GameSimulation(GameMap.parse("########", "#>D....#", "########"));
+        GameSimulation droneSim = TestTuning.simulation(GameMap.parse("########", "#>D....#", "########"));
         input.clear();
         for (int i = 0; i < 60; i++) droneSim.update(FRAME, input);
         List<SoundEvent> droneEvents = droneSim.drainSoundEvents();
         assertTrue(countSound(droneEvents, SoundEvent.Type.DRONE_LUNGE) >= 1);
         assertTrue(countSound(droneEvents, SoundEvent.Type.PLAYER_HURT) >= 1);
 
-        GameSimulation turretSim = new GameSimulation(
+        GameSimulation turretSim = TestTuning.simulation(
             GameMap.parse("#########", "#>..T...#", "#########"),
             new PlayerLoadout(5f, 0f, Difficulty.NORMAL), false);
         input.fire = true;
@@ -609,7 +612,7 @@ class GameSimulationTest {
 
     @Test
     void unlockedBulkheadDoorOpensWithEStaysOpenAndUnblocksMovement() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#######",
             "#.#...#",
             "#.>=.X#",
@@ -644,7 +647,7 @@ class GameSimulationTest {
 
     @Test
     void keycardsUnlockMatchingAmberAndCyanBulkheadsWhileRefusingWithoutCard() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#########",
             "###...###",
             "#k>A.C.c#",
@@ -689,7 +692,7 @@ class GameSimulationTest {
 
     @Test
     void securityConsoleIsIndestructibleCoverOverridingAllLockdownsAndAlertingEnemies() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#########",
             "#..#....#",
             "#>S...LD#",
@@ -724,7 +727,7 @@ class GameSimulationTest {
 
     @Test
     void scattergunPickupAutoEquipsAndShellBoxesRespectMaxPoolCapacity() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "###########",
             "#>Wsssss..#",
             "###########"));
@@ -759,7 +762,7 @@ class GameSimulationTest {
 
     @Test
     void weaponSwapCancelsBlastChargeAtZeroCostAndReversesSmoothlyMidSwap() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse("#####", "#>.o#", "#####"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 6, WeaponSlot.PISTOL),
             false);
@@ -795,7 +798,7 @@ class GameSimulationTest {
 
     @Test
     void scattergunPrimaryAndDoubleBlastKillEnemiesAndEmptyTriggerAutoSwapsToPistol() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse(
                 "###########",
                 "#.>..D....#",
@@ -842,7 +845,7 @@ class GameSimulationTest {
 
     @Test
     void scattergunRightClickWithOneShellFallsBackCleanlyToSingleShellBlast() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse("#########", "#>.o....#", "#########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 1, WeaponSlot.SCATTERGUN),
             false);
@@ -862,7 +865,7 @@ class GameSimulationTest {
             "########",
             "#>~....#",
             "########");
-        GameSimulation dashSim = new GameSimulation(dashCourse);
+        GameSimulation dashSim = TestTuning.simulation(dashCourse);
         PlayerInput input = new PlayerInput();
         input.dash = true;
         input.moveForward = 1f;
@@ -883,7 +886,7 @@ class GameSimulationTest {
             "#>.~...#",
             "#......#",
             "########");
-        GameSimulation walkSim = new GameSimulation(walkMap);
+        GameSimulation walkSim = TestTuning.simulation(walkMap);
         input.moveForward = 1f;
         for (int i = 0; i < 35; i++) walkSim.update(FRAME, input);
         assertTrue(walkSim.player.getHealth() < Player.MAX_HEALTH, "walking onto ~ must deal shock damage");
@@ -891,19 +894,19 @@ class GameSimulationTest {
 
         // Choke-point ~ forces Guard, Drone, and Warden to cross it: only Guard takes shock grate damage.
         PlayerInput idle = new PlayerInput();
-        GameSimulation guardSim = new GameSimulation(GameMap.parse(
+        GameSimulation guardSim = TestTuning.simulation(GameMap.parse(
             "######",
             "#>...#",
             "####~#",
             "#G...#",
             "######"));
-        GameSimulation droneSim = new GameSimulation(GameMap.parse(
+        GameSimulation droneSim = TestTuning.simulation(GameMap.parse(
             "######",
             "#>...#",
             "####~#",
             "#D...#",
             "######"));
-        GameSimulation wardenSim = new GameSimulation(GameMap.parse(
+        GameSimulation wardenSim = TestTuning.simulation(GameMap.parse(
             "######",
             "#>...#",
             "####~#",
@@ -925,7 +928,7 @@ class GameSimulationTest {
 
     @Test
     void wardenOverdriveAndDestructionUnsealsBossExtractionBulkhead() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#########",
             "#.>...B.#",
             "####M####",
@@ -971,7 +974,7 @@ class GameSimulationTest {
 
     @Test
     void railLancePickupsThreeWeaponSwitchingWithDirectKeysScrollAndLastUsedQ() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "############",
             "#>WRrrrrrrr#",
             "############"));
@@ -1049,7 +1052,7 @@ class GameSimulationTest {
 
     @Test
     void railLancePiercesTargetsSpawnsBeamAndDoesLessToTheWarden() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse(
                 "#############",
                 "#.>.D.o.G...#",
@@ -1074,7 +1077,7 @@ class GameSimulationTest {
         // The Warden's hide reduces 120 base Rail Lance damage to 90 (75%).
         EnemyTuning.KindStats wardenStats = TestTuning.ENEMIES.of(Enemy.Kind.WARDEN);
         assertEquals(90f, TestTuning.WEAPONS.railDamage * wardenStats.railDamageScale, 0f);
-        GameSimulation bossSim = new GameSimulation(
+        GameSimulation bossSim = TestTuning.simulation(
             GameMap.parse(
                 "###########",
                 "#.>...B...#",
@@ -1091,7 +1094,7 @@ class GameSimulationTest {
 
     @Test
     void railLanceZoomScalesLookSensitivityDropsOnDashAndEmptyTriggerSmartSwaps() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse("#########", "#.>...o.#", "#########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 4, true, 1, WeaponSlot.SCATTERGUN),
             false);
@@ -1147,7 +1150,7 @@ class GameSimulationTest {
 
     @Test
     void jumpClearsFloorShockGrateWithoutSpendingEnergyAndDoesNotAutoHopWhenHeld() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "###########",
             "#.>.~.....#",
             "###########"));
@@ -1182,7 +1185,7 @@ class GameSimulationTest {
 
     @Test
     void jumpPreservesBlastChargeAndRailLanceZoomUnlikeDash() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse("#########", "#.>...o.#", "#########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 4, WeaponSlot.PISTOL),
             false);
@@ -1217,7 +1220,7 @@ class GameSimulationTest {
     }
 
     private static GameSimulation emptyCorridorHolding(WeaponSlot weapon) {
-        return new GameSimulation(
+        return TestTuning.simulation(
             GameMap.parse("##########", "#>.......#", "##########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 8, true, 5, weapon),
             false);
@@ -1346,7 +1349,7 @@ class GameSimulationTest {
 
     @Test
     void reachingTheExitOnTheFrameThePlayerDiesDoesNotClearTheStage() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse("######", "#>.~X#", "######"),
             new PlayerLoadout(5f, 0f, Difficulty.NORMAL),
             false);
@@ -1362,7 +1365,7 @@ class GameSimulationTest {
 
     @Test
     void exitReachedMidJumpSettlesThePlayerOnTheFloor() {
-        GameSimulation sim = new GameSimulation(GameMap.parse("########", "#>....X#", "########"));
+        GameSimulation sim = TestTuning.simulation(GameMap.parse("########", "#>....X#", "########"));
         sim.player.position.set(5.2f, 1.5f);
         PlayerInput input = new PlayerInput();
         input.moveForward = 1f;
@@ -1382,7 +1385,7 @@ class GameSimulationTest {
 
     @Test
     void lastTargetBrokenMidJumpSettlesThePlayerOnTheFloor() {
-        GameSimulation sim = new GameSimulation(GameMap.parse("##########", "#>......o#", "##########"),
+        GameSimulation sim = TestTuning.simulation(GameMap.parse("##########", "#>......o#", "##########"),
             PlayerLoadout.fresh(), true);
         PlayerInput input = new PlayerInput();
         input.jump = true;
@@ -1395,12 +1398,13 @@ class GameSimulationTest {
         assertFalse(sim.player.isAirborne());
     }
 
-    @Test
-    void plainJumpClearsTheTrainingRangeShockGrate() {
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void plainJumpClearsTheTrainingRangeShockGrate(TestTuning.Balance balance) {
         Levels.Stage range = Levels.trainingRange();
         float west = Float.MAX_VALUE;
         for (GameMap.HazardCell cell : range.map.getHazardCells()) west = Math.min(west, cell.col);
-        GameSimulation sim = new GameSimulation(range.map, PlayerLoadout.fresh(), false);
+        GameSimulation sim = balance.simulation(range.map, PlayerLoadout.fresh(), false);
         sim.player.position.set(west - 0.7f, range.map.getHazardCells().get(0).row + 0.5f);
         sim.player.look(90f - sim.player.getYaw(), 0f);
 
@@ -1416,8 +1420,8 @@ class GameSimulationTest {
         assertTrue(crossedTheGrate);
         assertFalse(range.map.isHazardAt(sim.player.position.x, sim.player.position.y));
         assertTrue(sim.player.position.x > west + 1f, "walked on east to " + sim.player.position.x);
-        assertEquals(0f, sim.getDamageTaken(), 0f);
-        assertEquals(100f, sim.energy.getEnergy(), 0f, "no dash was needed");
+        assertEquals(0f, sim.getDamageTaken(), 0f, "a plain jump clears the grate with " + balance);
+        assertEquals(balance.weapons().energyCapacity, sim.energy.getEnergy(), 0f, "no dash was needed");
     }
 
     /**
@@ -1425,7 +1429,7 @@ class GameSimulationTest {
      * @return the damage taken on the way
      */
     private static float damageCrossingATwoCellGrate(boolean dashAtTheTop) {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "############",
             "#.>.~~.....#",
             "############"));
@@ -1449,11 +1453,12 @@ class GameSimulationTest {
         assertEquals(0f, damageCrossingATwoCellGrate(true), 0f);
     }
 
-    @Test
-    void idlePlayerAtSpawnIsLeftAloneOnEveryCampaignStage() {
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void idlePlayerAtSpawnIsLeftAloneOnEveryCampaignStage(TestTuning.Balance balance) {
         List<String> problems = new ArrayList<>();
         for (Levels.Stage stage : Levels.campaign()) {
-            GameSimulation sim = new GameSimulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL),
+            GameSimulation sim = balance.simulation(stage.map, PlayerLoadout.fresh(Difficulty.NORMAL),
                 stage.completeOnAllTargets);
             PlayerInput input = new PlayerInput();
             sim.update(FRAME, input);
@@ -1467,12 +1472,12 @@ class GameSimulationTest {
                 problems.add(stage.id + ": " + sim.getDamageTaken() + " damage in 10 s of standing at the spawn point");
             }
         }
-        assertTrue(problems.isEmpty(), String.join("; ", problems));
+        assertTrue(problems.isEmpty(), "with " + balance + ": " + String.join("; ", problems));
     }
 
     @Test
     void steppingAfterLevelClearedStopsEnemiesAndEnemyBoltsFromHurtingPlayer() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "##########",
             "#>...XD..#",
             "##########"));
@@ -1497,7 +1502,7 @@ class GameSimulationTest {
 
     @Test
     void postMortemEnemyBoltsDoNotDamageTargetsOrMutateDestroyedTargetTally() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "##########",
             "#>...o...#",
             "##########"));
@@ -1522,7 +1527,7 @@ class GameSimulationTest {
     @Test
     void stageClearAndPlayerDeathImmediatelyCancelRailZoomAndBlastCharge() {
         // Stage clear via allDestroyed while at 1.8x Rail Lance zoom.
-        GameSimulation clearZoomSim = new GameSimulation(
+        GameSimulation clearZoomSim = TestTuning.simulation(
             GameMap.parse("#########", "#>....o.#", "#########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 3, WeaponSlot.RAIL_LANCE),
             true);
@@ -1538,7 +1543,7 @@ class GameSimulationTest {
         assertEquals(0f, clearZoomSim.railLance.getZoom(), 1e-6f);
 
         // Stage clear via exit pad while holding Pistol Blast charge.
-        GameSimulation clearChargeSim = new GameSimulation(GameMap.parse("#########", "#>....X.#", "#########"));
+        GameSimulation clearChargeSim = TestTuning.simulation(GameMap.parse("#########", "#>....X.#", "#########"));
         PlayerInput chargeInput = new PlayerInput();
         chargeInput.charge = true;
         for (int i = 0; i < 20; i++) clearChargeSim.update(FRAME, chargeInput);
@@ -1551,7 +1556,7 @@ class GameSimulationTest {
         assertFalse(clearChargeSim.isBlastChargingAudioActive());
 
         // Lethal damage mid-step while zoomed at 1.8x cancels zoom on death frame 1.
-        GameSimulation deathZoomSim = new GameSimulation(
+        GameSimulation deathZoomSim = TestTuning.simulation(
             GameMap.parse("########", "#>.~...#", "########"),
             new PlayerLoadout(5f, 0f, Difficulty.NORMAL, false, 0, true, 3, WeaponSlot.RAIL_LANCE),
             false);
@@ -1608,7 +1613,7 @@ class GameSimulationTest {
     @Test
     void initialPreviousWeaponAndDryFireSmartSwapPreferLoadedWeaponsForQuickSwap() {
         // initialPreviousWeapon skips 0-slug Rail Lance in favor of loaded Scattergun.
-        GameSimulation initialSim = new GameSimulation(
+        GameSimulation initialSim = TestTuning.simulation(
             GameMap.parse("##########", "#>.......#", "##########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 8, true, 0, WeaponSlot.PISTOL),
             false);
@@ -1618,7 +1623,7 @@ class GameSimulationTest {
         assertEquals(WeaponSlot.SCATTERGUN, initialSim.getTargetWeapon());
 
         // Dry-fire smart-swap from 0-shell Scattergun to Rail Lance sets previousWeapon to loaded Pistol.
-        GameSimulation swapSim = new GameSimulation(
+        GameSimulation swapSim = TestTuning.simulation(
             GameMap.parse("##########", "#>.......#", "##########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 1, true, 5, WeaponSlot.RAIL_LANCE),
             false);
@@ -1649,7 +1654,7 @@ class GameSimulationTest {
 
     @Test
     void emptyScattergunAndRailLanceTriggerDryFireOnExactCooldownCompletionFrame() {
-        GameSimulation scatterSim = new GameSimulation(
+        GameSimulation scatterSim = TestTuning.simulation(
             GameMap.parse("##########", "#>.......#", "##########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, true, 1, false, 0, WeaponSlot.SCATTERGUN),
             false);
@@ -1667,7 +1672,7 @@ class GameSimulationTest {
         assertEquals(WeaponSlot.PISTOL, scatterSim.getTargetWeapon());
         assertEquals(1, countSound(scatterSim.drainSoundEvents(), SoundEvent.Type.WEAPON_DRY_FIRE));
 
-        GameSimulation railSim = new GameSimulation(
+        GameSimulation railSim = TestTuning.simulation(
             GameMap.parse("##########", "#>.......#", "##########"),
             new PlayerLoadout(100f, 0f, Difficulty.NORMAL, false, 0, true, 1, WeaponSlot.RAIL_LANCE),
             false);
@@ -1708,7 +1713,7 @@ class GameSimulationTest {
 
     @Test
     void dashingAfterShockGrateHitDoesNotResetHazardCooldownEarly() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "############",
             "#>~~~~.....#",
             "############"));
@@ -1818,7 +1823,7 @@ class GameSimulationTest {
     @Test
     void muzzleOriginUses3DBoundsOverShortTargetsAndRetractingDoorsAndCanisterUses3DSplash() {
         // 1. Jumping beside a 0.55u Canister clears its top in 3D instead of snapping muzzle back (#136).
-        GameSimulation canisterMuzzleSim = new GameSimulation(GameMap.parse(
+        GameSimulation canisterMuzzleSim = TestTuning.simulation(GameMap.parse(
             "############",
             "#..........#",
             "#>..o......#",
@@ -1842,7 +1847,7 @@ class GameSimulationTest {
             "muzzle above 0.55u canister spawns forward at " + overCanisterOrigin);
 
         // 2. Jumping in front of a retracting bulkhead (openProgress = 0.81 >= 0.75) pulls muzzle out of 3D slab (#136).
-        GameSimulation doorMuzzleSim = new GameSimulation(GameMap.parse(
+        GameSimulation doorMuzzleSim = TestTuning.simulation(GameMap.parse(
             "#########",
             "#..#....#",
             "#.>=....#",
@@ -1898,7 +1903,7 @@ class GameSimulationTest {
         PlayerInput idle = new PlayerInput();
 
         // 1. Enemy plasma bolt breaking a Ring Board emits TARGET_DESTROYED and break VFX without a hit-marker (#53).
-        GameSimulation boardSim = new GameSimulation(GameMap.parse(
+        GameSimulation boardSim = TestTuning.simulation(GameMap.parse(
             "##########",
             "#>...O...#",
             "##########"));
@@ -1917,7 +1922,7 @@ class GameSimulationTest {
 
         // 2. Enemy plasma bolt breaking a Canister that chains a second Canister and kills a Drone clears stage
         //    with normal explosions and sounds, but zero player hit-marker (#53).
-        GameSimulation chainSim = new GameSimulation(
+        GameSimulation chainSim = TestTuning.simulation(
             GameMap.parse(
                 "############",
                 "#>....ooD..#",
@@ -1942,7 +1947,7 @@ class GameSimulationTest {
         assertEquals(1, countSound(chainEvents, SoundEvent.Type.ENEMY_DESTROYED));
 
         // 3. Floor ~ Shock Grate killing a Guard Bot neither flashes a hit-marker nor upgrades an active non-lethal one.
-        GameSimulation grateSim = new GameSimulation(GameMap.parse(
+        GameSimulation grateSim = TestTuning.simulation(GameMap.parse(
             "#######",
             "#>O...#",
             "#####~#",
@@ -1961,7 +1966,7 @@ class GameSimulationTest {
         assertEquals(1, countSound(grateEvents, SoundEvent.Type.HAZARD_ZAP));
         assertEquals(1, countSound(grateEvents, SoundEvent.Type.ENEMY_DESTROYED));
 
-        GameSimulation activeHitSim = new GameSimulation(GameMap.parse(
+        GameSimulation activeHitSim = TestTuning.simulation(GameMap.parse(
             "#######",
             "#>O...#",
             "#####~#",
@@ -1990,7 +1995,7 @@ class GameSimulationTest {
     @Test
     void playerCanisterChainAndMidFlightBlastKillsStillTriggerKillHitMarker() {
         // 1. Player shooting a Canister that chains into a second Canister and kills a Drone triggers kill hit-marker.
-        GameSimulation pistolChainSim = new GameSimulation(GameMap.parse(
+        GameSimulation pistolChainSim = TestTuning.simulation(GameMap.parse(
             "############",
             "#>.ooD.....#",
             "############"));
@@ -2007,7 +2012,7 @@ class GameSimulationTest {
 
         // 2. Player BlastProjectile detonating in flight on a Canister and chaining a Drone around a wall corner
         //    triggers kill hit-marker.
-        GameSimulation blastChainSim = new GameSimulation(GameMap.parse(
+        GameSimulation blastChainSim = TestTuning.simulation(GameMap.parse(
             "#########",
             "#>.oo...#",
             "####D####",
@@ -2058,7 +2063,7 @@ class GameSimulationTest {
 
     @Test
     void nonFiniteAndNegativeFrameTimesClampToZeroWithoutPoisoningSimulationState() {
-        GameSimulation sim = new GameSimulation(
+        GameSimulation sim = TestTuning.simulation(
             GameMap.parse(
                 "#############",
                 "#>+.O.=...D.#",

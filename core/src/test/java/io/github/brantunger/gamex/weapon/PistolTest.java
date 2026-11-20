@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class PistolTest {
 
-    /** The shipped weapon balance. */
+    /** The tests' own weapon balance. */
     private static final WeaponTuning W = TestTuning.WEAPONS;
 
     @Test

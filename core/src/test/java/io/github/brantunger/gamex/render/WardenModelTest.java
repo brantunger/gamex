@@ -13,6 +13,7 @@ import io.github.brantunger.gamex.model.GlbFile;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.Levels;
+import io.github.brantunger.gamex.world.WardenTuning;
 import io.github.brantunger.gamex.world.WorldModels;
 import org.junit.jupiter.api.Test;
 
@@ -115,10 +116,17 @@ class WardenModelTest {
         throw new AssertionError("the model has no animation named " + name);
     }
 
+    /**
+     * The shipped {@code warden.txt} and the shipped model are compared: the clip's length is a fact of the model
+     * that the file repeats, so this is the one value of the file that cannot be tuned on its own. The tests' own
+     * copy of the file holds the same length, for the fights the other tests play against this clip.
+     */
     @Test
     void theComboOfTheSimulationLastsAsLongAsItsClip() {
-        assertEquals(clipLength(WardenPose.ATTACK.clip), TestTuning.WARDEN.comboTime, 1e-4f,
+        assertEquals(clipLength(WardenPose.ATTACK.clip), WardenTuning.load().comboTime, 1e-4f,
             "the simulation times the punches against this clip; a new clip needs new punch times");
+        assertEquals(clipLength(WardenPose.ATTACK.clip), TestTuning.WARDEN.comboTime, 1e-4f,
+            "the tests' own warden.txt follows the clip too");
     }
 
     @Test
@@ -181,7 +189,7 @@ class WardenModelTest {
         stages.add(Levels.trainingRange());
         List<String> needing = new ArrayList<>();
         for (Levels.Stage stage : stages) {
-            GameSimulation simulation = new GameSimulation(stage.map, PlayerLoadout.fresh(),
+            GameSimulation simulation = TestTuning.simulation(stage.map, PlayerLoadout.fresh(),
                 stage.completeOnAllTargets);
             boolean hasWarden = false;
             for (Enemy enemy : simulation.enemies) hasWarden |= enemy.getKind() == Enemy.Kind.WARDEN;

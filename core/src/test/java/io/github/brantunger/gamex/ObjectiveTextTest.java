@@ -15,6 +15,8 @@ import io.github.brantunger.gamex.world.Levels;
 import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.SecurityConsole;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.List;
 
@@ -24,7 +26,11 @@ class ObjectiveTextTest {
     private static final float FRAME = 1f / 60f;
 
     private static GameSimulation play(Levels.Stage stage) {
-        return new GameSimulation(stage.map, PlayerLoadout.fresh(), stage.completeOnAllTargets);
+        return play(stage, TestTuning.Balance.FROZEN);
+    }
+
+    private static GameSimulation play(Levels.Stage stage, TestTuning.Balance balance) {
+        return balance.simulation(stage.map, PlayerLoadout.fresh(), stage.completeOnAllTargets);
     }
 
     /** Puts the player on the stage's keycard of that kind and lets one frame pick it up. */
@@ -115,9 +121,10 @@ class ObjectiveTextTest {
         assertEquals(GameSimulation.Objective.EXIT, sim.getObjective());
     }
 
-    @Test
-    void wardenCoreAsksForAmberThenTheConsoleThenTheWardenThenTheExit() {
-        GameSimulation sim = play(Levels.campaign().get(5));
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void wardenCoreAsksForAmberThenTheConsoleThenTheWardenThenTheExit(TestTuning.Balance balance) {
+        GameSimulation sim = play(Levels.campaign().get(5), balance);
         assertEquals("06_warden_core", Levels.campaign().get(5).id);
         assertEquals(GameSimulation.Objective.AMBER_KEYCARD, sim.getObjective(),
             "the Warden is alive, but sealed away behind the lockdown");
@@ -136,7 +143,7 @@ class ObjectiveTextTest {
     @Test
     void stepsFollowWhatThePlayerCanReachNotAFixedOrder() {
         // The Warden's bulkhead bars the way to the Amber keycard here, so the Warden comes first.
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "###########",
             "#>.B.MkA.X#",
             "###########"));
@@ -152,7 +159,7 @@ class ObjectiveTextTest {
     @Test
     void keycardForABulkheadThatIsNotOnTheWayIsNotAsked() {
         // The Amber bulkhead closes off a side room; the exit is in the open.
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#######",
             "#>.k.X#",
             "###A###",
@@ -169,12 +176,12 @@ class ObjectiveTextTest {
 
         GameMap hostilesOnly = GameMap.parse("#######", "#>..D.#", "#######");
         assertEquals(GameSimulation.Objective.ALL_HOSTILES,
-            new GameSimulation(hostilesOnly, PlayerLoadout.fresh(), true).getObjective());
+            TestTuning.simulation(hostilesOnly, PlayerLoadout.fresh(), true).getObjective());
         GameMap both = GameMap.parse("#######", "#>.oD.#", "#######");
         assertEquals(GameSimulation.Objective.ALL_TARGETS_AND_HOSTILES,
-            new GameSimulation(both, PlayerLoadout.fresh(), true).getObjective());
+            TestTuning.simulation(both, PlayerLoadout.fresh(), true).getObjective());
 
-        assertNull(new GameSimulation(Levels.first()).getObjective(), "no exit and no clear on all targets");
+        assertNull(TestTuning.simulation(Levels.first()).getObjective(), "no exit and no clear on all targets");
     }
 
     @Test
@@ -224,9 +231,10 @@ class ObjectiveTextTest {
         assertEquals(GameSimulation.Objective.CYAN_KEYCARD, sim.getObjective(), "after stepping back");
     }
 
-    @Test
-    void leaningOnTheWardensBulkheadStillAsksForTheWarden() {
-        GameSimulation sim = play(Levels.campaign().get(5));
+    @ParameterizedTest(name = "{displayName} with {0}")
+    @EnumSource(TestTuning.Balance.class)
+    void leaningOnTheWardensBulkheadStillAsksForTheWarden(TestTuning.Balance balance) {
+        GameSimulation sim = play(Levels.campaign().get(5), balance);
         collectKeycard(sim, Pickup.Kind.AMBER_KEYCARD);
         overrideConsole(sim);
         sim.player.position.set(23.5f, 14.5f);
@@ -250,7 +258,7 @@ class ObjectiveTextTest {
             "#########",
             "#>.S.L.X#",
             "#########");
-        GameSimulation sim = new GameSimulation(corridor);
+        GameSimulation sim = TestTuning.simulation(corridor);
         sim.player.position.set(4.5f, 1.5f);
         assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective());
 
@@ -261,7 +269,7 @@ class ObjectiveTextTest {
         assertEquals(GameSimulation.Objective.CONSOLE, sim.getObjective(), "after stepping back");
 
         // From the exit's side the same bulkhead is behind the player, so the exit is all that is left.
-        GameSimulation beyond = new GameSimulation(corridor);
+        GameSimulation beyond = TestTuning.simulation(corridor);
         beyond.player.position.set(6.5f, 1.5f);
         walk(beyond, 270f, 1f, 30);
         assertTrue(beyond.player.position.x < 6f, "the player's centre is in the bulkhead's cell");
@@ -270,7 +278,7 @@ class ObjectiveTextTest {
 
     @Test
     void leaningOnALockedBulkheadDoesNotWorkTheObjectiveOutAgainEveryFrame() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#########",
             "#>.S.L.X#",
             "#########"));
