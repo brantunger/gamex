@@ -20,8 +20,8 @@ import java.nio.file.Path;
  *       in whole degrees.</li>
  *   <li>{@code volume.default}, {@code volume.min}, {@code volume.max}, {@code volume.step}: the master volume,
  *       which is kept to two decimal places.</li>
- *   <li>{@code invert_y.default}, {@code view_bob.default}, {@code fullscreen.default}: {@code true} or
- *       {@code false}.</li>
+ *   <li>{@code invert_y.default}, {@code view_bob.default}, {@code fullscreen.default}, {@code minimap.default}:
+ *       {@code true} or {@code false}.</li>
  * </ul>
  * There is no default behind the file: a missing key, a key this class does not list, a least value above the most,
  * a default outside its range, a range the setting cannot hold (a negative sensitivity, a field of view outside 1 to
@@ -51,6 +51,7 @@ public final class SettingsDefaults {
     private static final String INVERT_Y = "invert_y" + DEFAULT;
     private static final String VIEW_BOB = "view_bob" + DEFAULT;
     private static final String FULLSCREEN = "fullscreen" + DEFAULT;
+    private static final String MINIMAP = "minimap" + DEFAULT;
 
     /** The default, the range and the step of one numeric setting. */
     public static final class Range {
@@ -122,6 +123,8 @@ public final class SettingsDefaults {
     public final boolean viewBob;
     /** Whether the game is fullscreen while nothing is saved. */
     public final boolean fullscreen;
+    /** Whether the HUD minimap is shown while nothing is saved. */
+    public final boolean minimap;
 
     private SettingsDefaults(TuningFile file) {
         sensitivity = new Range(file, SENSITIVITY, HUNDREDTH, 0f, Float.MAX_VALUE);
@@ -130,6 +133,7 @@ public final class SettingsDefaults {
         invertY = file.getBoolean(INVERT_Y);
         viewBob = file.getBoolean(VIEW_BOB);
         fullscreen = file.getBoolean(FULLSCREEN);
+        minimap = file.getBoolean(MINIMAP);
     }
 
     /**
@@ -171,7 +175,7 @@ public final class SettingsDefaults {
             SENSITIVITY + DEFAULT, SENSITIVITY + MIN, SENSITIVITY + MAX, SENSITIVITY + STEP,
             FOV + DEFAULT, FOV + MIN, FOV + MAX, FOV + STEP,
             VOLUME + DEFAULT, VOLUME + MIN, VOLUME + MAX, VOLUME + STEP,
-            INVERT_Y, VIEW_BOB, FULLSCREEN
+            INVERT_Y, VIEW_BOB, FULLSCREEN, MINIMAP
         };
     }
 }

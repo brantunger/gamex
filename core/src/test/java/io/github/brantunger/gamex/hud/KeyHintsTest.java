@@ -34,8 +34,8 @@ class KeyHintsTest {
     private static final String[] OTHER_KEYS = {
         "pause", "P", "retry", "T", "move_forward", "I", "move_back", "K", "move_left", "J", "move_right", "L",
         "dash", "L-Ctrl", "jump", "N", "interact", "F", "weapon_1", "7", "weapon_2", "8", "weapon_3", "9",
-        "quick_swap", "Tab", "fire", "Mouse-Middle", "alt_fire", "Mouse-Back", "menu_left", "Z", "menu_right", "C",
-        "quit", "X"};
+        "quick_swap", "Tab", "fire", "Mouse-Middle", "alt_fire", "Mouse-Back", "minimap", "B", "menu_left", "Z",
+        "menu_right", "C", "quit", "X"};
     private static final KeyBindings REBOUND = TestTuning.bindingsWith(OTHER_KEYS);
     private static final UiStrings SHIPPED = TestTuning.STRINGS;
     private static final UiStrings STRINGS = TestTuning.stringsFor(REBOUND);
@@ -68,7 +68,7 @@ class KeyHintsTest {
 
     @Test
     void theShippedBindingsShowTheKeyNamesTheTextSpelledOut() {
-        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
+        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT  M: MAP",
             SHIPPED.get(UiText.SCREEN_TITLE_FOOTER));
         assertEquals("LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", SHIPPED.get(UiText.SCREEN_SETTINGS_HELP));
         assertEquals("ENERGY [SHIFT: DASH]", SHIPPED.get(UiText.HUD_ENERGY));
@@ -86,7 +86,7 @@ class KeyHintsTest {
 
     @Test
     void otherKeysInTheBindingsFileChangeEveryHintOfTheHudAndTheMenus() {
-        assertEquals("IJKL: MOVE  N: JUMP  CTRL: DASH  F: USE  7-9/TAB/SCROLL: WEAPON  MMB/MB4: FIRE/ALT",
+        assertEquals("IJKL: MOVE  N: JUMP  CTRL: DASH  F: USE  7-9/TAB/SCROLL: WEAPON  MMB/MB4: FIRE/ALT  B: MAP",
             STRINGS.get(UiText.SCREEN_TITLE_FOOTER));
         assertEquals("Z/C OR CLICK TO ADJUST - P TO SAVE", STRINGS.get(UiText.SCREEN_SETTINGS_HELP));
         assertEquals("ENERGY [CTRL: DASH]", STRINGS.get(UiText.HUD_ENERGY));

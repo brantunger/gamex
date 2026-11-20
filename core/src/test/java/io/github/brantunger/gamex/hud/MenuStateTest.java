@@ -236,11 +236,11 @@ class MenuStateTest {
         title.confirm();
 
         List<MenuState.Option> rows = title.getMenuOptions();
-        assertEquals(7, rows.size());
+        assertEquals(8, rows.size());
         for (int i = 0; i < rows.size(); i++) {
             assertEquals(i < rows.size() - 1, rows.get(i).id.isSetting(), rows.get(i).label);
         }
-        assertEquals(MenuState.OptionId.BACK, rows.get(6).id);
+        assertEquals(MenuState.OptionId.BACK, rows.get(7).id);
         assertFalse(MenuState.OptionId.SETTINGS.isSetting(), "the option that opens Settings is not one of its rows");
 
         // Select Difficulty and Select Stage rows say which difficulty or stage they stand for.
@@ -254,5 +254,25 @@ class MenuStateTest {
         assertEquals(2, difficulty.getSelectedIndex());
         assertFalse(difficulty.selectId(MenuState.OptionId.DIFFICULTY, 7));
         assertNull(new MenuState(new GameSettings(), save, MenuState.Screen.PLAYING).getSelectedOption());
+    }
+
+    @Test
+    void toggleMinimapWorksOnlyDuringActivePlayAndFovReflectsSettings() {
+        GameSettings settings = new GameSettings();
+        settings.setFov(85f);
+        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        assertEquals(85f, menu.getFov(), 0f);
+        assertEquals(MenuState.Command.NONE, menu.toggleMinimap());
+        assertTrue(settings.isMinimap());
+        assertTrue(menu.drainSoundEvents().isEmpty());
+
+        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        assertEquals(MenuState.Command.SAVE_SETTINGS, playing.toggleMinimap());
+        assertFalse(settings.isMinimap());
+        assertFalse(playing.isMinimapEnabled());
+        List<SoundEvent> sounds = playing.drainSoundEvents();
+        assertEquals(1, sounds.size());
+        assertEquals(SoundEvent.Type.MENU_MOVE, sounds.get(0).type);
+        assertFalse(sounds.get(0).spatial);
     }
 }

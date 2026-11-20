@@ -148,7 +148,7 @@ public final class HudRenderer implements Disposable {
     /** Font pixel size of a menu option row, in HUD units. */
     static final float OPTION_PIXEL = 2.8f;
     /** Font pixel size of the line of key hints at the foot of the Title screen, in HUD units. */
-    static final float TITLE_FOOTER_PIXEL = 2.0f;
+    static final float TITLE_FOOTER_PIXEL = 1.9f;
     /** Font pixel size of the centre-screen interaction prompt, in HUD units. */
     static final float INTERACTION_PROMPT_PIXEL = 2.4f;
     /** Horizontal padding inside the interaction prompt box, in HUD units. */
@@ -167,6 +167,7 @@ public final class HudRenderer implements Disposable {
     private final ProceduralTextures textures;
     private final PixelFont font;
     private final UiStrings strings;
+    private final MinimapRenderer minimap;
     /** The toast whose words {@link #toastText} holds, so they are put together once and not on every frame. */
     private GameSimulation.Toast shownToast;
     private String toastText;
@@ -192,6 +193,7 @@ public final class HudRenderer implements Disposable {
         this.textures = textures;
         this.font = font;
         this.strings = strings;
+        this.minimap = new MinimapRenderer(textures, font, strings);
         this.batch = batch;
         int initialWidth = Gdx.graphics != null ? Gdx.graphics.getWidth() : 0;
         int initialHeight = Gdx.graphics != null ? Gdx.graphics.getHeight() : 0;
@@ -251,7 +253,9 @@ public final class HudRenderer implements Disposable {
         batch.begin();
 
         MenuState.Screen screen = menuState.getScreen();
-        if (showsCombatHud(menuState, simulation)) drawCombatHud(simulation);
+        if (showsCombatHud(menuState, simulation)) {
+            drawCombatHud(simulation, menuState.isMinimapEnabled(), menuState.getFov());
+        }
 
         switch (screen) {
             case TITLE:
@@ -306,6 +310,15 @@ public final class HudRenderer implements Disposable {
             default:
                 return false;
         }
+    }
+
+    /**
+     * @param menuState the menu state
+     * @param simulation the simulation behind the overlay, or null
+     * @return whether the HUD minimap is drawn over the combat HUD
+     */
+    static boolean showsMinimap(MenuState menuState, GameSimulation simulation) {
+        return showsCombatHud(menuState, simulation) && menuState.isMinimapEnabled();
     }
 
     /**
@@ -365,7 +378,7 @@ public final class HudRenderer implements Disposable {
 
     // ---- Combat HUD ----
 
-    private void drawCombatHud(GameSimulation simulation) {
+    private void drawCombatHud(GameSimulation simulation, boolean showMinimap, float verticalFovDegrees) {
         drawHurtOverlay(simulation.player);
         if (!simulation.player.isDead()) {
             drawCrosshair(simulation);
@@ -374,6 +387,7 @@ public final class HudRenderer implements Disposable {
         }
         drawVitalsAndEnergy(simulation);
         drawStatus(simulation);
+        if (showMinimap) minimap.draw(batch, simulation, width, height, unit, verticalFovDegrees);
         drawBossBar(simulation);
         drawToast(simulation);
     }

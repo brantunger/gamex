@@ -782,7 +782,7 @@ class InputControllerTest {
                 assertEquals(MenuState.Screen.PAUSED, menu.getScreen(), "a click on BACK leaves Settings");
             }
         }
-        assertEquals(6, settingRows);
+        assertEquals(7, settingRows);
     }
 
     @Test
@@ -936,5 +936,51 @@ class InputControllerTest {
         ctrl.resetCaptureForStageLaunch();
         poll(ctrl, FRAME);
         assertEquals(PlayerInput.WEAPON_NONE, out.weaponSlot);
+    }
+
+    @Test
+    void minimapKeyTogglesPersistentSettingDuringPlayWithoutDroppingOtherInputs() {
+        GameSettings settings = new GameSettings();
+        assertTrue(settings.isMinimap());
+        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        InputController controller = new InputController(playing, settings);
+
+        held.add(Input.Keys.W);
+        leftHeld = true;
+        assertEquals(MenuState.Command.SAVE_SETTINGS, poll(controller, FRAME, Input.Keys.M));
+        assertFalse(settings.isMinimap());
+        assertEquals(1f, out.moveForward, 0f, "movement still applies on the minimap toggle frame");
+        assertTrue(out.fire, "fire still applies on the minimap toggle frame");
+        List<io.github.brantunger.gamex.audio.SoundEvent> sounds = playing.drainSoundEvents();
+        assertEquals(1, sounds.size());
+        assertEquals(io.github.brantunger.gamex.audio.SoundEvent.Type.MENU_MOVE, sounds.get(0).type);
+
+        held.clear();
+        leftHeld = false;
+        assertEquals(MenuState.Command.NONE, poll(controller, FRAME));
+        assertFalse(settings.isMinimap());
+
+        assertEquals(MenuState.Command.SAVE_SETTINGS, poll(controller, FRAME, Input.Keys.M));
+        assertTrue(settings.isMinimap());
+        sounds = playing.drainSoundEvents();
+        assertEquals(1, sounds.size());
+        assertEquals(io.github.brantunger.gamex.audio.SoundEvent.Type.MENU_MOVE, sounds.get(0).type);
+
+        // Does not toggle when paused, on title, or when minimized.
+        playing.escape();
+        playing.drainSoundEvents();
+        assertEquals(MenuState.Screen.PAUSED, playing.getScreen());
+        assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.M));
+        assertTrue(settings.isMinimap());
+        assertTrue(playing.drainSoundEvents().isEmpty());
+
+        MenuState playingMin = menuOn(MenuState.Screen.PLAYING);
+        GameSettings minSettings = new GameSettings();
+        InputController minController = new InputController(playingMin, minSettings);
+        minimiseWithKeyFlagged(minController, Input.Keys.M);
+        for (int frame = 0; frame < 3; frame++) {
+            assertEquals(MenuState.Command.NONE, pollMinimised(minController, FRAME));
+            assertTrue(minSettings.isMinimap());
+        }
     }
 }

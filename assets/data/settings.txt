@@ -1,7 +1,7 @@
 // The defaults and the ranges of the Settings screen. Every key needs exactly one line; a key the game does not
 // know stops the start. The player's own choices are kept in the saved preferences, not here. The defaults apply
 // until the game first saves the settings, which it does when the player leaves the Settings screen, switches
-// fullscreen or closes the game (a screenshot run saves nothing): all six are saved as they then stand, changed or
+// fullscreen or closes the game (a screenshot run saves nothing): all seven are saved as they then stand, changed or
 // not, and after that a default changed here no longer reaches that player. A saved value outside a range is
 // brought back into it.
 
@@ -29,3 +29,4 @@ volume.step: 0.10
 invert_y.default: false
 view_bob.default: true
 fullscreen.default: false
+minimap.default: true

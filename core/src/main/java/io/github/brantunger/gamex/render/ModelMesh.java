@@ -11,6 +11,7 @@ import io.github.brantunger.gamex.model.ObjModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 /** Loads Wavefront OBJ assets into GPU {@link Mesh}es using the shared 11-float indexed vertex layout. */
@@ -19,17 +20,17 @@ public final class ModelMesh {
     private static final Logger log = LoggerFactory.getLogger(ModelMesh.class);
 
     /** How many model files have been read so far; the renderers log the number each of them read. */
-    private static int loadedCount;
+    private static final AtomicInteger loadedCount = new AtomicInteger();
 
     private ModelMesh() {}
 
     /** @return how many model files have been read since the game started. */
     static int getLoadedCount() {
-        return loadedCount;
+        return loadedCount.get();
     }
 
     static void modelLoaded(String assetPath, String label) {
-        loadedCount++;
+        loadedCount.incrementAndGet();
         log.debug("Loaded the {} model {}", label, assetPath);
     }
 

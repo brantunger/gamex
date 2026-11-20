@@ -49,6 +49,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 
 /**
@@ -179,6 +180,8 @@ public final class WorldRenderer implements Disposable {
     private ModelRig guardRig;
     /** The Warden's model, loaded the first time a stage with a live Warden is drawn and kept from then on. */
     private WardenModel wardenModel;
+    private WardenPreloader wardenPreloader;
+    private final ExecutorService workerPool;
     private CameraGroupStrategy groupStrategy;
     private DecalBatch decalBatch;
     private final Array<Decal> decals = new Array<>();
@@ -217,15 +220,33 @@ public final class WorldRenderer implements Disposable {
      */
     public WorldRenderer(GameMap map, ProceduralTextures textures, ModelPalette palette, RenderSettings settings,
                          WindowDefaults window, SettingsDefaults defaults) {
-        this(map, Gdx.graphics, textures, palette, settings, window, defaults, null);
+        this(map, Gdx.graphics, textures, palette, settings, window, defaults, null, null, null);
+    }
+
+    /**
+     * Builds the renderer with pre-packed startup world meshes from {@link AssetPreparer} and an optional background
+     * worker pool for asynchronous Warden preloading.
+     */
+    public WorldRenderer(GameMap map, ProceduralTextures textures, ModelPalette palette, RenderSettings settings,
+                         WindowDefaults window, SettingsDefaults defaults, AssetPreparer.PreparedWorldModels prepared,
+                         ExecutorService workerPool) {
+        this(map, Gdx.graphics, textures, palette, settings, window, defaults, null, prepared, workerPool);
     }
 
     WorldRenderer(GameMap map, Graphics graphics, ProceduralTextures textures, ModelPalette palette,
                   RenderSettings settings, WindowDefaults window, SettingsDefaults defaults,
                   ResourceBackend backend) {
+        this(map, graphics, textures, palette, settings, window, defaults, backend, null, null);
+    }
+
+    private WorldRenderer(GameMap map, Graphics graphics, ProceduralTextures textures, ModelPalette palette,
+                          RenderSettings settings, WindowDefaults window, SettingsDefaults defaults,
+                          ResourceBackend backend, AssetPreparer.PreparedWorldModels prepared,
+                          ExecutorService workerPool) {
         this.textures = textures;
         this.palette = palette;
         this.renderSettings = settings;
+        this.workerPool = workerPool;
         fogColour = new Color(settings.fogRed, settings.fogGreen, settings.fogBlue, 1f);
         // Looked up once, so that drawing a frame neither searches the palette nor copies a colour.
         WorldModels.Accent[] accentNames = WorldModels.Accent.values();
@@ -267,48 +288,101 @@ public final class WorldRenderer implements Disposable {
             }
             setMap(map);
 
-            canisterMesh = loadSingleWorldMesh(active, WorldModels.CANISTER_PATH, "canister");
-            ringBoardMesh = loadSingleWorldMesh(active, WorldModels.RING_BOARD_PATH, "ring board");
-            blastOrbMesh = loadSingleWorldMesh(active, WorldModels.BLAST_ORB_PATH, "blast orb");
-            medkitMesh = loadSingleWorldMesh(active, WorldModels.MEDKIT_PATH, "medkit");
-            armorMesh = loadSingleWorldMesh(active, WorldModels.ARMOR_PATH, "armor");
-            energyCellMesh = loadSingleWorldMesh(active, WorldModels.ENERGY_CELL_PATH, "energy cell");
-            scattergunPickupMesh = loadSingleWorldMesh(
-                active, WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup");
-            shellsPickupMesh = loadSingleWorldMesh(active, WorldModels.SHELLS_PICKUP_PATH, "shells pickup");
-            railLancePickupMesh = loadSingleWorldMesh(
-                active, WorldModels.RAIL_LANCE_PICKUP_PATH, "rail lance pickup");
-            railSlugsPickupMesh = loadSingleWorldMesh(
-                active, WorldModels.RAIL_SLUGS_PICKUP_PATH, "rail slugs pickup");
-            railBeamMesh = loadSingleWorldMesh(active, WorldModels.RAIL_BEAM_PATH, "rail beam");
+            if (prepared != null) {
+                canisterMesh = uploadPreparedMesh(active, prepared.canister, WorldModels.CANISTER_PATH, "canister");
+                ringBoardMesh = uploadPreparedMesh(
+                    active, prepared.ringBoard, WorldModels.RING_BOARD_PATH, "ring board");
+                blastOrbMesh = uploadPreparedMesh(active, prepared.blastOrb, WorldModels.BLAST_ORB_PATH, "blast orb");
+                medkitMesh = uploadPreparedMesh(active, prepared.medkit, WorldModels.MEDKIT_PATH, "medkit");
+                armorMesh = uploadPreparedMesh(active, prepared.armor, WorldModels.ARMOR_PATH, "armor");
+                energyCellMesh = uploadPreparedMesh(
+                    active, prepared.energyCell, WorldModels.ENERGY_CELL_PATH, "energy cell");
+                scattergunPickupMesh = uploadPreparedMesh(
+                    active, prepared.scattergunPickup, WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup");
+                shellsPickupMesh = uploadPreparedMesh(
+                    active, prepared.shellsPickup, WorldModels.SHELLS_PICKUP_PATH, "shells pickup");
+                railLancePickupMesh = uploadPreparedMesh(
+                    active, prepared.railLancePickup, WorldModels.RAIL_LANCE_PICKUP_PATH, "rail lance pickup");
+                railSlugsPickupMesh = uploadPreparedMesh(
+                    active, prepared.railSlugsPickup, WorldModels.RAIL_SLUGS_PICKUP_PATH, "rail slugs pickup");
+                railBeamMesh = uploadPreparedMesh(active, prepared.railBeam, WorldModels.RAIL_BEAM_PATH, "rail beam");
 
-            ObjModel turretObj = active.loadModel(WorldModels.TURRET_PATH, "turret");
-            turretRig = new ModelRig(turretObj);
-            turretBaseMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "base");
-            turretHeadMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "head");
-            turretBarrelsMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "barrels");
+                turretRig = prepared.turretRig;
+                turretBaseMesh = uploadPreparedMesh(active, prepared.turretBase, WorldModels.TURRET_PATH, "turret base");
+                turretHeadMesh = uploadPreparedMesh(active, prepared.turretHead, WorldModels.TURRET_PATH, "turret head");
+                turretBarrelsMesh = uploadPreparedMesh(
+                    active, prepared.turretBarrels, WorldModels.TURRET_PATH, "turret barrels");
 
-            ObjModel droneObj = active.loadModel(WorldModels.DRONE_PATH, "drone");
-            droneRig = new ModelRig(droneObj);
-            droneMesh = trackResource(active.buildIndexedMesh(
-                unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone", palette), WorldModels.DRONE_PATH,
-                "drone"),
-                Mesh.class);
+                droneRig = prepared.droneRig;
+                droneMesh = uploadPreparedMesh(active, prepared.drone, WorldModels.DRONE_PATH, "drone");
 
-            ObjModel guardObj = active.loadModel(WorldModels.GUARD_PATH, "guard");
-            guardRig = new ModelRig(guardObj);
-            guardPelvisMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "pelvis");
-            guardLegLeftMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "leg_l");
-            guardLegRightMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "leg_r");
-            guardTorsoMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "torso");
-            guardArmLeftMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "arm_l");
-            guardArmRightMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "arm_r");
+                guardRig = prepared.guardRig;
+                guardPelvisMesh = uploadPreparedMesh(
+                    active, prepared.guardPelvis, WorldModels.GUARD_PATH, "guard pelvis");
+                guardLegLeftMesh = uploadPreparedMesh(
+                    active, prepared.guardLegLeft, WorldModels.GUARD_PATH, "guard leg_l");
+                guardLegRightMesh = uploadPreparedMesh(
+                    active, prepared.guardLegRight, WorldModels.GUARD_PATH, "guard leg_r");
+                guardTorsoMesh = uploadPreparedMesh(
+                    active, prepared.guardTorso, WorldModels.GUARD_PATH, "guard torso");
+                guardArmLeftMesh = uploadPreparedMesh(
+                    active, prepared.guardArmLeft, WorldModels.GUARD_PATH, "guard arm_l");
+                guardArmRightMesh = uploadPreparedMesh(
+                    active, prepared.guardArmRight, WorldModels.GUARD_PATH, "guard arm_r");
 
-            enemyBoltMesh = loadSingleWorldMesh(active, WorldModels.ENEMY_BOLT_PATH, "enemy bolt");
-            doorMesh = loadSingleWorldMesh(active, WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead");
-            hazardGrateMesh = loadSingleWorldMesh(active, WorldModels.HAZARD_GRATE_PATH, "hazard grate");
-            keycardMesh = loadSingleWorldMesh(active, WorldModels.KEYCARD_PATH, "keycard");
-            consoleMesh = loadSingleWorldMesh(active, WorldModels.SECURITY_CONSOLE_PATH, "security console");
+                enemyBoltMesh = uploadPreparedMesh(active, prepared.enemyBolt, WorldModels.ENEMY_BOLT_PATH,
+                    "enemy bolt");
+                doorMesh = uploadPreparedMesh(active, prepared.door, WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead");
+                hazardGrateMesh = uploadPreparedMesh(
+                    active, prepared.hazardGrate, WorldModels.HAZARD_GRATE_PATH, "hazard grate");
+                keycardMesh = uploadPreparedMesh(active, prepared.keycard, WorldModels.KEYCARD_PATH, "keycard");
+                consoleMesh = uploadPreparedMesh(
+                    active, prepared.console, WorldModels.SECURITY_CONSOLE_PATH, "security console");
+            } else {
+                canisterMesh = loadSingleWorldMesh(active, WorldModels.CANISTER_PATH, "canister");
+                ringBoardMesh = loadSingleWorldMesh(active, WorldModels.RING_BOARD_PATH, "ring board");
+                blastOrbMesh = loadSingleWorldMesh(active, WorldModels.BLAST_ORB_PATH, "blast orb");
+                medkitMesh = loadSingleWorldMesh(active, WorldModels.MEDKIT_PATH, "medkit");
+                armorMesh = loadSingleWorldMesh(active, WorldModels.ARMOR_PATH, "armor");
+                energyCellMesh = loadSingleWorldMesh(active, WorldModels.ENERGY_CELL_PATH, "energy cell");
+                scattergunPickupMesh = loadSingleWorldMesh(
+                    active, WorldModels.SCATTERGUN_PICKUP_PATH, "scattergun pickup");
+                shellsPickupMesh = loadSingleWorldMesh(active, WorldModels.SHELLS_PICKUP_PATH, "shells pickup");
+                railLancePickupMesh = loadSingleWorldMesh(
+                    active, WorldModels.RAIL_LANCE_PICKUP_PATH, "rail lance pickup");
+                railSlugsPickupMesh = loadSingleWorldMesh(
+                    active, WorldModels.RAIL_SLUGS_PICKUP_PATH, "rail slugs pickup");
+                railBeamMesh = loadSingleWorldMesh(active, WorldModels.RAIL_BEAM_PATH, "rail beam");
+
+                ObjModel turretObj = active.loadModel(WorldModels.TURRET_PATH, "turret");
+                turretRig = new ModelRig(turretObj);
+                turretBaseMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "base");
+                turretHeadMesh = buildWorldPartMesh(active, turretObj, WorldModels.TURRET_PATH, "turret", "head");
+                turretBarrelsMesh = buildWorldPartMesh(
+                    active, turretObj, WorldModels.TURRET_PATH, "turret", "barrels");
+
+                ObjModel droneObj = active.loadModel(WorldModels.DRONE_PATH, "drone");
+                droneRig = new ModelRig(droneObj);
+                droneMesh = trackResource(active.buildIndexedMesh(
+                    unpackWorldModel(droneObj, WorldModels.DRONE_PATH, "drone", palette), WorldModels.DRONE_PATH,
+                    "drone"),
+                    Mesh.class);
+
+                ObjModel guardObj = active.loadModel(WorldModels.GUARD_PATH, "guard");
+                guardRig = new ModelRig(guardObj);
+                guardPelvisMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "pelvis");
+                guardLegLeftMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "leg_l");
+                guardLegRightMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "leg_r");
+                guardTorsoMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "torso");
+                guardArmLeftMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "arm_l");
+                guardArmRightMesh = buildWorldPartMesh(active, guardObj, WorldModels.GUARD_PATH, "guard", "arm_r");
+
+                enemyBoltMesh = loadSingleWorldMesh(active, WorldModels.ENEMY_BOLT_PATH, "enemy bolt");
+                doorMesh = loadSingleWorldMesh(active, WorldModels.DOOR_BULKHEAD_PATH, "door bulkhead");
+                hazardGrateMesh = loadSingleWorldMesh(active, WorldModels.HAZARD_GRATE_PATH, "hazard grate");
+                keycardMesh = loadSingleWorldMesh(active, WorldModels.KEYCARD_PATH, "keycard");
+                consoleMesh = loadSingleWorldMesh(active, WorldModels.SECURITY_CONSOLE_PATH, "security console");
+            }
 
             turretRotations.put("head", rotYaw);
             turretRotations.put("barrels", rotPitch);
@@ -321,7 +395,8 @@ public final class WorldRenderer implements Disposable {
             trackResource(strategyHandle, CameraGroupStrategy.class);
             decalBatch = trackResource(active.createDecalBatch(strategyHandle), DecalBatch.class);
             active.initTextureRegions(textures);
-            log.info("Loaded {} world models", ModelMesh.getLoadedCount() - modelsBefore);
+            int loadedCount = prepared != null ? prepared.modelCount : ModelMesh.getLoadedCount() - modelsBefore;
+            log.info("Loaded {} world models", loadedCount);
         } catch (Throwable t) {
             try {
                 dispose();
@@ -426,6 +501,11 @@ public final class WorldRenderer implements Disposable {
             resourceHandles.add(handle);
         }
         return null;
+    }
+
+    private Mesh uploadPreparedMesh(ResourceBackend active, ModelVertices.IndexedMesh data,
+                                      String assetPath, String label) {
+        return trackResource(active.buildIndexedMesh(data, assetPath, label), Mesh.class);
     }
 
     private Mesh loadSingleWorldMesh(ResourceBackend active, String assetPath, String label) {
@@ -894,7 +974,21 @@ public final class WorldRenderer implements Disposable {
             setAccent(null);
         }
 
-        renderWardens(simulation, roomLight, animTime);
+        renderWardens(simulation, roomLight, animTime, backdrop);
+    }
+
+    /** Starts background .glb + parallel texture decoding if {@code enemies} contains a live Warden. */
+    public void preloadWardenIfNeeded(List<Enemy> enemies) {
+        if (WardenModel.isNeeded(enemies)) {
+            preloadWarden();
+        }
+    }
+
+    /** Starts decoding the Warden's .glb model and 4096x4096 PNG textures in the background when not yet loaded. */
+    public void preloadWarden() {
+        if (wardenModel != null || wardenPreloader != null || Gdx.files == null) return;
+        wardenPreloader = WardenPreloader.start(Gdx.files.internal(WorldModels.WARDEN_PATH), workerPool);
+        log.debug("Started background preload of warden model {}", WorldModels.WARDEN_PATH);
     }
 
     /**
@@ -902,14 +996,24 @@ public final class WorldRenderer implements Disposable {
      * back the state the world pass runs with. A stage without a live Warden neither loads the model nor touches
      * the state.
      */
-    private void renderWardens(GameSimulation simulation, float roomLight, float animTime) {
+    private void renderWardens(GameSimulation simulation, float roomLight, float animTime, boolean backdrop) {
         if (!WardenModel.isNeeded(simulation.enemies)) {
             if (wardenModel != null) wardenModel.releasePuppets();
             return;
         }
         if (wardenModel == null) {
-            wardenModel = new WardenModel(fogColour, renderSettings.fogStart, renderSettings.fogEnd,
-                accent(WorldModels.Accent.WARDEN_PHASE1), accent(WorldModels.Accent.WARDEN_OVERDRIVE));
+            preloadWarden();
+            if (wardenPreloader != null) {
+                // Keep briefing/menu backdrops panning at full frame rate while the background decode finishes.
+                if (backdrop && !wardenPreloader.isDone()) return;
+                WardenModel.DecodedAsset decoded = wardenPreloader.await();
+                wardenPreloader = null;
+                wardenModel = new WardenModel(decoded, fogColour, renderSettings.fogStart, renderSettings.fogEnd,
+                    accent(WorldModels.Accent.WARDEN_PHASE1), accent(WorldModels.Accent.WARDEN_OVERDRIVE));
+            } else {
+                wardenModel = new WardenModel(fogColour, renderSettings.fogStart, renderSettings.fogEnd,
+                    accent(WorldModels.Accent.WARDEN_PHASE1), accent(WorldModels.Accent.WARDEN_OVERDRIVE));
+            }
         }
         wardenModel.draw(camera, simulation.enemies, animTime, roomLight);
 
@@ -1282,6 +1386,7 @@ public final class WorldRenderer implements Disposable {
         guardTorsoMesh = disposeQuietly(guardTorsoMesh);
         guardArmLeftMesh = disposeQuietly(guardArmLeftMesh);
         guardArmRightMesh = disposeQuietly(guardArmRightMesh);
+        wardenPreloader = disposeQuietly(wardenPreloader);
         wardenModel = disposeQuietly(wardenModel);
         enemyBoltMesh = disposeQuietly(enemyBoltMesh);
         doorMesh = disposeQuietly(doorMesh);

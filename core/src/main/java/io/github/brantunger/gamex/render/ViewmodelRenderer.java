@@ -134,11 +134,28 @@ public final class ViewmodelRenderer implements Disposable {
      * @param window the size the camera takes until the window reports its own
      */
     public ViewmodelRenderer(ProceduralTextures textures, Palettes palettes, WindowDefaults window) {
-        this(Gdx.graphics, textures, palettes, window, null);
+        this(Gdx.graphics, textures, palettes, window, null, null);
+    }
+
+    /**
+     * Builds the viewmodel renderer using pre-parsed and vertex-packed CPU models from {@link AssetPreparer}.
+     * @param textures the textures of the muzzle flash and the charge glow; the caller keeps ownership of them
+     * @param palettes the colours of the weapons and the hand
+     * @param window the size the camera takes until the window reports its own
+     * @param prepared optional pre-packed viewmodel meshes prepared off the GL thread
+     */
+    public ViewmodelRenderer(ProceduralTextures textures, Palettes palettes, WindowDefaults window,
+                             AssetPreparer.PreparedViewmodels prepared) {
+        this(Gdx.graphics, textures, palettes, window, null, prepared);
     }
 
     ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, Palettes palettes, WindowDefaults window,
                       ResourceBackend backend) {
+        this(graphics, textures, palettes, window, backend, null);
+    }
+
+    private ViewmodelRenderer(Graphics graphics, ProceduralTextures textures, Palettes palettes, WindowDefaults window,
+                              ResourceBackend backend, AssetPreparer.PreparedViewmodels prepared) {
         railAccentReady = palettes.railLance.accent(RailLanceModel.Accent.READY.name);
         railAccentRecharging = palettes.railLance.accent(RailLanceModel.Accent.RECHARGING.name);
         railAccentEmpty = palettes.railLance.accent(RailLanceModel.Accent.EMPTY.name);
@@ -160,35 +177,56 @@ public final class ViewmodelRenderer implements Disposable {
                         + Shaders.describe(Shaders.VIEWMODEL_VERTEX, Shaders.VIEWMODEL_FRAGMENT));
             }
             int modelsBefore = ModelMesh.getLoadedCount();
-            ObjModel pistolObj = active.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");
-            PistolModel pistol = unpackPistol(pistolObj, palettes.pistol);
-            muzzleSocket = pistolObj.getSocket("muzzle");
-            body = trackResource(
-                active.buildMesh(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body"), Mesh.class);
-            slide = trackResource(
-                active.buildMesh(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide"), Mesh.class);
-            ObjModel scatterObj = active.loadModel(ScattergunModel.ASSET_PATH, "viewmodel scattergun");
-            ScattergunModel scatter = unpackScattergun(scatterObj, palettes.scattergun);
-            scatterMuzzleSocket = scatterObj.getSocket("muzzle");
-            scatterBody = trackResource(
-                active.buildMesh(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body"),
-                Mesh.class);
-            scatterPump = trackResource(
-                active.buildMesh(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump"),
-                Mesh.class);
-            ObjModel railObj = active.loadModel(RailLanceModel.ASSET_PATH, "viewmodel rail lance");
-            RailLanceModel rail = unpackRailLance(railObj, palettes.railLance);
-            railMuzzleSocket = railObj.getSocket("muzzle");
-            railBody = trackResource(
-                active.buildMesh(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body"), Mesh.class);
-            railBolt = trackResource(
-                active.buildMesh(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt"), Mesh.class);
-            // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
-            ObjModel handObj = active.loadModel(HandModel.ASSET_PATH, "viewmodel hand");
-            hand = trackResource(
-                active.buildMesh(unpackHand(handObj, palettes.hand), HandModel.ASSET_PATH, "viewmodel hand"),
-                Mesh.class);
-            log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
+            if (prepared != null) {
+                muzzleSocket = prepared.pistolMuzzle;
+                body = trackResource(active.buildMesh(prepared.pistol.bodyMesh, PistolModel.ASSET_PATH,
+                    "viewmodel pistol body"), Mesh.class);
+                slide = trackResource(active.buildMesh(prepared.pistol.slideMesh, PistolModel.ASSET_PATH,
+                    "viewmodel pistol slide"), Mesh.class);
+                scatterMuzzleSocket = prepared.scatterMuzzle;
+                scatterBody = trackResource(active.buildMesh(prepared.scattergun.bodyMesh,
+                    ScattergunModel.ASSET_PATH, "viewmodel scattergun body"), Mesh.class);
+                scatterPump = trackResource(active.buildMesh(prepared.scattergun.pumpMesh,
+                    ScattergunModel.ASSET_PATH, "viewmodel scattergun pump"), Mesh.class);
+                railMuzzleSocket = prepared.railMuzzle;
+                railBody = trackResource(active.buildMesh(prepared.railLance.bodyMesh, RailLanceModel.ASSET_PATH,
+                    "viewmodel rail lance body"), Mesh.class);
+                railBolt = trackResource(active.buildMesh(prepared.railLance.boltMesh, RailLanceModel.ASSET_PATH,
+                    "viewmodel rail lance bolt"), Mesh.class);
+                hand = trackResource(active.buildMesh(prepared.hand, HandModel.ASSET_PATH, "viewmodel hand"),
+                    Mesh.class);
+                log.info("Loaded {} viewmodel models", prepared.modelCount);
+            } else {
+                ObjModel pistolObj = active.loadModel(PistolModel.ASSET_PATH, "viewmodel pistol");
+                PistolModel pistol = unpackPistol(pistolObj, palettes.pistol);
+                muzzleSocket = pistolObj.getSocket("muzzle");
+                body = trackResource(
+                    active.buildMesh(pistol.bodyMesh, PistolModel.ASSET_PATH, "viewmodel pistol body"), Mesh.class);
+                slide = trackResource(
+                    active.buildMesh(pistol.slideMesh, PistolModel.ASSET_PATH, "viewmodel pistol slide"), Mesh.class);
+                ObjModel scatterObj = active.loadModel(ScattergunModel.ASSET_PATH, "viewmodel scattergun");
+                ScattergunModel scatter = unpackScattergun(scatterObj, palettes.scattergun);
+                scatterMuzzleSocket = scatterObj.getSocket("muzzle");
+                scatterBody = trackResource(
+                    active.buildMesh(scatter.bodyMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun body"),
+                    Mesh.class);
+                scatterPump = trackResource(
+                    active.buildMesh(scatter.pumpMesh, ScattergunModel.ASSET_PATH, "viewmodel scattergun pump"),
+                    Mesh.class);
+                ObjModel railObj = active.loadModel(RailLanceModel.ASSET_PATH, "viewmodel rail lance");
+                RailLanceModel rail = unpackRailLance(railObj, palettes.railLance);
+                railMuzzleSocket = railObj.getSocket("muzzle");
+                railBody = trackResource(
+                    active.buildMesh(rail.bodyMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance body"), Mesh.class);
+                railBolt = trackResource(
+                    active.buildMesh(rail.boltMesh, RailLanceModel.ASSET_PATH, "viewmodel rail lance bolt"), Mesh.class);
+                // The hand is a sculpted model file in the pistol's gun space; its normals are smooth, so it shades smoothly.
+                ObjModel handObj = active.loadModel(HandModel.ASSET_PATH, "viewmodel hand");
+                hand = trackResource(
+                    active.buildMesh(unpackHand(handObj, palettes.hand), HandModel.ASSET_PATH, "viewmodel hand"),
+                    Mesh.class);
+                log.info("Loaded {} viewmodel models", ModelMesh.getLoadedCount() - modelsBefore);
+            }
 
             Disposable strategyHandle = active.createGroupStrategy(camera);
             trackResource(strategyHandle, CameraGroupStrategy.class);

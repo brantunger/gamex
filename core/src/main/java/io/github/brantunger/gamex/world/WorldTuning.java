@@ -9,8 +9,9 @@ import java.util.Locale;
 /**
  * The balance of the level's own rules, read from {@code assets/data/world.txt}: what the health, armor and energy
  * pickups give, the coolant canister's explosion, the shock grates, how long the hit marker and the pickup toast
- * show, and how far each noise the player makes wakes enemies. The game loads it once at start-up and hands it to
- * the simulation. Distances are in world units and times in seconds. Instances are immutable.
+ * show, how far line-of-sight reveals the minimap, and how far each noise the player makes wakes enemies. The game
+ * loads it once at start-up and hands it to the simulation. Distances are in world units and times in seconds.
+ * Instances are immutable.
  */
 public final class WorldTuning {
 
@@ -21,7 +22,7 @@ public final class WorldTuning {
         "pickup.medkit", "pickup.armor", "pickup.energy_cell",
         "canister.blast_radius", "canister.blast_damage", "canister.self_damage_scale",
         "grate.damage", "grate.interval", "grate.clearance_height",
-        "feedback.hit_marker_time", "feedback.toast_time",
+        "feedback.hit_marker_time", "feedback.toast_time", "minimap.reveal_radius",
     };
 
     /** The noises that wake enemies, each with a {@code noise.} key named after it in lower case. */
@@ -91,6 +92,8 @@ public final class WorldTuning {
     public final float hitMarkerTime;
     /** How long a pickup toast shows. */
     public final float toastTime;
+    /** How far around the player line-of-sight reveals the minimap, in world units. */
+    public final float minimapRevealRadius;
 
     private final Noise[] noises;
 
@@ -109,6 +112,7 @@ public final class WorldTuning {
 
         hitMarkerTime = positive(file, "feedback.hit_marker_time");
         toastTime = nonNegative(file, "feedback.toast_time");
+        minimapRevealRadius = positive(file, "minimap.reveal_radius");
 
         NoiseEvent[] events = NoiseEvent.values();
         noises = new Noise[events.length];

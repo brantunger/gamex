@@ -427,6 +427,24 @@ class TunedWeaponSimulationTest {
     }
 
     @Test
+    void minimapRevealRadiusFollowsTheWorldFile() {
+        String hall = "#######################";
+        String body = "#>....................#";
+        GameSimulation shipped = sim(TestTuning.WEAPONS, TestTuning.WORLD, PlayerLoadout.fresh(), hall, body, hall);
+        assertTrue(shipped.exploration.isExplored(13, 1), "within shipped 12-cell radius");
+        assertFalse(shipped.exploration.isExplored(15, 1), "beyond shipped 12-cell radius");
+
+        GameSimulation extended = sim(TestTuning.WEAPONS, TestTuning.worldWith("minimap.reveal_radius", "16"),
+            PlayerLoadout.fresh(), hall, body, hall);
+        assertTrue(extended.exploration.isExplored(15, 1), "within tuned 16-cell radius");
+        assertFalse(extended.exploration.isExplored(19, 1), "beyond tuned 16-cell radius");
+
+        extended.resetExploration();
+        assertTrue(extended.exploration.isExplored(15, 1), "reset retains worldTuning reveal radius");
+        assertFalse(extended.exploration.isExplored(19, 1));
+    }
+
+    @Test
     void theSimulationNeedsItsWeaponAndWorldTuning() {
         GameMap map = GameMap.parse("###", "#>#", "###");
         assertThrows(IllegalArgumentException.class, () -> new GameSimulation(map, PlayerLoadout.fresh(), false,

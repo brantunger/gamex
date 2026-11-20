@@ -26,6 +26,7 @@ import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.EnemyTuning;
 import io.github.brantunger.gamex.world.GameMap;
 import io.github.brantunger.gamex.world.Hitscan;
+import io.github.brantunger.gamex.world.MapExploration;
 import io.github.brantunger.gamex.world.Pathfinder;
 import io.github.brantunger.gamex.world.Pickup;
 import io.github.brantunger.gamex.world.RayHit;
@@ -195,6 +196,8 @@ public final class GameSimulation {
 
     /** The level. */
     public final GameMap map;
+    /** Permanent fog-of-war exploration state across the level grid. */
+    public final MapExploration exploration;
     /** Loadout and difficulty snapshot from when the player entered this level. */
     public final PlayerLoadout entryLoadout;
     /** Whether destroying every target completes the stage automatically. */
@@ -462,6 +465,8 @@ public final class GameSimulation {
         }
         reachable = new boolean[cellCount];
         reachQueue = new int[cellCount];
+        this.exploration = new MapExploration(map);
+        this.exploration.reveal(player.position.x, player.position.y, doors, worldTuning.minimapRevealRadius);
         if (log.isDebugEnabled()) {
             for (int i = 0; i < enemies.size(); i++) {
                 Enemy enemy = enemies.get(i);
@@ -498,6 +503,7 @@ public final class GameSimulation {
             viewmodel.update(dt, false, 0f, 0f, 0f);
             updateEnemiesWhenInactive(dt);
             updateTargetsAndEffects(dt);
+            exploration.reveal(player.position.x, player.position.y, doors, worldTuning.minimapRevealRadius);
             return;
         }
 
@@ -744,6 +750,13 @@ public final class GameSimulation {
         }
 
         updateTargetsAndEffects(dt);
+        exploration.reveal(player.position.x, player.position.y, doors, worldTuning.minimapRevealRadius);
+    }
+
+    /** Clears all explored fog-of-war state and reveals the area around the player's current position. */
+    public void resetExploration() {
+        exploration.reset();
+        exploration.reveal(player.position.x, player.position.y, doors, worldTuning.minimapRevealRadius);
     }
 
     /** @return the simulated active play time in seconds: the sum of the clamped time steps while playing. */

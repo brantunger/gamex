@@ -61,6 +61,7 @@ class KeyBindingsTest {
         expected.put(Action.WEAPON_PREV, List.of(wheel(-1)));
         expected.put(Action.FIRE, List.of(button(Input.Buttons.LEFT)));
         expected.put(Action.ALT_FIRE, List.of(button(Input.Buttons.RIGHT)));
+        expected.put(Action.MINIMAP, List.of(key(Input.Keys.M)));
         expected.put(Action.MENU_UP, List.of(key(Input.Keys.UP), key(Input.Keys.W)));
         expected.put(Action.MENU_DOWN, List.of(key(Input.Keys.DOWN), key(Input.Keys.S)));
         expected.put(Action.MENU_LEFT, List.of(key(Input.Keys.LEFT), key(Input.Keys.A)));
@@ -95,6 +96,7 @@ class KeyBindingsTest {
         expected.put(Action.WEAPON_PREV, "SCROLL");
         expected.put(Action.FIRE, "LMB");
         expected.put(Action.ALT_FIRE, "RMB");
+        expected.put(Action.MINIMAP, "M");
         expected.put(Action.MENU_UP, "UP");
         expected.put(Action.MENU_DOWN, "DOWN");
         expected.put(Action.MENU_LEFT, "LEFT");
@@ -130,6 +132,7 @@ class KeyBindingsTest {
         lines.put("weapon_prev", "Wheel-Up");
         lines.put("fire", "Mouse-Left");
         lines.put("alt_fire", "Mouse-Right");
+        lines.put("minimap", "M");
         lines.put("menu_up", "Up, W");
         lines.put("menu_down", "Down, S");
         lines.put("menu_left", "Left, A");
@@ -161,7 +164,7 @@ class KeyBindingsTest {
     void theActionIdsAreTheVocabularyOfTheKeyPlaceholders() {
         assertEquals(Arrays.asList("pause", "retry", "move_forward", "move_back", "move_left", "move_right", "dash",
             "jump", "interact", "weapon_1", "weapon_2", "weapon_3", "quick_swap", "weapon_next", "weapon_prev",
-            "fire", "alt_fire", "menu_up", "menu_down", "menu_left", "menu_right", "menu_confirm", "quit",
+            "fire", "alt_fire", "minimap", "menu_up", "menu_down", "menu_left", "menu_right", "menu_confirm", "quit",
             "menu_click"), new ArrayList<>(Action.ids()));
         for (Action action : Action.values()) {
             assertEquals(action, Action.byId(action.id));
@@ -240,11 +243,11 @@ class KeyBindingsTest {
     void aLineThatNamesNoActionFailsNamingTheFileTheKeyAndTheLine() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
             () -> KeyBindings.parse(FILE, fileWith() + "crouch: C\n", FONT));
-        assertEquals("Unknown key 'crouch' in " + FILE + " at line 25", e.getMessage());
+        assertEquals("Unknown key 'crouch' in " + FILE + " at line 26", e.getMessage());
 
         e = assertThrows(IllegalArgumentException.class,
             () -> KeyBindings.parse(FILE, fileWith() + "dash: F\n", FONT));
-        assertEquals("Duplicate 'dash' key in " + FILE + " at line 25", e.getMessage());
+        assertEquals("Duplicate 'dash' key in " + FILE + " at line 26", e.getMessage());
     }
 
     @Test
@@ -287,10 +290,10 @@ class KeyBindingsTest {
 
     @Test
     void aClashWithinTheMenusFails() {
-        assertEquals("Invalid 'quit' in " + FILE + " at line 23: 'Enter' is already bound to 'menu_confirm' at "
-            + "line 22, and both act on the menu screens, got 'Enter'", errorWith("quit", "Enter"));
-        assertEquals("Invalid 'menu_click' in " + FILE + " at line 24: 'Mouse-Right' is already bound to "
-            + "'menu_confirm' at line 22, and both act on the menu screens, got 'Mouse-Right'",
+        assertEquals("Invalid 'quit' in " + FILE + " at line 24: 'Enter' is already bound to 'menu_confirm' at "
+            + "line 23, and both act on the menu screens, got 'Enter'", errorWith("quit", "Enter"));
+        assertEquals("Invalid 'menu_click' in " + FILE + " at line 25: 'Mouse-Right' is already bound to "
+            + "'menu_confirm' at line 23, and both act on the menu screens, got 'Mouse-Right'",
             errorWith("menu_confirm", "Enter, Mouse-Right", "menu_click", "Mouse-Right"));
     }
 
@@ -298,7 +301,7 @@ class KeyBindingsTest {
     void pauseAndRetryClashWithTheActionsOfBothContexts() {
         assertEquals("Invalid 'fire' in " + FILE + " at line 16: 'R' is already bound to 'retry' at line 2, and "
             + "both act during play, got 'R'", errorWith("fire", "R"));
-        assertEquals("Invalid 'menu_up' in " + FILE + " at line 18: 'Escape' is already bound to 'pause' at line 1, "
+        assertEquals("Invalid 'menu_up' in " + FILE + " at line 19: 'Escape' is already bound to 'pause' at line 1, "
             + "and both act on the menu screens, got 'Up, Escape'", errorWith("menu_up", "Up, Escape"));
         assertEquals("Invalid 'retry' in " + FILE + " at line 2: 'Escape' is already bound to 'pause' at line 1, "
             + "and both act during play, got 'Escape'", errorWith("retry", "Escape"));
@@ -306,7 +309,7 @@ class KeyBindingsTest {
 
     @Test
     void theWheelCannotBeBoundToAnActionOfTheMenus() {
-        assertEquals("Invalid 'menu_down' in " + FILE + " at line 19: 'Wheel-Down' cannot be bound to an action of "
+        assertEquals("Invalid 'menu_down' in " + FILE + " at line 20: 'Wheel-Down' cannot be bound to an action of "
             + "the menu screens, got 'Down, Wheel-Down'",
             errorWith("weapon_next", "E", "interact", "F", "menu_down", "Down, Wheel-Down"));
         assertEquals("Invalid 'pause' in " + FILE + " at line 1: 'Wheel-Up' cannot be bound to an action of the "
@@ -315,7 +318,7 @@ class KeyBindingsTest {
 
     @Test
     void aClickTakesMouseButtonsOnly() {
-        assertEquals("Invalid 'menu_click' in " + FILE + " at line 24: 'F' is not a mouse button, and a click "
+        assertEquals("Invalid 'menu_click' in " + FILE + " at line 25: 'F' is not a mouse button, and a click "
             + "needs the pointer, got 'Mouse-Left, F'", errorWith("menu_click", "Mouse-Left, F"));
         assertEquals(List.of(button(Input.Buttons.RIGHT), button(Input.Buttons.MIDDLE)),
             parseWith("menu_click", "Mouse-Right, Mouse-Middle").inputs(Action.MENU_CLICK));

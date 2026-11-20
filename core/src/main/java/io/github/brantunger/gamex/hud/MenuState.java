@@ -51,6 +51,8 @@ public final class MenuState {
         LAUNCH_STAGE,
         /** Apply fullscreen/windowed setting to the OS window. */
         APPLY_DISPLAY,
+        /** Persist settings changed during active play (such as toggling the minimap). */
+        SAVE_SETTINGS,
         /** Exit the application. */
         QUIT
     }
@@ -81,6 +83,7 @@ public final class MenuState {
         SET_VIEW_BOB,
         SET_VOLUME,
         SET_FULLSCREEN,
+        SET_MINIMAP,
         RETRY,
         NEXT_STAGE,
         PLAY_AGAIN;
@@ -88,7 +91,7 @@ public final class MenuState {
         /** @return whether this is a Settings row whose value the left and right keys and a click change. */
         public boolean isSetting() {
             return this == SET_SENSITIVITY || this == SET_INVERT_Y || this == SET_FOV || this == SET_VIEW_BOB
-                || this == SET_VOLUME || this == SET_FULLSCREEN;
+                || this == SET_VOLUME || this == SET_FULLSCREEN || this == SET_MINIMAP;
         }
     }
 
@@ -260,6 +263,28 @@ public final class MenuState {
         return settingsReturnScreen;
     }
 
+    /** @return whether the HUD minimap is currently enabled in settings. */
+    public boolean isMinimapEnabled() {
+        return settings == null || settings.isMinimap();
+    }
+
+    /** @return configured vertical field of view in degrees, defaulting to 70 if no settings are bound. */
+    public float getFov() {
+        return settings != null ? settings.getFov() : 70f;
+    }
+
+    /**
+     * Toggles the HUD minimap setting during active gameplay and emits the UI click cue.
+     * @return {@link Command#SAVE_SETTINGS} when toggled during play, otherwise {@link Command#NONE}
+     */
+    public Command toggleMinimap() {
+        if (screen != Screen.PLAYING || settings == null) return Command.NONE;
+        settings.setMinimap(!settings.isMinimap());
+        log.debug("Setting changed: minimap {}", settings.isMinimap());
+        emitUiSound(SoundEvent.Type.MENU_MOVE);
+        return Command.SAVE_SETTINGS;
+    }
+
     /** @return whether the quit prompt should be shown, after a first press of the quit key. */
     public boolean isQuitPromptVisible() {
         return quitConfirmTimer > 0f;
@@ -368,6 +393,8 @@ public final class MenuState {
                     TextFormat.percent(settings.getMasterVolume()));
                 addSetting(items, OptionId.SET_FULLSCREEN, UiText.MENU_SETTINGS_FULLSCREEN,
                     onOff(settings.isFullscreen()));
+                addSetting(items, OptionId.SET_MINIMAP, UiText.MENU_SETTINGS_MINIMAP,
+                    onOff(settings.isMinimap()));
                 add(items, OptionId.BACK, UiText.MENU_BACK);
                 break;
             case DEAD:
@@ -577,6 +604,11 @@ public final class MenuState {
                 log.debug("Setting changed: fullscreen {}", settings.isFullscreen());
                 emitUiSound(SoundEvent.Type.MENU_CONFIRM);
                 return Command.APPLY_DISPLAY;
+            case SET_MINIMAP:
+                settings.setMinimap(!settings.isMinimap());
+                log.debug("Setting changed: minimap {}", settings.isMinimap());
+                emitUiSound(SoundEvent.Type.MENU_CONFIRM);
+                return Command.NONE;
             default:
                 return Command.NONE;
         }

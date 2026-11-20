@@ -884,6 +884,35 @@ class RendererSupportTest {
         assertEquals(1, d2.disposeCount);
     }
 
+    @Test
+    void proceduralTexturesDisposesUnusedPredecodedPixmapsOnFailure() {
+        java.util.Map<String, com.badlogic.gdx.utils.Disposable> firstMap = new java.util.LinkedHashMap<>();
+        RecordedDisposable firstA = new RecordedDisposable("predecoded-a");
+        firstA.throwOnDispose = true;
+        RecordedDisposable firstB = new RecordedDisposable("predecoded-b");
+        firstMap.put("unused-a.png", firstA);
+        firstMap.put("unused-b.png", firstB);
+        AssetPreparer.PreparedTextures firstPredecoded = new AssetPreparer.PreparedTextures(firstMap);
+
+        assertThrows(RuntimeException.class, () -> new ProceduralTextures(null, firstPredecoded));
+        assertEquals(1, firstA.disposeCount, "predecoded entry a must be disposed even when null walls fail");
+        assertEquals(1, firstB.disposeCount, "sibling predecoded entries must still be disposed when a throws");
+
+        java.util.Map<String, com.badlogic.gdx.utils.Disposable> partialMap = new java.util.LinkedHashMap<>();
+        RecordedDisposable unusedOne = new RecordedDisposable("unused-later-1");
+        RecordedDisposable unusedTwo = new RecordedDisposable("unused-later-2");
+        partialMap.put("unused-later-1.png", unusedOne);
+        partialMap.put("unused-later-2.png", unusedTwo);
+        AssetPreparer.PreparedTextures partialPredecoded = new AssetPreparer.PreparedTextures(partialMap);
+
+        assertThrows(RuntimeException.class,
+            () -> new ProceduralTextures(WallTextures.load(), partialPredecoded));
+        assertEquals(1, unusedOne.disposeCount,
+            "unused predecoded pixmap must be disposed when loading textures fails mid-way");
+        assertEquals(1, unusedTwo.disposeCount,
+            "all remaining predecoded pixmaps must be disposed on partial texture failure");
+    }
+
     /**
      * The renderers hand their backends the text of the shader files, and that text says what the strings in the
      * code said before they moved into files: the game must look the same.

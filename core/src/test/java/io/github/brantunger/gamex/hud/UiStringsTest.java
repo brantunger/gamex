@@ -106,12 +106,14 @@ class UiStringsTest {
             "VIEW BOB: < " + (settings.isViewBob() ? "ON" : "OFF") + " >",
             "MASTER VOLUME: < " + Math.round(settings.getMasterVolume() * 100f) + "% >",
             "FULLSCREEN: < " + (settings.isFullscreen() ? "ON" : "OFF") + " >",
+            "MINIMAP: < " + (settings.isMinimap() ? "ON" : "OFF") + " >",
             "BACK"), menu.getOptions());
         assertEquals("SENSITIVITY: < 0.12 >", menu.getOptions().get(0));
         assertEquals("INVERT LOOK Y: < ON >", menu.getOptions().get(1));
         assertEquals("FIELD OF VIEW: < 70 >", menu.getOptions().get(2));
         assertEquals("MASTER VOLUME: < 80% >", menu.getOptions().get(4));
         assertEquals("FULLSCREEN: < OFF >", menu.getOptions().get(5));
+        assertEquals("MINIMAP: < ON >", menu.getOptions().get(6));
     }
 
     @Test
@@ -144,7 +146,7 @@ class UiStringsTest {
     void shippedScreenTextIsTheTextTheCodeHeld() {
         assertEquals("GAMEX", STRINGS.get(UiText.SCREEN_TITLE_NAME));
         assertEquals("SECTOR BREACH // TACTICAL FPS", STRINGS.get(UiText.SCREEN_TITLE_SUBTITLE));
-        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT",
+        assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT  M: MAP",
             STRINGS.get(UiText.SCREEN_TITLE_FOOTER));
         assertEquals("SELECT STAGE", STRINGS.get(UiText.SCREEN_STAGE_SELECT_TITLE));
         assertEquals("CHOOSE ANY UNLOCKED STAGE TO DEPLOY", STRINGS.get(UiText.SCREEN_STAGE_SELECT_HINT));
@@ -312,7 +314,7 @@ class UiStringsTest {
     @Test
     void theActionsAKeyPlaceholderMayNameAreTheActionsOfTheBindings() {
         assertEquals(new ArrayList<>(Action.ids()), new ArrayList<>(KeyLabels.ACTIONS));
-        assertEquals(24, KeyLabels.ACTIONS.size());
+        assertEquals(25, KeyLabels.ACTIONS.size());
         KeyLabels shipped = TestTuning.BINDINGS::hint;
         for (String action : KeyLabels.ACTIONS) {
             String name = shipped.label(action);

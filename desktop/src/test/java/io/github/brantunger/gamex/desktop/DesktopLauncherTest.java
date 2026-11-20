@@ -49,7 +49,8 @@ class DesktopLauncherTest {
             "sensitivity.default: 0.12", "sensitivity.min: 0.03", "sensitivity.max: 0.40", "sensitivity.step: 0.01",
             "fov.default: 70", "fov.min: 60", "fov.max: 110", "fov.step: 5",
             "volume.default: 0.80", "volume.min: 0.0", "volume.max: 1.0", "volume.step: 0.10",
-            "invert_y.default: false", "view_bob.default: true", "fullscreen.default: " + fullscreen));
+            "invert_y.default: false", "view_bob.default: true", "fullscreen.default: " + fullscreen,
+            "minimap.default: true"));
     }
 
     @Test

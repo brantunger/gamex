@@ -47,6 +47,7 @@ public enum UiText {
     MENU_SETTINGS_VIEW_BOB("menu.settings.view_bob", "value"),
     MENU_SETTINGS_VOLUME("menu.settings.volume", "value"),
     MENU_SETTINGS_FULLSCREEN("menu.settings.fullscreen", "value"),
+    MENU_SETTINGS_MINIMAP("menu.settings.minimap", "value"),
     MENU_SETTINGS_ON("menu.settings.on"),
     MENU_SETTINGS_OFF("menu.settings.off"),
 
@@ -71,6 +72,7 @@ public enum UiText {
     HUD_OBJECTIVE("hud.objective", "text"),
     HUD_BOSS("hud.boss"),
     HUD_BOSS_OVERDRIVE("hud.boss_overdrive"),
+    HUD_MINIMAP_NORTH("hud.minimap_north"),
 
     // Screen titles and captions.
     SCREEN_TITLE_NAME("screen.title.name"),

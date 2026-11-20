@@ -34,6 +34,8 @@ public enum Action {
     WEAPON_PREV("weapon_prev", Context.PLAY),
     FIRE("fire", Context.PLAY),
     ALT_FIRE("alt_fire", Context.PLAY),
+    /** Toggles the top-down HUD minimap on or off during play. */
+    MINIMAP("minimap", Context.PLAY),
     MENU_UP("menu_up", Context.MENU),
     MENU_DOWN("menu_down", Context.MENU),
     /** Lowers the selected setting. */

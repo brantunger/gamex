@@ -196,6 +196,11 @@ public final class InputController extends InputAdapter {
         else if (justPressed(Action.WEAPON_NEXT)) out.weaponSlot = PlayerInput.WEAPON_CYCLE_NEXT;
         else if (justPressed(Action.WEAPON_PREV)) out.weaponSlot = PlayerInput.WEAPON_CYCLE_PREV;
 
+        MenuState.Command postCommand = MenuState.Command.NONE;
+        if (justPressed(Action.MINIMAP)) {
+            postCommand = menuState.toggleMinimap();
+        }
+
         boolean fireDown = held(Action.FIRE);
         boolean altFireDown = held(Action.ALT_FIRE);
         if (!fireDown) swallowFire = false;
@@ -204,7 +209,7 @@ public final class InputController extends InputAdapter {
         out.charge = altFireDown && !swallowCharge;
         // Every action above has read the wheel, so its turn ends with this frame.
         pendingScrollY = 0f;
-        return MenuState.Command.NONE;
+        return postCommand;
     }
 
     /**

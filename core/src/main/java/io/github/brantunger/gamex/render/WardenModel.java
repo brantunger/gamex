@@ -23,7 +23,11 @@ import com.badlogic.gdx.utils.TimeUtils;
 import io.github.brantunger.gamex.model.GlbFile;
 import io.github.brantunger.gamex.world.Enemy;
 import io.github.brantunger.gamex.world.WorldModels;
-import net.mgsx.gltf.loaders.glb.GLBLoader;
+import net.mgsx.gltf.data.GLTF;
+import net.mgsx.gltf.data.texture.GLTFImage;
+import net.mgsx.gltf.loaders.glb.BinaryDataFileResolver;
+import net.mgsx.gltf.loaders.shared.GLTFLoaderBase;
+import net.mgsx.gltf.loaders.shared.data.DataFileResolver;
 import net.mgsx.gltf.scene3d.attributes.FogAttribute;
 import net.mgsx.gltf.scene3d.lights.DirectionalLightEx;
 import net.mgsx.gltf.scene3d.scene.Scene;
@@ -34,6 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -175,8 +180,62 @@ final class WardenModel implements Disposable {
         return (share - (float) Math.floor(share)) * duration;
     }
 
+    /** Pre-decoded glTF data and image pixmaps ready for main-thread GL upload. */
+    static final class DecodedAsset implements DataFileResolver, Disposable, AutoCloseable {
+        private final BinaryDataFileResolver backing;
+        private final Map<GLTFImage, Pixmap> pixmaps;
+        final long decodeMillis;
+
+        DecodedAsset(BinaryDataFileResolver backing, Map<GLTFImage, Pixmap> pixmaps, long decodeMillis) {
+            this.backing = backing;
+            this.pixmaps = pixmaps;
+            this.decodeMillis = decodeMillis;
+        }
+
+        @Override
+        public void load(com.badlogic.gdx.files.FileHandle file) {
+            backing.load(file);
+        }
+
+        @Override
+        public GLTF getRoot() {
+            return backing.getRoot();
+        }
+
+        @Override
+        public ByteBuffer getBuffer(int index) {
+            return backing.getBuffer(index);
+        }
+
+        @Override
+        public Pixmap load(GLTFImage image) {
+            Pixmap predecoded = pixmaps.remove(image);
+            return predecoded != null ? predecoded : backing.load(image);
+        }
+
+        @Override
+        public void dispose() {
+            for (Pixmap pixmap : pixmaps.values()) {
+                if (pixmap != null) {
+                    try {
+                        pixmap.dispose();
+                    } catch (RuntimeException ignored) {
+                        // Ensure remaining pre-decoded native pixmaps are freed.
+                    }
+                }
+            }
+            pixmaps.clear();
+        }
+
+        @Override
+        public void close() {
+            dispose();
+        }
+    }
+
     /**
-     * Loads the model and compiles its shader, which takes about a second: three 4096-pixel textures are decoded.
+     * Loads the model and compiles its shader: three 4096-pixel textures are decoded synchronously if no pre-decoded
+     * asset is provided.
      * @param fogColour the colour distant things fade to
      * @param fogStart the distance at which the fog starts
      * @param fogEnd the distance at which the fog hides everything
@@ -184,15 +243,34 @@ final class WardenModel implements Disposable {
      * @param overdriveAccent the accent a Warden glows with in overdrive
      */
     WardenModel(Color fogColour, float fogStart, float fogEnd, float[] phase1Accent, float[] overdriveAccent) {
+        this(WardenPreloader.decodeSynchronously(Gdx.files.internal(WorldModels.WARDEN_PATH)),
+            fogColour, fogStart, fogEnd, phase1Accent, overdriveAccent);
+    }
+
+    /**
+     * Uploads a pre-decoded Warden {@link DecodedAsset} into GL textures/meshes and compiles its PBR shader on the GL
+     * thread.
+     */
+    WardenModel(DecodedAsset decoded, Color fogColour, float fogStart, float fogEnd,
+                float[] phase1Accent, float[] overdriveAccent) {
         this.fogColour = fogColour;
         this.fogStart = fogStart;
         this.fogEnd = fogEnd;
         this.phase1Accent = phase1Accent;
         this.overdriveAccent = overdriveAccent;
-        long started = TimeUtils.millis();
-        try {
-            asset = new GLBLoader().load(Gdx.files.internal(WorldModels.WARDEN_PATH));
+        long uploadStarted = TimeUtils.millis();
+        long decodeMs = decoded != null ? decoded.decodeMillis : 0L;
+        try (DecodedAsset predecoded = decoded) {
+            if (predecoded == null) {
+                throw new GdxRuntimeException("The warden model " + WorldModels.WARDEN_PATH
+                    + " could not be read: decoded asset is null");
+            }
+            asset = new GLTFLoaderBase().load(predecoded, false);
         } catch (RuntimeException e) {
+            if (e instanceof GdxRuntimeException && e.getMessage() != null
+                && e.getMessage().startsWith("The warden model ")) {
+                throw e;
+            }
             throw new GdxRuntimeException("The warden model " + WorldModels.WARDEN_PATH + " could not be read: "
                 + e.getMessage(), e);
         }
@@ -210,13 +288,15 @@ final class WardenModel implements Disposable {
             }
         }
         batch = new ModelBatch(PBRShaderProvider.createDefault(asset.maxBones));
-        long read = TimeUtils.millis();
+        long glReady = TimeUtils.millis();
         compileShader();
+        long glTotal = TimeUtils.millis() - uploadStarted;
         ModelMesh.modelLoaded(WorldModels.WARDEN_PATH, "warden");
-        log.info("Loaded the warden model {} in {} ms", WorldModels.WARDEN_PATH, TimeUtils.millis() - started);
+        log.info("Loaded the warden model {} in {} ms (decode {} ms, gl {} ms)", WorldModels.WARDEN_PATH,
+            decodeMs + glTotal, decodeMs, glTotal);
         if (log.isDebugEnabled()) {
-            log.debug("The warden model was read in {} ms and its shader compiled in {} ms", read - started,
-                TimeUtils.millis() - read);
+            log.debug("The warden model was uploaded in {} ms and its shader compiled in {} ms",
+                glReady - uploadStarted, TimeUtils.millis() - glReady);
             for (Mesh mesh : asset.meshes) {
                 log.debug("The warden model has a mesh of {} vertices and {} indices, on up to {} bones",
                     mesh.getNumVertices(), mesh.getNumIndices(), asset.maxBones);

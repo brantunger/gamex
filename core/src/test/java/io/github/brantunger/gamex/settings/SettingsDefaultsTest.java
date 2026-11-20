@@ -70,6 +70,7 @@ class SettingsDefaultsTest {
         assertFalse(defaults.invertY);
         assertTrue(defaults.viewBob);
         assertFalse(defaults.fullscreen);
+        assertTrue(defaults.minimap);
     }
 
     @Test
@@ -84,6 +85,7 @@ class SettingsDefaultsTest {
             assertFalse(settings.isInvertY());
             assertTrue(settings.isViewBob());
             assertFalse(settings.isFullscreen());
+            assertTrue(settings.isMinimap());
         }
     }
 
@@ -93,7 +95,8 @@ class SettingsDefaultsTest {
             "sensitivity.default: 0.25", "sensitivity.min: 0.05", "sensitivity.max: 0.30", "sensitivity.step: 0.05",
             "fov.default: 90", "fov.min: 80", "fov.max: 100", "fov.step: 2",
             "volume.default: 0.50", "volume.min: 0.2", "volume.max: 0.9", "volume.step: 0.25",
-            "invert_y.default: true", "view_bob.default: false", "fullscreen.default: true"));
+            "invert_y.default: true", "view_bob.default: false", "fullscreen.default: true",
+            "minimap.default: false"));
 
         GameSettings settings = new GameSettings(defaults);
         assertSame(defaults, settings.defaults());
@@ -103,6 +106,7 @@ class SettingsDefaultsTest {
         assertTrue(settings.isInvertY());
         assertFalse(settings.isViewBob());
         assertTrue(settings.isFullscreen());
+        assertFalse(settings.isMinimap());
 
         // A store that holds nothing leaves every default; none is written a second time in load().
         GameSettings loaded = GameSettings.load(new MapKeyValueStore(), defaults);
@@ -112,6 +116,7 @@ class SettingsDefaultsTest {
         assertTrue(loaded.isInvertY());
         assertFalse(loaded.isViewBob());
         assertTrue(loaded.isFullscreen());
+        assertFalse(loaded.isMinimap());
     }
 
     @Test
@@ -151,6 +156,7 @@ class SettingsDefaultsTest {
         wide.setMouseSensitivity(0.03f);
         wide.setMasterVolume(1f);
         wide.setFullscreen(true);
+        wide.setMinimap(false);
         wide.save(store);
 
         SettingsDefaults narrow = SettingsDefaults.parse(FILE, with("fov.max", "90")
@@ -161,6 +167,7 @@ class SettingsDefaultsTest {
         assertEquals(0.06f, loaded.getMouseSensitivity(), 1e-6f);
         assertEquals(0.9f, loaded.getMasterVolume(), 1e-6f);
         assertTrue(loaded.isFullscreen(), "a stored choice wins over the default");
+        assertFalse(loaded.isMinimap(), "a stored choice wins over the default");
     }
 
     @Test
@@ -243,7 +250,7 @@ class SettingsDefaultsTest {
     @Test
     void aMissingUnknownOrUnreadableKeyStopsTheLoad() {
         for (String key : new String[] {"sensitivity.default", "fov.step", "volume.max", "invert_y.default",
-            "view_bob.default", "fullscreen.default"}) {
+            "view_bob.default", "fullscreen.default", "minimap.default"}) {
             StringBuilder without = new StringBuilder();
             for (String line : AssetText.splitLines(shippedText())) {
                 if (!line.startsWith(key + ":")) without.append(line).append('\n');
@@ -255,5 +262,6 @@ class SettingsDefaultsTest {
         assertRejected(with("fov.default", "70f"), "fov.default");
         assertRejected(with("view_bob.default", "on"), "view_bob.default");
         assertRejected(with("fullscreen.default", ""), "fullscreen.default");
+        assertRejected(with("minimap.default", "yes"), "minimap.default");
     }
 }
