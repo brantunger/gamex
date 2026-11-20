@@ -1,0 +1,50 @@
+// The level's own rules: pickups, canisters, shock grates, on-screen feedback and the noise that wakes enemies.
+// Read once when the game starts; change a value, start the game again and it is there. Every key must be present.
+// Distances are in world units (one map cell is 1), times in seconds.
+
+// What a pickup gives on Normal, at least 1; difficulty.txt scales it. The ammunition pickups are in weapons.txt.
+// A pickup's size is not here: it is its collision radius and stays in code (Pickup.RADIUS), because the models
+// are sculpted to it.
+pickup.medkit: 25
+pickup.armor: 25
+pickup.energy_cell: 35
+
+// A coolant canister explodes when it is destroyed.
+//   blast_radius       how far the explosion reaches
+//   blast_damage       damage at its centre
+//   self_damage_scale  share of that damage the player takes, before the damage_taken of difficulty.txt
+canister.blast_radius: 2.2
+canister.blast_damage: 80
+canister.self_damage_scale: 0.5
+
+// Shock grates hurt whoever stands on them (of the enemies, the kinds with hazard_damage in enemies.txt). A player
+// who is dashing, or jumping above clearance_height, is not hurt.
+//   damage            damage of one tick; the player's is multiplied by the damage_taken of difficulty.txt
+//   interval          time between two ticks
+//   clearance_height  a jumping player whose feet are higher than this above the floor is not hurt
+grate.damage: 8
+grate.interval: 0.35
+grate.clearance_height: 0.06
+
+// How long the crosshair's hit marker and a pickup toast show.
+feedback.hit_marker_time: 0.16
+feedback.toast_time: 2.0
+
+// How far around the player line-of-sight reveals the minimap, in world units.
+minimap.reveal_radius: 12
+
+// Noise. Each line is two distances:
+//   noise.event: line-of-sight range, muffled range
+// The noise wakes the dormant enemies within the first distance that have a line of sight to where it was made,
+// and those within the second through walls. A shot is heard from the player, a hit from the enemy it hits, the
+// others from where they happen. The noise of an enemy's death is per kind, in enemies.txt.
+noise.blast_detonation: 11, 5.5
+noise.console_override: 12, 7
+noise.pistol_shot: 9, 4.5
+noise.pistol_hit: 5, 3
+noise.rail_shot: 15, 7.5
+noise.rail_hit: 7, 4
+noise.scattergun_shot: 11, 5.5
+noise.scattergun_double_shot: 13, 6.5
+noise.scattergun_hit: 5, 3
+noise.canister_explosion: 11, 5.5

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
@@ -294,7 +295,7 @@ class AsyncKeyValueStoreTest {
     void worksEndToEndWithGameSettingsAndSaveData() {
         MapKeyValueStore backingSettings = new MapKeyValueStore();
         MapKeyValueStore backingSave = new MapKeyValueStore();
-        SettingsDefaults defaults = SettingsDefaults.load();
+        SettingsDefaults defaults = TestTuning.SETTINGS;
 
         ExecutorService ioExecutor = AsyncKeyValueStore.newIoExecutor();
         try {

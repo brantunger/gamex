@@ -14,10 +14,15 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Checks the weapon tuning file: what it ships with, what a changed value does, and its errors. */
+/**
+ * Checks the weapon tuning file: that each key sets its own value, that the weapons work by the loaded values, what
+ * a changed value does, and its errors.
+ */
 class WeaponTuningTest {
 
     private static final WeaponTuning W = TestTuning.WEAPONS;
+    /** The test's own file, in which every number differs from the shipped one and from every other. */
+    private static final String FIXTURE = "data-fixtures/weapons.txt";
 
     private static void assertRing(WeaponTuning.Ring ring, int count, float coneDegrees, float twistDegrees) {
         assertEquals(count, ring.count);
@@ -25,158 +30,191 @@ class WeaponTuningTest {
         assertEquals(twistDegrees, ring.twistDegrees, 0f);
     }
 
-    /** The values are the constants the weapon classes and the simulation held before the file (commit 10cd4a4). */
+    /**
+     * The values on the right are those of the test's own file, where no two numbers are alike, so a key read into
+     * another key's field, or a value still held in code, shows.
+     */
     @Test
-    void theShippedFileHoldsTheValuesTheCodeHadBeforeIt() {
-        assertEquals(0.3f, W.pistolFireInterval, 0f);
-        assertEquals(20f, W.pistolDamage, 0f);
-        assertEquals(60f, W.pistolRange, 0f);
-        assertEquals(0.07f, W.pistolFlashTime, 0f);
-        assertEquals(1f, W.pistolRecoilKick, 0f);
+    void everyKeyOfAWeaponFileSetsItsOwnValue() {
+        WeaponTuning t = WeaponTuning.parse(FIXTURE, AssetText.read("data", FIXTURE));
+        assertEquals(0.306f, t.pistolFireInterval, 0f);
+        assertEquals(21f, t.pistolDamage, 0f);
+        assertEquals(61f, t.pistolRange, 0f);
+        assertEquals(0.0721f, t.pistolFlashTime, 0f);
+        assertEquals(2f, t.pistolRecoilKick, 0f);
 
-        assertEquals(24, W.scattergunMaxShells);
-        assertEquals(8, W.scattergunWeaponPickupShells);
-        assertEquals(6, W.scattergunBoxPickupShells);
-        assertEquals(8, W.scattergunPrimaryPellets);
-        assertEquals(0.75f, W.scattergunPrimaryInterval, 0f);
-        assertEquals(1.6f, W.scattergunPrimaryRecoilKick, 0f);
-        assertEquals(0.08f, W.scattergunPrimaryPumpDelay, 0f);
-        assertEquals(0.48f, W.scattergunPrimaryPumpTime, 0f);
-        assertEquals(16, W.scattergunAltPellets);
-        assertEquals(1.15f, W.scattergunAltInterval, 0f);
-        assertEquals(2.4f, W.scattergunAltRecoilKick, 0f);
-        assertEquals(0.12f, W.scattergunAltPumpDelay, 0f);
-        assertEquals(0.68f, W.scattergunAltPumpTime, 0f);
-        assertEquals(12f, W.scattergunPelletDamage, 0f);
-        assertEquals(7f, W.scattergunFalloffStart, 0f);
-        assertEquals(26f, W.scattergunRange, 0f);
-        assertEquals(0.35f, W.scattergunMinFalloffScale, 0f);
-        assertEquals(0.09f, W.scattergunFlashTime, 0f);
-        assertEquals(0.35f, W.scattergunPumpPullShare, 0f);
+        assertEquals(25, t.scattergunMaxShells);
+        assertEquals(9, t.scattergunWeaponPickupShells);
+        assertEquals(7, t.scattergunBoxPickupShells);
+        assertEquals(1 + 8, t.scattergunPrimaryPellets);
+        assertEquals(0.7875f, t.scattergunPrimaryInterval, 0f);
+        assertEquals(1.696f, t.scattergunPrimaryRecoilKick, 0f);
+        assertEquals(0.0856f, t.scattergunPrimaryPumpDelay, 0f);
+        assertEquals(0.5184f, t.scattergunPrimaryPumpTime, 0f);
+        assertEquals(1 + 6 + 11, t.scattergunAltPellets);
+        assertEquals(1.2765f, t.scattergunAltInterval, 0f);
+        assertEquals(2.688f, t.scattergunAltRecoilKick, 0f);
+        assertEquals(0.1356f, t.scattergunAltPumpDelay, 0f);
+        assertEquals(0.7752f, t.scattergunAltPumpTime, 0f);
+        assertEquals(13f, t.scattergunPelletDamage, 0f);
+        assertEquals(10f, t.scattergunFalloffStart, 0f);
+        assertEquals(27f, t.scattergunRange, 0f);
+        assertEquals(0.4025f, t.scattergunMinFalloffScale, 0f);
+        assertEquals(0.1044f, t.scattergunFlashTime, 0f);
+        assertEquals(0.4095f, t.scattergunPumpPullShare, 0f);
 
-        assertEquals(15, W.railMaxSlugs);
-        assertEquals(5, W.railWeaponPickupSlugs);
-        assertEquals(3, W.railPackPickupSlugs);
-        assertEquals(120f, W.railDamage, 0f);
-        assertEquals(60f, W.railRange, 0f);
-        assertEquals(1.10f, W.railFireInterval, 0f);
-        assertEquals(0.10f, W.railFlashTime, 0f);
-        assertEquals(0.04f, W.railBoltDelay, 0f);
-        assertEquals(0.68f, W.railBoltTime, 0f);
-        assertEquals(0.25f, W.railBoltPullShare, 0f);
-        assertEquals(1.8f, W.railZoomFactor, 0f);
-        assertEquals(7.5f, W.railZoomSpeed, 0f);
-        assertEquals(2.6f, W.railRecoilKick, 0f);
+        assertEquals(16, t.railMaxSlugs);
+        assertEquals(12, t.railWeaponPickupSlugs);
+        assertEquals(4, t.railPackPickupSlugs);
+        assertEquals(121f, t.railDamage, 0f);
+        assertEquals(62f, t.railRange, 0f);
+        assertEquals(1.298f, t.railFireInterval, 0f);
+        assertEquals(0.119f, t.railFlashTime, 0f);
+        assertEquals(0.048f, t.railBoltDelay, 0f);
+        assertEquals(0.8228f, t.railBoltTime, 0f);
+        assertEquals(0.305f, t.railBoltPullShare, 0f);
+        assertEquals(2.214f, t.railZoomFactor, 0f);
+        assertEquals(7.575f, t.railZoomSpeed, 0f);
+        assertEquals(2.652f, t.railRecoilKick, 0f);
 
-        assertEquals(1.2f, W.blastFullChargeTime, 0f);
-        assertEquals(0.25f, W.blastMinCharge, 0f);
-        assertEquals(20f, W.blastMinCost, 0f);
-        assertEquals(60f, W.blastMaxCost, 0f);
-        assertEquals(1f, W.blastMinRadius, 0f);
-        assertEquals(3f, W.blastMaxRadius, 0f);
-        assertEquals(30f, W.blastMinDamage, 0f);
-        assertEquals(130f, W.blastMaxDamage, 0f);
-        assertEquals(1f, W.blastRecoilKick, 0f);
+        assertEquals(1.236f, t.blastFullChargeTime, 0f);
+        assertEquals(0.26f, t.blastMinCharge, 0f);
+        assertEquals(22f, t.blastMinCost, 0f);
+        assertEquals(63f, t.blastMaxCost, 0f);
+        assertEquals(5f, t.blastMinRadius, 0f);
+        assertEquals(14f, t.blastMaxRadius, 0f);
+        assertEquals(31f, t.blastMinDamage, 0f);
+        assertEquals(131f, t.blastMaxDamage, 0f);
+        assertEquals(15f, t.blastRecoilKick, 0f);
 
-        assertEquals(100f, W.energyCapacity, 0f);
-        assertEquals(14f, W.energyRegen, 0f);
-    }
-
-    /** The rings the code built from literals before the file: 7 at 4.2, and 5 at 3.4 with 10 at 6.8 turned PI/10. */
-    @Test
-    void theShippedRingsAreTheOnesTheCodeBuiltBeforeTheFile() {
-        assertEquals(1, W.scattergunPrimaryRings().size());
-        assertRing(W.scattergunPrimaryRings().get(0), 7, 4.2f, 0f);
-        assertEquals(2, W.scattergunAltRings().size());
-        assertRing(W.scattergunAltRings().get(0), 5, 3.4f, 0f);
-        assertRing(W.scattergunAltRings().get(1), 10, 6.8f, 18f);
-        // The outer ring's twist was written as PI / 10 radians; 18 degrees must give the very same number.
-        assertEquals(Math.PI / 10.0, Math.toRadians(W.scattergunAltRings().get(1).twistDegrees), 0.0);
-        assertEquals(0.0, Math.toRadians(W.scattergunPrimaryRings().get(0).twistDegrees), 0.0);
-        assertThrows(UnsupportedOperationException.class, () -> W.scattergunAltRings().remove(0));
-    }
-
-    /** A copy of {@code Scattergun.pelletDirections} and {@code addConeRing} as they were in commit 10cd4a4. */
-    private static List<Vector3> pelletDirectionsBeforeTheFile(Vector3 forward, boolean doubleBlast) {
-        Vector3 centre = new Vector3(forward);
-        float len2 = centre.len2();
-        if (!Float.isFinite(len2) || len2 < 1e-12f) centre.set(0f, 0f, -1f);
-        else centre.nor();
-
-        Vector3 right = new Vector3(centre).crs(Vector3.Y);
-        if (right.len2() < 1e-8f) right.set(Vector3.X);
-        else right.nor();
-        Vector3 up = new Vector3(right).crs(centre).nor();
-
-        List<Vector3> dirs = new ArrayList<>(doubleBlast ? 16 : 8);
-        dirs.add(new Vector3(centre));
-        if (!doubleBlast) {
-            addConeRingBeforeTheFile(dirs, centre, right, up, 7, 4.2f, 0.0);
-        } else {
-            addConeRingBeforeTheFile(dirs, centre, right, up, 5, 3.4f, 0.0);
-            addConeRingBeforeTheFile(dirs, centre, right, up, 10, 6.8f, Math.PI / 10.0);
-        }
-        return dirs;
-    }
-
-    private static void addConeRingBeforeTheFile(List<Vector3> out, Vector3 centre, Vector3 right, Vector3 up,
-                                                 int count, float angleDeg, double phaseRad) {
-        float spread = (float) Math.tan(Math.toRadians(angleDeg));
-        for (int i = 0; i < count; i++) {
-            double theta = phaseRad + i * (2.0 * Math.PI / count);
-            float rx = (float) Math.cos(theta) * spread;
-            float ry = (float) Math.sin(theta) * spread;
-            out.add(new Vector3(centre).mulAdd(right, rx).mulAdd(up, ry).nor());
-        }
+        assertEquals(101f, t.energyCapacity, 0f);
+        assertEquals(17f, t.energyRegen, 0f);
     }
 
     @Test
-    void theShippedPelletPatternIsBitForBitTheOneBeforeTheFile() {
-        Scattergun gun = new Scattergun(W);
+    void everyRingRowOfAWeaponFileIsARingOfItsPattern() {
+        WeaponTuning t = WeaponTuning.parse(FIXTURE, AssetText.read("data", FIXTURE));
+        assertEquals(1, t.scattergunPrimaryRings().size());
+        assertRing(t.scattergunPrimaryRings().get(0), 8, 4.368f, 1f);
+        assertEquals(2, t.scattergunAltRings().size());
+        assertRing(t.scattergunAltRings().get(0), 6, 3.706f, 3f);
+        assertRing(t.scattergunAltRings().get(1), 11, 7.48f, 19f);
+        assertThrows(UnsupportedOperationException.class, () -> t.scattergunAltRings().remove(0));
+    }
+
+    /** Whatever values the shipped file holds, it loads, and each shot has a ring and so more than one pellet. */
+    @Test
+    void theShippedFileLoads() {
+        WeaponTuning shipped = WeaponTuning.load();
+        assertFalse(shipped.scattergunPrimaryRings().isEmpty());
+        assertFalse(shipped.scattergunAltRings().isEmpty());
+        assertTrue(shipped.scattergunPrimaryPellets > 1 && shipped.scattergunAltPellets > 1);
+        assertTrue(shipped.pistolFireInterval > 0f && shipped.railFireInterval > 0f);
+    }
+
+    /**
+     * The pattern of a tuning, whatever its rings: one pellet down the aim line, then each ring's pellets at that
+     * ring's cone angle from it, the first of a ring turned by its twist from straight to the right.
+     */
+    private static void assertPatternFollowsTheRings(WeaponTuning tuning) {
+        Scattergun gun = new Scattergun(tuning);
         Vector3[] aims = {
             new Vector3(0f, 0f, -1f), new Vector3(1f, 0f, 0f), new Vector3(0.4f, -0.15f, -0.9f),
-            new Vector3(-0.31f, 0.22f, 0.77f).nor(), new Vector3(3f, 1f, -2f), new Vector3(0f, 1f, 0f),
-            new Vector3(0.6f, -0.64f, 0.48f), new Vector3(0f, 0f, 0f), new Vector3(Float.NaN, 0f, -1f),
+            new Vector3(-0.31f, 0.22f, 0.77f).nor(), new Vector3(3f, 1f, -2f), new Vector3(0.6f, -0.64f, 0.48f),
         };
         for (Vector3 aim : aims) {
             for (boolean doubleBlast : new boolean[] {false, true}) {
-                List<Vector3> before = pelletDirectionsBeforeTheFile(aim, doubleBlast);
-                List<Vector3> now = gun.pelletDirections(aim, doubleBlast);
+                List<WeaponTuning.Ring> rings =
+                    doubleBlast ? tuning.scattergunAltRings() : tuning.scattergunPrimaryRings();
+                List<Vector3> pellets = gun.pelletDirections(aim, doubleBlast);
                 String where = aim + (doubleBlast ? " double" : " primary");
-                assertEquals(doubleBlast ? 16 : 8, now.size(), where);
-                assertEquals(before.size(), now.size(), where);
-                for (int i = 0; i < before.size(); i++) {
-                    assertEquals(Float.floatToIntBits(before.get(i).x), Float.floatToIntBits(now.get(i).x), where);
-                    assertEquals(Float.floatToIntBits(before.get(i).y), Float.floatToIntBits(now.get(i).y), where);
-                    assertEquals(Float.floatToIntBits(before.get(i).z), Float.floatToIntBits(now.get(i).z), where);
+                assertEquals(doubleBlast ? tuning.scattergunAltPellets : tuning.scattergunPrimaryPellets,
+                    pellets.size(), where);
+                Vector3 centre = new Vector3(aim).nor();
+                Vector3 right = new Vector3(centre).crs(Vector3.Y).nor();
+                Vector3 up = new Vector3(right).crs(centre).nor();
+                assertEquals(1f, pellets.get(0).dot(centre), 1e-6f, where);
+                int next = 1;
+                for (WeaponTuning.Ring ring : rings) {
+                    // A pellet is the aim line plus tan(cone) to the side, made a unit vector again.
+                    double tan = Math.tan(Math.toRadians(ring.coneDegrees));
+                    double length = Math.sqrt(1.0 + tan * tan);
+                    for (int i = 0; i < ring.count; i++) {
+                        Vector3 pellet = pellets.get(next++);
+                        String which = where + " pellet " + i + " of a ring of " + ring.count;
+                        double turn = Math.toRadians(ring.twistDegrees) + i * (2.0 * Math.PI / ring.count);
+                        assertEquals(1f, pellet.len(), 1e-5f, which);
+                        assertEquals(1.0 / length, pellet.dot(centre), 1e-5, which);
+                        assertEquals(Math.cos(turn) * tan / length, pellet.dot(right), 1e-5, which);
+                        assertEquals(Math.sin(turn) * tan / length, pellet.dot(up), 1e-5, which);
+                    }
                 }
+                assertEquals(pellets.size(), next, where);
             }
         }
+        // An aim with no direction is taken as straight ahead, and one straight up still has a right-hand side.
+        assertEquals(new Vector3(0f, 0f, -1f), gun.pelletDirections(new Vector3(0f, 0f, 0f), false).get(0));
+        assertEquals(new Vector3(0f, 0f, -1f), gun.pelletDirections(new Vector3(Float.NaN, 0f, -1f), true).get(0));
+        for (Vector3 pellet : gun.pelletDirections(new Vector3(0f, 1f, 0f), true)) {
+            assertTrue(Float.isFinite(pellet.x) && Float.isFinite(pellet.y) && Float.isFinite(pellet.z));
+        }
     }
 
-    /** The formulas as they were written in {@code BlastProjectile} and {@code BlastCharger} in commit 10cd4a4. */
     @Test
-    void theShippedBlastGivesBitForBitTheRadiusDamageAndCostOfTheFormulasBeforeTheFile() {
+    void thePelletPatternIsACentrePelletAndTheLoadedRings() {
+        assertPatternFollowsTheRings(W);
+        assertPatternFollowsTheRings(WeaponTuning.load());
+        assertPatternFollowsTheRings(WeaponTuning.parse(FIXTURE, AssetText.read("data", FIXTURE)));
+    }
+
+    /** The explosion and the cost grow in a straight line between the loaded values, and the cost stays in them. */
+    private static void assertBlastFollowsItsValues(WeaponTuning t) {
+        assertEquals(t.blastMinRadius, t.blastRadius(0f), 0f);
+        assertEquals(t.blastMaxRadius, t.blastRadius(1f), 1e-4f);
+        assertEquals(t.blastMinDamage, t.blastDamage(0f), 0f);
+        assertEquals(t.blastMaxDamage, t.blastDamage(1f), 1e-3f);
+        assertEquals(t.blastMinCost, t.blastCost(t.blastMinCharge), 0f);
+        assertEquals(t.blastMaxCost, t.blastCost(1f), 1e-3f);
         for (int i = -40; i <= 440; i++) {
             float charge = i / 400f;
-            assertEquals(Float.floatToIntBits(1f + 2f * charge), Float.floatToIntBits(W.blastRadius(charge)));
-            assertEquals(Float.floatToIntBits(30f + 100f * charge), Float.floatToIntBits(W.blastDamage(charge)));
-            float t = Math.max(0f, Math.min(1f, (charge - 0.25f) / (1f - 0.25f)));
-            assertEquals(Float.floatToIntBits(20f + (60f - 20f) * t), Float.floatToIntBits(W.blastCost(charge)));
+            assertEquals(t.blastMinRadius + (t.blastMaxRadius - t.blastMinRadius) * charge, t.blastRadius(charge),
+                1e-3f);
+            assertEquals(t.blastMinDamage + (t.blastMaxDamage - t.blastMinDamage) * charge, t.blastDamage(charge),
+                1e-2f);
+            float share = Math.max(0f, Math.min(1f, (charge - t.blastMinCharge) / (1f - t.blastMinCharge)));
+            assertEquals(t.blastMinCost + (t.blastMaxCost - t.blastMinCost) * share, t.blastCost(charge), 1e-2f);
         }
     }
 
     @Test
-    void theShippedPelletDamageFallsOffAsItDidBeforeTheFile() {
-        Scattergun gun = new Scattergun(W);
-        for (float distance : new float[] {0f, 3f, 7f, 7.01f, 12.5f, 16.5f, 25.99f, 26f, 40f, Float.NaN}) {
-            float before;
-            if (Float.isNaN(distance) || distance <= 7f) before = 12f;
-            else if (distance >= 26f) before = 12f * 0.35f;
-            else before = 12f * (1f - (distance - 7f) / (26f - 7f) * (1f - 0.35f));
-            assertEquals(Float.floatToIntBits(before), Float.floatToIntBits(gun.damageAtDistance(distance)),
-                "at " + distance);
+    void theBlastGrowsInAStraightLineBetweenTheLoadedValues() {
+        assertBlastFollowsItsValues(W);
+        assertBlastFollowsItsValues(WeaponTuning.load());
+        assertBlastFollowsItsValues(WeaponTuning.parse(FIXTURE, AssetText.read("data", FIXTURE)));
+    }
+
+    private static void assertPelletDamageFallsOffByItsValues(WeaponTuning t) {
+        Scattergun gun = new Scattergun(t);
+        float start = t.scattergunFalloffStart;
+        float range = t.scattergunRange;
+        float full = t.scattergunPelletDamage;
+        float least = full * t.scattergunMinFalloffScale;
+        assertEquals(full, gun.damageAtDistance(0f), 0f);
+        assertEquals(full, gun.damageAtDistance(start), 0f);
+        assertEquals(full, gun.damageAtDistance(Float.NaN), 0f);
+        assertEquals(least, gun.damageAtDistance(range), 1e-4f);
+        assertEquals(least, gun.damageAtDistance(range + 14f), 1e-4f);
+        for (float share : new float[] {0.01f, 0.25f, 0.5f, 0.9f}) {
+            assertEquals(full + (least - full) * share, gun.damageAtDistance(start + (range - start) * share), 1e-3f,
+                "at " + share + " of the way");
         }
+    }
+
+    @Test
+    void pelletDamageFallsOffBetweenTheLoadedDistances() {
+        assertPelletDamageFallsOffByItsValues(W);
+        assertPelletDamageFallsOffByItsValues(WeaponTuning.load());
+        assertPelletDamageFallsOffByItsValues(WeaponTuning.parse(FIXTURE, AssetText.read("data", FIXTURE)));
     }
 
     private static int pistolShotsInTenSeconds(WeaponTuning tuning) {
@@ -196,7 +234,7 @@ class WeaponTuningTest {
         Scattergun slow = new Scattergun(TestTuning.weaponsWith("scattergun.primary.interval", "2"));
         assertEquals(Scattergun.Shot.PRIMARY, slow.update(1f / 60f, true, false, 4));
         slow.updateIdle(1.5f);
-        assertFalse(slow.isReady(), "the shipped 0.75 would be over");
+        assertFalse(slow.isReady(), "the 0.75 of the tests' own file would be over");
 
         RailLance rail = new RailLance(TestTuning.weaponsWith("rail.fire_interval", "3"));
         assertTrue(rail.update(1f / 60f, true, false, 2));
@@ -222,7 +260,7 @@ class WeaponTuningTest {
         assertTrue(turned.y > 0.17f && Math.abs(turned.x) < 1e-6f, turned.toString());
 
         // A second row adds a ring: the pellet count follows the rows, with no count of its own to disagree.
-        String text = AssetText.read("data", WeaponTuning.PATH)
+        String text = TestTuning.text(WeaponTuning.PATH)
             .replace("scattergun.primary.ring: 7, 4.2, 0", "scattergun.primary.ring: 7, 4.2, 0\n"
                 + "scattergun.primary.ring: 4, 2, 45");
         WeaponTuning twoRings = WeaponTuning.parse(WeaponTuning.PATH, text);
@@ -245,7 +283,8 @@ class WeaponTuningTest {
         assertEquals(40f, charger.costFor(charger.getMinCharge()), 0f);
         meter.setEnergy(30f);
         charger.update(0.1f, true);
-        assertTrue(charger.isRefused(), "30 energy pays for the shipped smallest blast, not for this one");
+        assertTrue(charger.isRefused(),
+            "30 energy pays for the smallest blast of the tests' own file, not for this one");
 
         tuned = TestTuning.weaponsWith("blast.full_charge_time", "4");
         charger = new BlastCharger(new EnergyMeter(tuned), tuned);
@@ -273,11 +312,11 @@ class WeaponTuningTest {
         Pistol pistol = new Pistol(TestTuning.weaponsWith("pistol.flash_time", "0.5"));
         assertTrue(pistol.update(1f / 60f, true));
         pistol.update(0.3f, false);
-        assertTrue(pistol.isFlashVisible(), "the shipped 0.07 would be over");
+        assertTrue(pistol.isFlashVisible(), "the 0.07 of the tests' own file would be over");
     }
 
     private static String error(String key, String value) {
-        String text = TestTuning.withValue(AssetText.read("data", WeaponTuning.PATH), key, value);
+        String text = TestTuning.withValue(TestTuning.text(WeaponTuning.PATH), key, value);
         return assertThrows(IllegalArgumentException.class, () -> WeaponTuning.parse(WeaponTuning.PATH, text))
             .getMessage();
     }
@@ -289,11 +328,11 @@ class WeaponTuningTest {
             error("scattergun.primary.ring", null));
 
         String unknown = assertThrows(IllegalArgumentException.class, () -> WeaponTuning.parse(
-            WeaponTuning.PATH, "pistol.dammage: 20\n" + AssetText.read("data", WeaponTuning.PATH))).getMessage();
+            WeaponTuning.PATH, "pistol.dammage: 20\n" + TestTuning.text(WeaponTuning.PATH))).getMessage();
         assertEquals("Unknown key 'pistol.dammage' in data/weapons.txt at line 1", unknown);
 
         String twice = assertThrows(IllegalArgumentException.class, () -> WeaponTuning.parse(
-            WeaponTuning.PATH, AssetText.read("data", WeaponTuning.PATH) + "rail.damage: 1\n")).getMessage();
+            WeaponTuning.PATH, TestTuning.text(WeaponTuning.PATH) + "rail.damage: 1\n")).getMessage();
         assertTrue(twice.startsWith("Duplicate 'rail.damage' key in data/weapons.txt at line "), twice);
 
         for (String[] bad : new String[][] {
@@ -349,7 +388,7 @@ class WeaponTuningTest {
     /** A meter that cannot hold the cost of a dash or of the smallest blast would refuse them for ever. */
     @Test
     void theEnergyMeterHoldsADashAndTheSmallestBlast() {
-        String shipped = AssetText.read("data", WeaponTuning.PATH);
+        String shipped = TestTuning.text(WeaponTuning.PATH);
         assertAll(
             () -> {
                 String message = error("energy.capacity", "24");
@@ -357,7 +396,8 @@ class WeaponTuningTest {
                     && message.endsWith(": must be at least 25.0, the cost of a dash, got '24'"), message);
             },
             () -> {
-                // The shipped smallest blast costs less than a dash, so this case raises it above one first.
+                // The smallest blast of the tests' own file costs less than a dash, so this case raises it above
+                // one first.
                 String text = TestTuning.withValue(TestTuning.withValue(shipped, "blast.min_cost", "40"),
                     "energy.capacity", "30");
                 String message = assertThrows(IllegalArgumentException.class,

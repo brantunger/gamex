@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Checks that the simulation takes its weapon numbers and the level's own rules from the tuning it is given: each
- * test plays the same scene with the shipped tuning and with one value changed.
+ * test plays the same scene with the tests' own tuning and with one value changed.
  */
 class TunedWeaponSimulationTest {
 
@@ -108,7 +108,7 @@ class TunedWeaponSimulationTest {
     void theRecoilKicksComeFromTheWeaponFile() {
         float pistol = peakRecoil(TestTuning.WEAPONS, WeaponSlot.PISTOL, false);
         assertTrue(pistol > 0.5f, "the pistol kicks: " + pistol);
-        // The shipped kicks, measured against the pistol's 1: they were literals in the simulation before the file.
+        // The tests' own kicks, measured against the pistol's 1: they were literals in the simulation before the file.
         assertEquals(1.6f, peakRecoil(TestTuning.WEAPONS, WeaponSlot.SCATTERGUN, false) / pistol, 1e-4f);
         assertEquals(2.4f, peakRecoil(TestTuning.WEAPONS, WeaponSlot.SCATTERGUN, true) / pistol, 1e-4f);
         assertEquals(2.6f, peakRecoil(TestTuning.WEAPONS, WeaponSlot.RAIL_LANCE, false) / pistol, 1e-4f);
@@ -213,10 +213,10 @@ class TunedWeaponSimulationTest {
 
     @Test
     void aShotIsHeardAsFarAsTheNoiseTableSays() {
-        // Four cells through a wall: inside the shipped muffled range of 4.5.
+        // Four cells through a wall: inside the tests' own muffled range of 4.5.
         assertTrue(turretBehindAWallHears(TestTuning.WORLD));
         assertFalse(turretBehindAWallHears(TestTuning.worldWith("noise.pistol_shot", "9, 3.5")));
-        // Seventeen cells with a line of sight: outside the shipped range of 9.
+        // Seventeen cells with a line of sight: outside the tests' own range of 9.
         assertFalse(turretDownTheHallHears(TestTuning.WORLD));
         assertTrue(turretDownTheHallHears(TestTuning.worldWith("noise.pistol_shot", "18, 4.5")));
         // Another noise's line changes nothing for a pistol shot.
@@ -231,7 +231,7 @@ class TunedWeaponSimulationTest {
         WeaponSlot[] weapons = {WeaponSlot.PISTOL, WeaponSlot.RAIL_LANCE, WeaponSlot.SCATTERGUN,
             WeaponSlot.SCATTERGUN};
         boolean[] alt = {false, false, false, true};
-        // Just inside each shipped muffled range: 4.5, 7.5, 5.5 and 6.5.
+        // Just inside each muffled range of the tests' own file: 4.5, 7.5, 5.5 and 6.5.
         int[] cells = {4, 7, 5, 6};
         for (int shot = 0; shot < keys.length; shot++) {
             assertTrue(turretBehindAWallHears(TestTuning.WORLD, weapons[shot], alt[shot], cells[shot]), keys[shot]);
@@ -327,7 +327,7 @@ class TunedWeaponSimulationTest {
     @Test
     void theCanisterExplosionFollowsTheWorldFile() {
         float shipped = canisterDamageToThePlayer(TestTuning.WORLD);
-        assertTrue(shipped > 0f, "the player stands inside the shipped radius of 2.2");
+        assertTrue(shipped > 0f, "the player stands inside the tests' own radius of 2.2");
         assertEquals(shipped * 2f, canisterDamageToThePlayer(TestTuning.worldWith("canister.blast_damage", "160")),
             1e-3f);
         assertEquals(shipped * 0.5f,
@@ -411,7 +411,7 @@ class TunedWeaponSimulationTest {
 
     @Test
     void theStarterAmmunitionIsTheWeaponPickupsOfTheWeaponFile() {
-        Levels.Stage lockdownWing = Levels.stage("04_lockdown_wing");
+        Levels.Stage lockdownWing = TestTuning.stageStartingWith("scattergun, raillance");
         PlayerLoadout shipped = PlayerLoadout.forStage(lockdownWing, Difficulty.NORMAL, TestTuning.DIFFICULTY,
             TestTuning.WEAPONS);
         assertEquals(8, shipped.shells);
@@ -420,7 +420,7 @@ class TunedWeaponSimulationTest {
         assertEquals(20,
             PlayerLoadout.forStage(lockdownWing, Difficulty.NORMAL, TestTuning.DIFFICULTY, generous).shells);
         // Easy scales the 20 to 25; the cap of 24 holds it.
-        assertEquals(24, PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.EASY,
+        assertEquals(24, PlayerLoadout.forStage(TestTuning.stageStartingWith("scattergun"), Difficulty.EASY,
             TestTuning.DIFFICULTY, generous).shells);
         assertEquals(2, PlayerLoadout.forStage(lockdownWing, Difficulty.NORMAL, TestTuning.DIFFICULTY,
             TestTuning.weaponsWith("rail.weapon_pickup_slugs", "2")).slugs);

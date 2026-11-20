@@ -14,7 +14,6 @@ import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
-import io.github.brantunger.gamex.weapon.Scattergun;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
 import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
@@ -26,9 +25,9 @@ class MenuStateTest {
 
     @Test
     void campaignFlowMovesThroughTitleDifficultyBriefingPlayPauseSettingsDeathAndTally() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         SaveData save = new SaveData(new MapKeyValueStore());
-        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, save, MenuState.Screen.TITLE);
 
         assertEquals(MenuState.Screen.TITLE, menu.getScreen());
         assertFalse(menu.getOptions().get(0).startsWith("CONTINUE"), "no saved run yet");
@@ -72,7 +71,8 @@ class MenuStateTest {
 
         // Stage cleared -> INTERMISSION with recorded summary.
         Player survivor = new Player(1.5f, 1.5f, 0f, 75f, 25f);
-        menu.onStageCleared(survivor, 35f, 10, 10, 20f);
+        // Under the par the stage file gives, whatever that is, with every target destroyed: rank S.
+        menu.onStageCleared(survivor, menu.getActiveStage().parSeconds * 0.5f, 10, 10, 20f);
         assertEquals(MenuState.Screen.INTERMISSION, menu.getScreen());
         assertNotNull(menu.getLastSummary());
         assertEquals('S', menu.getLastSummary().rank);
@@ -111,11 +111,11 @@ class MenuStateTest {
 
     @Test
     void stageSelectShowsBestRanksLocksUnreachedStagesAndLaunchesUnlockedStage() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         SaveData save = new SaveData(new MapKeyValueStore());
         save.unlockStage(1); // Stage 01 & 02 unlocked, Stage 03 locked.
         save.recordCompletion("01_outer_breach", Difficulty.NORMAL, 40f, 50f, 8, 8, 0f);
-        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, save, MenuState.Screen.TITLE);
 
         assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
         assertEquals(MenuState.Command.NONE, menu.confirm());
@@ -137,20 +137,25 @@ class MenuStateTest {
         assertEquals(MenuState.Screen.BRIEFING, menu.getScreen());
         assertEquals("02_coolant_core", menu.getActiveStage().id);
         assertEquals(100f, menu.getActiveLoadout().health, 1e-4f);
-        assertTrue(menu.getActiveLoadout().hasScattergun, "Stage 02+ direct select starts with Scattergun");
-        assertEquals(TestTuning.WEAPONS.scattergunWeaponPickupShells, menu.getActiveLoadout().shells);
-        assertEquals(WeaponSlot.SCATTERGUN, menu.getActiveLoadout().activeWeapon);
+        // Whatever the stage's file lists, a direct select starts with it.
+        PlayerLoadout listed = PlayerLoadout.forStage(menu.getActiveStage(), Difficulty.NORMAL, TestTuning.DIFFICULTY,
+            TestTuning.WEAPONS);
+        assertEquals(menu.getActiveStage().startingWeapons.contains(WeaponSlot.SCATTERGUN),
+            menu.getActiveLoadout().hasScattergun, "direct select starts with the weapons the stage's file lists");
+        assertEquals(listed.shells, menu.getActiveLoadout().shells);
+        assertEquals(listed.activeWeapon, menu.getActiveLoadout().activeWeapon);
     }
 
     @Test
     void stageClearPreservesScattergunAndShellsIntoNextStageAndSaveData() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         SaveData save = new SaveData(new MapKeyValueStore());
-        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, save, MenuState.Screen.TITLE);
         menu.confirm(); // START CAMPAIGN -> DIFFICULTY_SELECT
         menu.confirm(); // NORMAL -> BRIEFING 01
         menu.confirm(); // DEPLOY -> PLAYING 01
-        assertFalse(menu.getActiveLoadout().hasScattergun);
+        assertEquals(menu.getActiveStage().startingWeapons.contains(WeaponSlot.SCATTERGUN),
+            menu.getActiveLoadout().hasScattergun, "a new campaign starts with the weapons Stage 01's file lists");
 
         PlayerLoadout carry = new PlayerLoadout(88f, 15f, Difficulty.NORMAL, true, 12, WeaponSlot.SCATTERGUN);
         menu.onStageCleared(carry, 40f, 9, 9, 12f);
@@ -163,9 +168,9 @@ class MenuStateTest {
 
     @Test
     void settingsIncludesMasterVolumeAndMenuEmitsMoveConfirmAndBackSounds() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         SaveData save = new SaveData(new MapKeyValueStore());
-        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, save, MenuState.Screen.TITLE);
         assertTrue(menu.drainSoundEvents().isEmpty(), "construction emits no sound");
 
         // Move to SETTINGS (index 3 without Continue).
@@ -194,13 +199,13 @@ class MenuStateTest {
 
     @Test
     void intermissionReturnToTitleAfterFinalStageRestoresFirstCampaignStageOnTitle() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         MapKeyValueStore store = new MapKeyValueStore();
         SaveData save = new SaveData(store);
         save.saveCampaignRun(5,
             PlayerLoadout.forStage(Levels.stage("06_warden_core"), Difficulty.NORMAL, TestTuning.DIFFICULTY,
                 TestTuning.WEAPONS));
-        MenuState menu = new MenuState(settings, save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, save, MenuState.Screen.TITLE);
 
         menu.confirm(); // CONTINUE CAMPAIGN -> Stage 06
         assertEquals("06_warden_core", menu.getActiveStage().id);
@@ -216,7 +221,7 @@ class MenuStateTest {
     void everyOptionCarriesTheIdOfWhatItDoesAndSettingsRowsAreToldApartById() {
         SaveData save = new SaveData(new MapKeyValueStore());
         save.saveCampaignRun(0, PlayerLoadout.fresh());
-        MenuState title = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
+        MenuState title = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.TITLE);
         List<MenuState.OptionId> ids = new ArrayList<>();
         for (MenuState.Option option : title.getMenuOptions()) {
             ids.add(option.id);
@@ -244,7 +249,7 @@ class MenuStateTest {
         assertFalse(MenuState.OptionId.SETTINGS.isSetting(), "the option that opens Settings is not one of its rows");
 
         // Select Difficulty and Select Stage rows say which difficulty or stage they stand for.
-        MenuState difficulty = new MenuState(new GameSettings(), save, MenuState.Screen.DIFFICULTY_SELECT);
+        MenuState difficulty = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.DIFFICULTY_SELECT);
         for (Difficulty each : Difficulty.values()) {
             MenuState.Option row = difficulty.getMenuOptions().get(each.ordinal());
             assertEquals(MenuState.OptionId.DIFFICULTY, row.id);
@@ -253,20 +258,20 @@ class MenuStateTest {
         assertTrue(difficulty.selectId(MenuState.OptionId.DIFFICULTY, Difficulty.HARD.ordinal()));
         assertEquals(2, difficulty.getSelectedIndex());
         assertFalse(difficulty.selectId(MenuState.OptionId.DIFFICULTY, 7));
-        assertNull(new MenuState(new GameSettings(), save, MenuState.Screen.PLAYING).getSelectedOption());
+        assertNull(TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.PLAYING).getSelectedOption());
     }
 
     @Test
     void toggleMinimapWorksOnlyDuringActivePlayAndFovReflectsSettings() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         settings.setFov(85f);
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         assertEquals(85f, menu.getFov(), 0f);
         assertEquals(MenuState.Command.NONE, menu.toggleMinimap());
         assertTrue(settings.isMinimap());
         assertTrue(menu.drainSoundEvents().isEmpty());
 
-        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        MenuState playing = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         assertEquals(MenuState.Command.SAVE_SETTINGS, playing.toggleMinimap());
         assertFalse(settings.isMinimap());
         assertFalse(playing.isMinimapEnabled());

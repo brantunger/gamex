@@ -691,28 +691,58 @@ cannot draw. Rebinding in the game and saving bindings with the player's setting
   alone.
 - **`./gradlew run`** starts the game with `assets/` as its working directory, so it reads the files you edit. Change
   a value, start the game again, and the change is there; no Java is compiled.
-- **Trying a value needs no rebuild; committing one, for now, needs a test updated too.** The values the files
-  shipped with are pinned by tests that prove the move out of the code changed nothing, so `./gradlew build` fails
-  on a changed value until its pin is changed with it. The pins are chiefly in `EnemyTuningTest` (`enemies.txt`,
-  `warden.txt`), `DifficultyTuningTest` (`difficulty.txt`), `SoundVolumesTest` (`sound-volumes.txt`),
-  `WallTexturesTest` (`walls.txt`), `WeaponTuningTest` (`weapons.txt`), `WorldTuningTest` (`world.txt`),
-  `PalettesTest` (the palette files and `render.txt`), `shippedGlyphsAreTheBitStringsTheFontHeldInCode` in
-  `PixelFontTest` (`pixel-font.txt`), `StageLoadoutTest`, `StageLoadoutFileTest` and
-  `shippedStagesListTheirStartingWeaponsInALoadoutHeader` in `LevelsTest` (the `loadout` headers, and with them the
-  order of `campaign.txt`), `UiStringsTest` (`strings.txt`, and the briefings of the stage files with their
-  placeholders filled in), `KeyHintsTest` (`strings.txt` and `bindings.txt`), `KeyBindingsTest` (`bindings.txt`),
-  `SettingsDefaultsTest` (`settings.txt`), `WindowDefaultsTest` (`window.txt`), `DemoScriptTest` (the scripts in
-  `assets/demos/`), `PIXELS_PAINTED_IN_CODE` in `GeneratedTexturesTest` (the textures), and `ShaderFilesTest` and
-  `RendererSupportTest` (the text of the shaders). Other tests hold shipped values too: `EnemyTest` expects the
-  Warden's 900 health, `TunedWeaponSimulationTest` the shipped recoil kicks and `PistolTest` the shots the shipped
-  fire interval gives, for three, and a `walls.txt` that stops using a generated texture fails
-  `theGameLoadsExactlyTheGeneratedTextures` in `GeneratedTexturesTest`. Of the newer files, `HudRendererTest`
-  expects the shipped Title footer (`strings.txt` and `bindings.txt`), `StageRecordsDisplayTest` the widest toast,
-  the longest objective line and a tally line of `strings.txt`, `MenuStateTest` the `NEXT STAGE` label,
-  `InputControllerTest` presses the keys of the shipped `bindings.txt`, `DemoRunTest` plays the shipped `jump`
-  script, and `RendererSupportTest`, `HudRendererTest` and, in `desktop`, `DesktopLauncherTest` expect the 1280x720
-  of `window.txt`. These pins are temporary and are to be replaced; the aim is that committing a tuned value takes
-  the data file alone.
+- **Trying a value needs no rebuild, and committing one needs the data file alone.** No test holds the values the
+  files ship with, so `./gradlew build` stays green on a tuned number, a reworded line, a rebound key, a retimed
+  demo script or a stage's changed `loadout` header. The tests that play the game run on a copy of the data files
+  of their own, `core/src/test/resources/frozen/data/`, which `TestTuning` loads: the numbers and the words they
+  expect are the ones in that copy, and it does not follow `assets/data/`. The shipped files are tested on their
+  own, whatever they say:
+  - each loads and passes its loader's checks (`theShippedFileLoads` and its like in `EnemyTuningTest`,
+    `WeaponTuningTest`, `WorldTuningTest`, `DifficultyTuningTest`, `SoundVolumesTest`, `WallTexturesTest`,
+    `PalettesTest`, `PixelFontTest`, `KeyBindingsTest`, `SettingsDefaultsTest`, `WindowDefaultsTest` and, in
+    `desktop`, `DesktopLauncherTest`);
+  - `ShippedTextTest` loads `strings.txt` with the shipped font, bindings, tuning, settings and stage files and
+    puts them through `TextFit.require`, the measuring the game does at start-up, so a line too long for its place
+    fails the build and not only the launch;
+  - every script in `assets/demos/` loads and plays (`DemoScriptTest`), and every stage starts with the weapons its
+    own file lists (`StageLoadoutTest`, `StageLoadoutFileTest`).
+
+  - the tests of a design promise run twice, on the tests' copy and on the shipped balance
+    (`TestTuning.Balance`): an idle player is left alone at the start of every campaign stage and a plain jump
+    clears the Training Range's shock grate (`GameSimulationTest`), the two Warden Core walkthroughs of
+    `ObjectiveTextTest`, every fight of `WardenFightTest`, walking back from the Warden being caught and its run
+    outpacing a walk (`WardenCombatTest`), and the `jump` demo vaulting the grate (`DemoRunTest`, which plays the
+    shipped script on the shipped balance). A tuned value that breaks one of these fails the test that names the
+    promise, with "the shipped files" in its name.
+
+  That each key of a file reaches its own value, and no other, is checked on files in
+  `core/src/test/resources/data-fixtures/` (and on tables the tests build), in which no two values are alike and
+  none was the shipped one when the fixture was written. What a changed file can still fail is a real mistake: a
+  value its loader rejects, a line
+  too long for its place, a balance that breaks one of the design promises above, `combo_time` of `warden.txt` out
+  of step with the Warden's clip (`WardenModelTest`), a
+  `walls.txt` that stops using a generated texture (`theGameLoadsExactlyTheGeneratedTextures` in
+  `GeneratedTexturesTest`), or a texture, model or sound that is not what its generator writes (the test says
+  which `./gradlew tools:generate...` task to run again). The stage files are level content, and the tests do read
+  them. A stage's `par` and its `loadout` header can change on their own. So can its briefing, as far as `TextFit`
+  has room for it, with two exceptions `LevelsTest` holds on purpose: the Command Vault's briefing names the
+  `COMMAND VAULT` in its first line and the `WARDEN CORE` in its last, and no stage before the last calls its goal
+  the `FINAL OBJECTIVE` or `FINAL EXTRACTION`. A stage's id, its title and its place in `campaign.txt` are named by
+  `LevelsTest`, the menu tests and the tests that play a stage, so a retitled or reordered stage, or one given
+  another id, still needs its tests changed. The tests that measure or quote a stage's text (`TextFitTest`) read
+  copies of the stage files of their own, in `core/src/test/resources/frozen/levels/`.
+- **A new key needs its line in three places.** A key added to a file of `assets/data/` also goes into the tests'
+  copy in `core/src/test/resources/frozen/data/` and into the file the test of its keys reads, with the value that
+  test then expects, in the change that adds the code reading it. For `difficulty.txt`, `enemies.txt`,
+  `render.txt`, `warden.txt`, `weapons.txt` and `world.txt` that file is the fixture in
+  `core/src/test/resources/data-fixtures/`; for `settings.txt`, `window.txt` and `bindings.txt` the lines are
+  written out in the tests (`SettingsDefaultsTest`, `WindowDefaultsTest`, `KeyBindingsTest`,
+  `MainGameViewportTest`, `HudRendererTest`, `RendererSupportTest` and, in `desktop`, `DesktopLauncherTest`), and
+  `PalettesTest` counts the rows of each palette. A removed key comes out of the same places. A missing line stops
+  every test that uses `TestTuning`: the first of them shows the
+  reason under `Caused by` (`The tests' own copy of data/enemies.txt, core/src/test/resources/frozen/data/enemies.txt,
+  does not load: Missing 'guard.health' key ...`), and the rest fail with `NoClassDefFoundError: Could not initialize
+  class ...TestTuning`.
 - **A packaged jar** holds a copy of `assets/` and reads that copy. A loose file at the same relative path under the
   working directory of the process (the directory `java -jar` is run from, which need not be the folder the jar is
   in) is read in its place: for example `data/pistol.txt` under that directory. Without one, a changed value needs
@@ -796,8 +826,12 @@ always reach the code as an immutable tuning object that is passed in:
    (`EnemyTuning`, `WardenTuning`, `WeaponTuning`, `WorldTuning`, `RenderSettings`, `PixelFont`,
    `SettingsDefaults`, `WindowDefaults`; the `parse` of `KeyBindings` takes the font as well, which checks that
    its hints can be drawn, and that of `UiStrings` the font, the key names and the tuning values its lines quote).
-   Tests that want the shipped values take them from `TestTuning`, which loads the shipped files in static fields;
-   that is fine in test code. To test the rules of a `load()` without a file, have it hand text to
+   Tests that want a whole set of values take them from `TestTuning`, which loads the tests' own copy of the data
+   files (`core/src/test/resources/frozen/data/`) in static fields; that is fine in test code. Its `simulation`,
+   `menu`, `settings` and `input` build the game's objects from that copy; `GameSimulation` and `InputController`
+   have no constructor that reads `assets/data/` itself. A new file needs a copy there and a field in `TestTuning`, a test that
+   the shipped file loads, and a test, on values unlike the shipped ones, that each key is read into its own
+   field. To test the rules of a `load()` without a file, have it hand text to
    `TuningFile.parseText(path, text, ...)`, which takes the same key declarations.
 
 `core/build.gradle` and `tools/build.gradle` already track `assets/data`, `assets/shaders` and `assets/textures`, so
@@ -814,8 +848,11 @@ be registered as a test input in `core/build.gradle` (in `TestLocations`, or as 
 The tests are JUnit Jupiter tests in `core/src/test`, `desktop/src/test`, and `tools/src/test`. They need no window or
 graphics context; the few that touch libGDX's `Gdx` globals put stubs there or clear them (`InputControllerTest`,
 `InputControllerBindingsTest`,
-`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `SoundVolumesTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`, `ShadersTest`, `WallTexturesTest`, `EnemyTuningTest`, `PixelFontTest`, `StageLoadoutFileTest`, `DemoRunTest`, `HudRendererTest`, and `ModelPreviewAppTest` in `tools`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds, `.map`
-levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/levels`, `assets/data` and `assets/shaders`, and the `tools` tests also read the textures in `assets/textures`. `core/build.gradle` and `tools/build.gradle` track all six folders, so editing an asset reruns them; `core/build.gradle` tracks the demo scripts in `assets/demos` as well. They cover:
+`MainGameViewportTest`, `SoundManagerPartialLoadTest`, `SoundVolumesTest`, `LevelsTest`, `LevelsErrorMessagesTest`, `AssetTextTest`, `TuningFileTest`, `ShadersTest`, `WallTexturesTest`, `EnemyTuningTest`, `PixelFontTest`, `StageLoadoutFileTest`, `DemoRunTest`, `HudRendererTest`, `ShippedTextTest`, and `ModelPreviewAppTest` in `tools`). The `core` tests read `.obj` models, the Warden's `.glb` model, `.wav` sounds, `.map`
+levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/levels`, `assets/data` and `assets/shaders`, and the `tools` tests also read the textures in `assets/textures`. `core/build.gradle` and `tools/build.gradle` track all six folders, so editing an asset reruns them; `core/build.gradle` tracks the demo scripts in `assets/demos` as well. The tests that play the game do not read the
+tuning, text and bindings of `assets/data` but the tests' own copy in `core/src/test/resources/frozen/data/`, through
+`TestTuning`, so that a tuned file changes no expectation; the shipped files have load and fit tests of their own
+(see [Which copy of a file is read](#which-copy-of-a-file-is-read)). They cover:
 
 - `GameSimulation` (`GameSimulationTest`): pistol hits, a charged blast from release to explosion, muzzle launch and
   crosshair convergence, a pause dropping a charge, targets blocking the player, the clamp on long frames, canister
@@ -845,20 +882,22 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   and refusal on low energy), and the jump (its arc, the mid-air dash, and the jump buffer at low frame rates).
 - `hud`: the menu screens, the saved run, quick restart and the `Q` quit prompt (`MenuStateTest`,
   `MenuStateFlowTest`), the Select Stage rows and the lines of the results screen, including that they fit their
-  panels (`StageRecordsDisplayTest`), when the combat HUD and minimap are shown and the size the overlay takes from the window
-  defaults until the window reports its own (`HudRendererTest`), minimap layout bounds, north-up coordinate mapping,
-  FOV cone aspect/zoom calculation and 2D raycast bounds (`MinimapRendererTest`), and the pixel font
-  (`PixelFontTest`): the glyphs of the shipped `pixel-font.txt` are the ones the font held in code, an altered or
-  added glyph changes what is drawn, an edited loose copy is read with no rebuild, and a broken file fails naming
-  the file, the line and the glyph. The text of the menus and the HUD: the shipped `strings.txt` shows the text
-  the code held, an edited line changes what is shown and nothing else, the Select Difficulty rows are made from
-  the loaded multipliers, the option rows fit their box, and a broken line fails naming the file, the key and the
-  line (`UiStringsTest`); the placeholder rules of a line (`TextTemplateTest`); how numbers and times are written
+  panels (`StageRecordsDisplayTest`), when the combat HUD and minimap are shown and the size the overlay takes from
+  the window defaults until the window reports its own (`HudRendererTest`), minimap layout bounds, north-up
+  coordinate mapping, FOV cone aspect/zoom calculation and 2D raycast bounds (`MinimapRendererTest`), and the pixel
+  font (`PixelFontTest`): each block of a glyph file is the glyph of its own character, the shipped `pixel-font.txt`
+  loads, an altered or added glyph changes what is drawn, an edited loose copy is read with no rebuild, and a
+  broken file fails naming the file, the line and the glyph. The text of the menus and the HUD: each line is shown
+  where its key belongs, an edited line changes what is shown and nothing else, the Select Difficulty rows are made
+  from the loaded multipliers, the option rows fit their box, and a broken line fails naming the file, the key and
+  the line (`UiStringsTest`); the shipped `strings.txt` loads with the shipped font, bindings and tuning and every
+  line of it passes the start-up's fit check (`ShippedTextTest`); the placeholder rules of a line (`TextTemplateTest`);
+  how numbers and times are written
   (`TextFormatTest`); and every menu flow run again with every line reworded (`RenamedLabelsFlowTest`).
-  `KeyHintsTest`: with the shipped `bindings.txt` every key name on screen is the one the text spelled out, and
-  other keys in that file change the Title footer, the HUD captions, the prompts, the quit and retry lines, the
+  `KeyHintsTest`: every key name on screen is the one the bindings give, and other keys in the bindings file
+  change the Title footer, the HUD captions, the prompts, the quit and retry lines, the
   Settings help line and the briefing that names a key; `HudRendererTest` checks that the Title footer fits a 4:3
-  window. `TextFitTest`: the shipped text fits with the shipped key names, a line one character too long for its
+  window. `TextFitTest`: the tests' own text fits with its key names, a line one character too long for its
   box stops the start naming the file, the key and the line, a line with values is measured with the longest it
   can hold, a remapped key with a long name stops the start naming the line and the action, a stage with a
   fourth briefing line stops it naming the stage and its file, and `MainGame` runs the check when it has loaded the
@@ -866,19 +905,20 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
 - `settings`: the settings' ranges (including `masterVolume`) and their round trip through a store, the saved run,
   best times and ranks (`GameSettingsAndSaveTest`), the medals (`MedalTest`), damaged or hand-edited settings and
   save values (`CorruptPrefsTest`), and non-blocking cached reads, ordered background disk flushes, shutdown draining,
-  and fault isolation (`AsyncKeyValueStoreTest`). `SettingsDefaultsTest`: the shipped `settings.txt` holds the defaults, ranges
-  and steps the code held, edited ones reach the settings and the Settings rows, a stored value outside a narrowed
+  and fault isolation (`AsyncKeyValueStoreTest`). `SettingsDefaultsTest`: each key of a settings file sets its own
+  default, least value, most value or step, the shipped `settings.txt` loads and new settings start at its defaults,
+  edited ones reach the settings and the Settings rows, a stored value outside a narrowed
   range is clamped, and a range, default or step that cannot work fails naming the file and the key, as does a
   least value, a most value or a default finer than the setting is kept.
-  `WindowDefaultsTest`: the shipped `window.txt` holds 1280x720, and a file without a usable size fails naming the
-  file and the key instead of falling back.
+  `WindowDefaultsTest`: the size is the one the file holds, the shipped `window.txt` loads, and a file without a
+  usable size fails naming the file and the key instead of falling back.
 - `audio`: shipped `.wav` asset coverage/format verification, loop-seam continuity, muted headless draining and 3D
   spatial attenuation/panning math (`SoundManagerTest`), and sound files that fail to load
   (`SoundManagerPartialLoadTest`).
 - `input`: adding up mouse movement for looking around (`LookAccumulatorTest`), and menu keys and clicks acting once
   per press, `R`, `Q`, and held buttons and `Space` being ignored when play resumes (`InputControllerTest`).
-  `KeyBindingsTest`: the shipped `bindings.txt` binds every action to the inputs the game had in code and gives
-  every action the key name the screen showed, a changed line changes the inputs and the hint, and an unbound
+  `KeyBindingsTest`: every line of a bindings file binds its own action and gives it the key name of its first
+  input, the shipped `bindings.txt` loads, a changed line changes the inputs and the hint, and an unbound
   action, an unknown name, a clash and a hint the font cannot draw fail naming the file, the action and, except
   for the unbound action, the line.
   `InputControllerBindingsTest` plays other bindings through the controller: an action follows its line, and the
@@ -896,7 +936,8 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   wrapped `Invalid map layout` ones), and `GlyphCheckTest` the characters the pixel font draws.
 - `model`: the OBJ parser (including files it must reject) and model-file error reporting (`ModelVertices.read`).
 - `debug`: the parsing of `GAMEX_VIEWMODEL_ORBIT` and the `jump` demo script (`DemoRunTest`). `DemoScriptTest`:
-  every script in `assets/demos/` plays the input and builds the scene the code held, frame by frame; an edited
+  every script in `assets/demos/` loads, names a stage the game has and plays 300 frames through a simulation,
+  on the tests' own balance and on the shipped one; an edited
   timeline or header changes the run; a name with no file fails naming the file, and a broken header or timeline
   naming the file and the line (the file and the header, for a missing header).
 - logging: a cleared level, menu navigation, a settings change, a best time, medals and a damaged saved run each log
@@ -907,50 +948,56 @@ levels, tuning files and shaders from `assets/models`, `assets/sounds`, `assets/
   starts fullscreen (with nothing saved, when `settings.txt` says so), the packaging icons, when and how
   `StartupHelper` relaunches the JVM on macOS, and reading `GAMEX_LOG_LEVEL` and the level `logback.xml` then runs
   at (`LogLevelTest`).
-- Enemy, Warden and difficulty tuning: the shipped `enemies.txt`, `warden.txt` and `difficulty.txt` hold the
-  values the code had before them, a changed value changes a spawned enemy, the combo and the starter ammunition,
+- Enemy, Warden and difficulty tuning: each key of `enemies.txt`, `warden.txt` and `difficulty.txt` sets its own
+  value (read from files in which no two values are alike), the shipped files load, a changed value changes a
+  spawned enemy, the combo and the starter ammunition,
   an edited loose copy is read with no rebuild, and a missing, unknown, mistyped or out-of-range key fails naming
   the file and the key, as `avoids_hazards: true` does for any kind but the guard (`EnemyTuningTest`,
   `DifficultyTuningTest`). `TunedSimulationTest` plays changed values through the whole simulation (rail damage,
   shock grates, the boss flag, death bursts and noise, overdrive, punch sounds, difficulty scaling) and checks
   that no main source of `core`, `desktop` or `tools` calls a constructor that reads the tuning files itself
-  (those of `GameSimulation`, `MenuState`, `InputController`, `GameSettings` and `MainGame` that are for tests),
+  (those of `MenuState`, `GameSettings` and `MainGame` that are for tests),
   and that `settings.txt` and `window.txt` are read once, by the launcher, and not again once `MainGame` is built.
-  `TestTuning` holds the shipped values and one-value-changed copies of them for the other tests.
-- Weapon and world tuning: the shipped `weapons.txt` and `world.txt` hold the values the code had before them,
-  down to the pellet pattern, the falloff and the blast's radius, damage and cost bit for bit, a changed value
+  `TestTuning` holds the tests' own copy of the data files and one-value-changed copies of it for the other
+  tests.
+- Weapon and world tuning: each key of `weapons.txt` and `world.txt` sets its own value, the shipped files load,
+  the pellet pattern is a centre pellet and the loaded rings, the falloff and the blast's radius, damage and cost
+  run in a straight line between the loaded values, a changed value
   changes the fire rate, the rings, the blast, the meter, the zoom and the pickups, and a missing, unknown or
   invalid value fails naming the file and the key, as do a pickup that gives less than 1, a zoom factor below 1
   and an energy meter too small for a dash or for the smallest blast (`WeaponTuningTest`, `WorldTuningTest`).
   `TunedWeaponSimulationTest` plays changed values through the whole simulation: shot damage and range, recoil
   kicks, the blast, how far each kind of shot is heard, pickups, grates and canisters, the toast and hit-marker
   times, the minimap reveal radius, the ammunition caps and the starter ammunition.
-- The `loadout` header: every campaign stage starts as it did when its position chose the loadout, a reordered
-  campaign keeps each stage's loadout, a stage without the header starts with the pistol alone, and which weapon
-  is in hand (`StageLoadoutTest`); `StageLoadoutFileTest` reads the shipped and edited stage files through
+- The `loadout` header: every campaign stage starts with the weapons its own file lists, the header sets the
+  loadout wherever the stage stands in a campaign, a stage without the header starts with the pistol alone, and
+  which weapon is in hand (`StageLoadoutTest`); `StageLoadoutFileTest` reads the shipped and edited stage files through
   `Levels` and the menus. A `loadout` header in the Training Range's file fails the load, naming the file and
   the line (`LevelsErrorMessagesTest`).
-- Palettes and render settings (`PalettesTest`): the shipped palette files and `render.txt` hold every colour and
-  value the models and the renderer had in code, the files name their materials and accents as the code's enums
+- Palettes and render settings (`PalettesTest`): every row of a palette file sets its own colour and every key of
+  `render.txt` its own value, the shipped files load, the files name their materials and accents as the code's enums
   do, an edited colour reaches the packed vertices, edited render settings change the fog, the camera and the
   tables, and an unknown, missing or malformed row fails naming the file and the key.
-- Wall textures (`WallTexturesTest`): the shipped `walls.txt` gives each wall type the texture it had in code, a
-  wall character without a line and a line for anything else fail the load, as does a value that is not a plain
+- Wall textures (`WallTexturesTest`): every wall type takes the texture of its own line, the shipped `walls.txt`
+  loads, a wall character without a line and a line for anything else fail the load, as does a value that is not a plain
   `.png` file name, an edited loose copy changes a wall's texture, a table built in code is checked the same way,
   and a texture file shared by wall types is loaded once.
 - Shaders: every shader file loads headless and through libGDX, and a missing one fails naming the file
-  (`ShadersTest`); the files are plain ASCII, say what the strings in the code said before the move, declare
-  exactly the uniforms and attributes the renderers set, and repeat the face shades baked into the map, and the
+  (`ShadersTest`); the files are plain ASCII, each vertex shader hands its fragment shader the varyings that one
+  reads, they declare exactly the uniforms and attributes the renderers set, and repeat the face shades baked
+  into the map, and the
   renderers keep no shader source in Java strings (`ShaderFilesTest`); the renderers compile the text of those
   files and name them in a compile error (`RendererSupportTest`).
-- Sound volumes (`SoundVolumesTest`): the shipped `sound-volumes.txt` holds the gain every cue had in code, an
-  altered line changes that cue and no other, `SoundManager` plays a cue at the gain of its table, and a missing,
+- Sound volumes (`SoundVolumesTest`): every cue takes the gain of its own line, the shipped `sound-volumes.txt`
+  loads, an altered line changes that cue and no other, `SoundManager` plays a cue at the gain of its table, and
+  a missing,
   unknown, repeated, negative or malformed line fails naming the file and the key.
 - `tools` (`:tools:test`): `GeneratedModelsTest` and `GeneratedSoundsTest` run `GenerateAllModels` and
   `GenerateAllSounds` and check that every shipped `.obj` and `.wav` matches the generators byte for byte;
   `GeneratedModelsTest` also checks the indexed vertex deduplication. `GeneratedTexturesTest` checks that every
-  shipped `.png` matches `GenerateAllTextures` pixel for pixel and holds the pixels the game painted in code
-  before, that libGDX decodes each to those pixels, that the files are 8-bit RGBA with no colour chunks, and that
+  shipped `.png` matches `GenerateAllTextures` pixel for pixel, that every painter fills a square with a
+  power-of-two side, that libGDX decodes each file to the painted pixels, that the files are 8-bit RGBA with no
+  colour chunks, and that
   the game loads exactly the generated textures. `ModelPreviewAppTest` checks that the previewer keeps no shader
   source of its own and sets every uniform the game's model shader declares, and `MeshBuilderTest` that the
   Gradle scripts declare the texture generator's output and order its consumers after it.

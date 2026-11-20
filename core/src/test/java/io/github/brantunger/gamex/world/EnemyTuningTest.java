@@ -20,7 +20,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 
-/** Checks the enemy and Warden tuning files: what they ship with, what a changed value does, and their errors. */
+/**
+ * Checks the enemy and Warden tuning files: that each key sets its own value, that the shipped files load, what a
+ * changed value does, and their errors.
+ */
 class EnemyTuningTest {
 
     private static final float DT = 1f / 60f;
@@ -47,17 +50,27 @@ class EnemyTuningTest {
     }
 
     private static String enemiesText() {
-        return AssetText.read("data", EnemyTuning.PATH);
+        return TestTuning.text(EnemyTuning.PATH);
     }
 
     private static String wardenText() {
-        return AssetText.read("data", WardenTuning.PATH);
+        return TestTuning.text(WardenTuning.PATH);
     }
 
-    private static void assertKind(Enemy.Kind kind, float health, float moveSpeed, float railDamageScale,
-                                   boolean hazardDamage, boolean avoidsHazards, boolean boss, float deathBurstSize,
-                                   float deathSoundGain, float deathNoiseRange, float deathNoiseMuffledRange) {
-        EnemyTuning.KindStats stats = TestTuning.ENEMIES.of(kind);
+    /** The test's own files, in which every number differs from the shipped one and from every other. */
+    private static final String FIXTURE_ENEMIES = "data-fixtures/enemies.txt";
+    private static final String FIXTURE_WARDEN = "data-fixtures/warden.txt";
+
+    private static EnemyTuning fixture() {
+        WardenTuning warden = WardenTuning.parse(FIXTURE_WARDEN, AssetText.read("data", FIXTURE_WARDEN));
+        return EnemyTuning.parse(FIXTURE_ENEMIES, AssetText.read("data", FIXTURE_ENEMIES), warden);
+    }
+
+    private static void assertKind(EnemyTuning tuning, Enemy.Kind kind, float health, float moveSpeed,
+                                   float railDamageScale, boolean hazardDamage, boolean avoidsHazards, boolean boss,
+                                   float deathBurstSize, float deathSoundGain, float deathNoiseRange,
+                                   float deathNoiseMuffledRange) {
+        EnemyTuning.KindStats stats = tuning.of(kind);
         assertEquals(health, stats.maxHealth, 0f, kind + " health");
         assertEquals(moveSpeed, stats.moveSpeed, 0f, kind + " move speed");
         assertEquals(railDamageScale, stats.railDamageScale, 0f, kind + " rail damage scale");
@@ -71,103 +84,99 @@ class EnemyTuningTest {
     }
 
     /**
-     * The values on the right are the constants and literals the code held before the files existed (commit
-     * 10cd4a4), so moving them changed no behaviour. A deliberate rebalance changes the file and this test together.
+     * The values on the right are those of the test's own file, where no two numbers are alike, so a key read into
+     * another key's field, or a value still held in code, shows.
      */
     @Test
-    void theShippedEnemyFileHoldsTheValuesTheCodeHadBeforeIt() {
-        // Before the file a kind's death burst was its height times 0.8, and the rail did 120 or, to the Warden, 90.
-        assertKind(Enemy.Kind.DRONE, 40f, 3.5f, 1f, false, false, false, Enemy.Kind.DRONE.height * 0.8f, 1.0f, 5.0f,
-            3.0f);
-        assertKind(Enemy.Kind.TURRET, 80f, 0f, 1f, false, false, false, Enemy.Kind.TURRET.height * 0.8f, 1.0f, 5.0f,
-            3.0f);
-        assertKind(Enemy.Kind.GUARD, 100f, 2.15f, 1f, true, true, false, Enemy.Kind.GUARD.height * 0.8f, 1.0f, 5.0f,
-            3.0f);
-        assertKind(Enemy.Kind.WARDEN, 900f, 1.30f, 90f / 120f, false, false, true, 1.8f, 1.25f, 10.0f, 6.0f);
+    void everyKeyOfAnEnemyFileSetsItsOwnValue() {
+        EnemyTuning t = fixture();
+        assertKind(t, Enemy.Kind.DRONE, 41f, 3.57f, 2f, true, false, true, 0.47792f, 3f, 6f, 4f);
+        assertKind(t, Enemy.Kind.TURRET, 81f, 1f, 5f, true, false, true, 0.56576f, 7f, 8f, 9f);
+        assertKind(t, Enemy.Kind.GUARD, 101f, 2.2575f, 10f, false, false, true, 0.69536f, 11f, 12f, 13f);
+        assertKind(t, Enemy.Kind.WARDEN, 901f, 1.391f, 0.81f, true, false, false, 1.962f, 1.375f, 14f, 15f);
 
-        EnemyTuning t = TestTuning.ENEMIES;
-        assertEquals(0.15f, t.hitFlashTime, 0f);
-        assertEquals(15f, t.sightRange, 0f);
-        assertEquals(3.2f, t.closeSenseRange, 0f);
-        assertEquals(200f, t.fovDegrees, 0f);
-        assertEquals((float) Math.cos(Math.toRadians(100.0)), t.fovCos, 0f);
-        assertEquals(6.0f, t.aggroMemoryTime, 0f);
-        assertEquals(1.25f, t.aggroSightScale, 0f);
-        assertEquals(0.25f, t.wakeCooldown, 0f);
+        assertEquals(0.1665f, t.hitFlashTime, 0f);
+        assertEquals(16f, t.sightRange, 0f);
+        assertEquals(3.584f, t.closeSenseRange, 0f);
+        assertEquals(201f, t.fovDegrees, 0f);
+        assertEquals((float) Math.cos(Math.toRadians(100.5)), t.fovCos, 0f);
+        assertEquals(6.78f, t.aggroMemoryTime, 0f);
+        assertEquals(1.425f, t.aggroSightScale, 0f);
+        assertEquals(0.2875f, t.wakeCooldown, 0f);
 
-        assertEquals(150f, t.turretTurnRate, 0f);
-        assertEquals(0.35f, t.turretWindupTime, 0f);
-        assertEquals(3, t.turretBurstCount);
-        assertEquals(0.11f, t.turretBurstInterval, 0f);
-        assertEquals(1.35f, t.turretCooldown, 0f);
-        assertEquals(8.5f, t.turretBoltSpeed, 0f);
-        assertEquals(12f, t.turretBoltDamage, 0f);
-        assertEquals(28f, t.turretMaxPitch, 0f);
-        assertEquals(90f, t.turretPitchRate, 0f);
-        assertEquals(60f, t.turretPitchReturnRate, 0f);
-        assertEquals(0.3f, t.turretLostSightCooldown, 0f);
-        assertEquals(18f, t.turretFireArc, 0f);
+        assertEquals(151f, t.turretTurnRate, 0f);
+        assertEquals(0.406f, t.turretWindupTime, 0f);
+        assertEquals(17, t.turretBurstCount);
+        assertEquals(0.1287f, t.turretBurstInterval, 0f);
+        assertEquals(1.593f, t.turretCooldown, 0f);
+        assertEquals(10.115f, t.turretBoltSpeed, 0f);
+        assertEquals(18f, t.turretBoltDamage, 0f);
+        assertEquals(29f, t.turretMaxPitch, 0f);
+        assertEquals(91f, t.turretPitchRate, 0f);
+        assertEquals(61f, t.turretPitchReturnRate, 0f);
+        assertEquals(0.36f, t.turretLostSightCooldown, 0f);
+        assertEquals(19f, t.turretFireArc, 0f);
 
-        assertEquals(0.28f, t.guardWindupTime, 0f);
-        assertEquals(1.15f, t.guardCooldown, 0f);
-        assertEquals(7.2f, t.guardBoltSpeed, 0f);
-        assertEquals(18f, t.guardBoltDamage, 0f);
-        assertEquals(3.5f, t.guardMinRange, 0f);
-        assertEquals(7.5f, t.guardMaxRange, 0f);
-        assertEquals(5.5f, t.guardPreferredRange, 0f);
-        assertEquals(0.2f, t.guardRangeAdjustGain, 0f);
-        assertEquals(15.5f, t.guardAttackRange, 0f);
-        assertEquals(0.35f, t.guardAdvanceStrafe, 0f);
-        assertEquals(0.8f, t.guardRetreatBack, 0f);
-        assertEquals(0.6f, t.guardRetreatStrafe, 0f);
-        assertEquals(1.8f, t.guardStrafeSwitchTime, 0f);
-        assertEquals(0.45f, t.guardWindupMoveScale, 0f);
-        assertEquals(420f, t.guardTurnRate, 0f);
-        assertEquals(360f, t.guardPathTurnRate, 0f);
-        assertEquals(7.5f, t.guardWalkPhaseRate, 0f);
-        assertEquals(28f, t.guardFireArc, 0f);
-        assertEquals(35f, t.guardBoltMaxPitch, 0f);
+        assertEquals(0.3388f, t.guardWindupTime, 0f);
+        assertEquals(1.403f, t.guardCooldown, 0f);
+        assertEquals(8.856f, t.guardBoltSpeed, 0f);
+        assertEquals(20f, t.guardBoltDamage, 0f);
+        assertEquals(3.535f, t.guardMinRange, 0f);
+        assertEquals(7.65f, t.guardMaxRange, 0f);
+        assertEquals(5.665f, t.guardPreferredRange, 0f);
+        assertEquals(0.208f, t.guardRangeAdjustGain, 0f);
+        assertEquals(16.275f, t.guardAttackRange, 0f);
+        assertEquals(0.371f, t.guardAdvanceStrafe, 0f);
+        assertEquals(0.856f, t.guardRetreatBack, 0f);
+        assertEquals(0.648f, t.guardRetreatStrafe, 0f);
+        assertEquals(1.98f, t.guardStrafeSwitchTime, 0f);
+        assertEquals(0.4995f, t.guardWindupMoveScale, 0f);
+        assertEquals(421f, t.guardTurnRate, 0f);
+        assertEquals(361f, t.guardPathTurnRate, 0f);
+        assertEquals(8.4f, t.guardWalkPhaseRate, 0f);
+        assertEquals(30f, t.guardFireArc, 0f);
+        assertEquals(36f, t.guardBoltMaxPitch, 0f);
 
-        assertEquals(0.95f, t.droneTriggerRange, 0f);
-        assertEquals(0.26f, t.droneWindupTime, 0f);
-        assertEquals(0.18f, t.droneLungeTime, 0f);
-        assertEquals(8.5f, t.droneLungeSpeed, 0f);
-        assertEquals(22f, t.droneLungeDamage, 0f);
-        assertEquals(0.12f, t.droneContactMargin, 0f);
-        assertEquals(0.50f, t.droneRecoverTime, 0f);
-        assertEquals(0.25f, t.droneCooldown, 0f);
-        assertEquals(540f, t.droneTurnRate, 0f);
+        assertEquals(1.0735f, t.droneTriggerRange, 0f);
+        assertEquals(0.2964f, t.droneWindupTime, 0f);
+        assertEquals(0.207f, t.droneLungeTime, 0f);
+        assertEquals(9.86f, t.droneLungeSpeed, 0f);
+        assertEquals(23f, t.droneLungeDamage, 0f);
+        assertEquals(0.1404f, t.droneContactMargin, 0f);
+        assertEquals(0.59f, t.droneRecoverTime, 0f);
+        assertEquals(0.2975f, t.droneCooldown, 0f);
+        assertEquals(541f, t.droneTurnRate, 0f);
     }
 
     @Test
-    void theShippedWardenFileHoldsTheValuesTheCodeHadBeforeIt() {
-        WardenTuning w = TestTuning.WARDEN;
-        assertEquals(0.5f, w.overdriveHealthRatio, 0f);
-        assertEquals(3.70f, w.runSpeed, 0f);
-        assertEquals(0.5f, w.chaseMemory, 0f);
-        assertEquals(320f, w.turnRate, 0f);
-        assertEquals(280f, w.pathTurnRate, 0f);
-        assertEquals(0.90f, w.attackRange, 0f);
-        assertEquals(15f, w.attackFacing, 0f);
-        assertEquals(2.4666667f, w.comboTime, 0f);
-        assertEquals(1.10f, w.punchReach, 0f);
-        assertEquals(50f, w.punchArc, 0f);
-        assertEquals(45f, w.comboTurnRate, 0f);
-        assertEquals(0.22f, w.telegraphTime, 0f);
-        assertEquals(0.90f, w.recoverTime, 0f);
-        assertEquals(1.15f, w.punchSoundGain, 0f);
-        assertEquals(1.25f, w.overdriveSpeedScale, 0f);
-        assertEquals(1.50f, w.overdriveTurnScale, 0f);
-        assertEquals(1.35f, w.overdriveDamageScale, 0f);
-        assertEquals(1.15f, w.overdriveComboRate, 0f);
-        assertEquals(0.60f, w.overdriveRecoverScale, 0f);
-        assertEquals(1.25f, w.overdriveSoundGain, 0f);
-        assertEquals(1.6f, w.overdriveBurstSize, 0f);
+    void everyKeyOfAWardenFileSetsItsOwnValue() {
+        WardenTuning w = fixture().warden;
+        assertEquals(0.51f, w.overdriveHealthRatio, 0f);
+        assertEquals(3.811f, w.runSpeed, 0f);
+        assertEquals(0.52f, w.chaseMemory, 0f);
+        assertEquals(321f, w.turnRate, 0f);
+        assertEquals(281f, w.pathTurnRate, 0f);
+        assertEquals(0.945f, w.attackRange, 0f);
+        assertEquals(16f, w.attackFacing, 0f);
+        assertEquals(2.614666702f, w.comboTime, 0f);
+        assertEquals(1.276f, w.punchReach, 0f);
+        assertEquals(51f, w.punchArc, 0f);
+        assertEquals(46f, w.comboTurnRate, 0f);
+        assertEquals(0.2574f, w.telegraphTime, 0f);
+        assertEquals(1.062f, w.recoverTime, 0f);
+        assertEquals(1.3685f, w.punchSoundGain, 0f);
+        assertEquals(1.5f, w.overdriveSpeedScale, 0f);
+        assertEquals(1.815f, w.overdriveTurnScale, 0f);
+        assertEquals(1.647f, w.overdriveDamageScale, 0f);
+        assertEquals(1.4145f, w.overdriveComboRate, 0f);
+        assertEquals(0.606f, w.overdriveRecoverScale, 0f);
+        assertEquals(1.275f, w.overdriveSoundGain, 0f);
+        assertEquals(1.648f, w.overdriveBurstSize, 0f);
 
-        float[] times = {0.60f, 1.10f, 1.27f};
-        float[] damage = {16f, 16f, 28f};
-        float[] lungeDistance = {2.30f, 0.70f, 0.70f};
-        float[] lungeTime = {0.30f, 0.20f, 0.14f};
+        float[] times = {0.642f, 1.188f, 1.3843f};
+        float[] damage = {17f, 18f, 29f};
+        float[] lungeDistance = {2.53f, 0.777f, 0.784f};
+        float[] lungeTime = {0.339f, 0.228f, 0.161f};
         assertEquals(3, w.punchCount());
         for (int i = 0; i < 3; i++) {
             assertEquals(times[i], w.punchTime(i), 0f, "time of punch " + i);
@@ -177,6 +186,17 @@ class EnemyTuningTest {
         }
     }
 
+    /** Whatever values the shipped files hold, they load and give every kind its health and the Warden its punches. */
+    @Test
+    void theShippedFilesLoad() {
+        EnemyTuning shipped = EnemyTuning.load();
+        for (Enemy.Kind kind : Enemy.Kind.values()) {
+            assertTrue(shipped.of(kind).maxHealth > 0f, kind + " health");
+        }
+        assertTrue(shipped.warden.punchCount() >= 1);
+        assertTrue(shipped.warden.punchTime(shipped.warden.punchCount() - 1) <= shipped.warden.comboTime);
+    }
+
     @Test
     void aChangedHealthOrSpeedIsWhatASpawnedEnemyHas() {
         EnemyTuning tuned = TestTuning.enemiesWith("guard.health", "55");
@@ -184,6 +204,13 @@ class EnemyTuningTest {
         assertEquals(55f, guard.getHealth(), 0f);
         assertEquals(55f, guard.getMaxHealth(), 0f);
         assertEquals(100f, new Enemy(TestTuning.ENEMIES, Enemy.Kind.GUARD, 2.5f, 1.5f, 90f).getHealth(), 0f);
+        // Every kind, with the health of a file that gives none of them the shipped one.
+        EnemyTuning fixture = fixture();
+        for (Enemy.Kind kind : Enemy.Kind.values()) {
+            Enemy spawned = new Enemy(fixture, kind, 2.5f, 1.5f, 90f);
+            assertEquals(fixture.of(kind).maxHealth, spawned.getHealth(), 0f, kind + " health");
+            assertEquals(fixture.of(kind).maxHealth, spawned.getMaxHealth(), 0f, kind + " most health");
+        }
 
         // A drone with a third of its speed covers a third of the corridor in the same time.
         GameMap corridor = GameMap.parse(
@@ -211,8 +238,8 @@ class EnemyTuningTest {
         assertEquals(90f, narrow.fovDegrees, 0f);
         assertEquals((float) Math.cos(Math.toRadians(45.0)), narrow.fovCos, 0f);
 
-        // A player 60 degrees off the facing, beyond the close sense: inside the shipped 200-degree cone, outside
-        // a 90-degree one.
+        // A player 60 degrees off the facing, beyond the close sense: inside the 200-degree cone of the tests' own
+        // file, outside a 90-degree one.
         GameMap room = GameMap.parse(
             "############",
             "#>.........#",
@@ -272,6 +299,7 @@ class EnemyTuningTest {
 
     @Test
     void loadReadsAnEditedCopyOfTheFilesWithNoRebuild(@TempDir Path temp) throws IOException {
+        float shippedGuardHealth = EnemyTuning.load().of(Enemy.Kind.GUARD).maxHealth;
         Path data = Files.createDirectories(temp.resolve("data"));
         Files.write(data.resolve("enemies.txt"),
             TestTuning.withValue(enemiesText(), "guard.health", "250").getBytes(StandardCharsets.UTF_8));
@@ -287,7 +315,8 @@ class EnemyTuningTest {
         } else {
             System.setProperty("gamex.assets", previousAssets);
         }
-        assertEquals(100f, EnemyTuning.load().of(Enemy.Kind.GUARD).maxHealth, 0f, "the shipped file is read again");
+        assertEquals(shippedGuardHealth, EnemyTuning.load().of(Enemy.Kind.GUARD).maxHealth, 0f,
+            "the shipped file is read again");
     }
 
     private static String enemiesError(String key, String value) {

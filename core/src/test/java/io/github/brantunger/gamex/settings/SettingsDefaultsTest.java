@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
 import org.junit.jupiter.api.Test;
 
@@ -14,19 +15,19 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Checks {@code assets/data/settings.txt}: that it holds the defaults, ranges and steps {@link GameSettings} held as
- * constants before they moved there, that {@link GameSettings} follows a file that says otherwise, and that a file
- * the settings cannot work with stops the load.
+ * Checks the settings file: that each key sets its own default, range or step, that the shipped file loads and new
+ * settings start at its defaults, that {@link GameSettings} follows the file it is given, and that a file the
+ * settings cannot work with stops the load.
  */
 class SettingsDefaultsTest {
 
     private static final String FILE = "settings.txt";
 
     private static String shippedText() {
-        return AssetText.read("data", SettingsDefaults.PATH);
+        return TestTuning.text(SettingsDefaults.PATH);
     }
 
-    /** @return the shipped file with the value of one key replaced */
+    /** @return the tests' own file with the value of one key replaced */
     private static String with(String key, String value) {
         List<String> lines = new ArrayList<>();
         boolean replaced = false;
@@ -38,7 +39,7 @@ class SettingsDefaultsTest {
                 lines.add(line);
             }
         }
-        assertTrue(replaced, "the shipped file holds " + key);
+        assertTrue(replaced, "the tests' own file holds " + key);
         return String.join("\n", lines) + "\n";
     }
 
@@ -60,32 +61,48 @@ class SettingsDefaultsTest {
         assertEquals(step, range.step, 0f);
     }
 
+    /** A file in which no two numbers are alike, so a key read into another key's field, or held in code, shows. */
     @Test
-    void theShippedFileHoldsTheValuesGameSettingsHeldBeforeTheMove() {
-        // GameSettings.DEFAULT_*, MIN_*, MAX_* and *_STEP, and its field initialisers, as of 4cf075b.
-        SettingsDefaults defaults = SettingsDefaults.load();
-        assertRange(defaults.sensitivity, 0.12f, 0.03f, 0.40f, 0.01f);
-        assertRange(defaults.fov, 70f, 60f, 110f, 5f);
-        assertRange(defaults.volume, 0.80f, 0.0f, 1.0f, 0.10f);
-        assertFalse(defaults.invertY);
-        assertTrue(defaults.viewBob);
-        assertFalse(defaults.fullscreen);
-        assertTrue(defaults.minimap);
+    void everyKeyOfASettingsFileSetsItsOwnValue() {
+        SettingsDefaults defaults = SettingsDefaults.parse(FILE, String.join("\n",
+            "sensitivity.default: 0.21", "sensitivity.min: 0.06", "sensitivity.max: 0.36", "sensitivity.step: 0.03",
+            "fov.default: 90", "fov.min: 80", "fov.max: 100", "fov.step: 2",
+            "volume.default: 0.50", "volume.min: 0.2", "volume.max: 0.9", "volume.step: 0.10",
+            "invert_y.default: true", "view_bob.default: false", "fullscreen.default: true",
+            "minimap.default: false"));
+        assertRange(defaults.sensitivity, 0.21f, 0.06f, 0.36f, 0.03f);
+        assertRange(defaults.fov, 90f, 80f, 100f, 2f);
+        assertRange(defaults.volume, 0.50f, 0.2f, 0.9f, 0.10f);
+        assertTrue(defaults.invertY);
+        assertFalse(defaults.viewBob);
+        assertTrue(defaults.fullscreen);
+        assertFalse(defaults.minimap);
+
+        SettingsDefaults others = SettingsDefaults.parse(FILE, with("invert_y.default", "false"));
+        assertFalse(others.invertY);
+        assertFalse(SettingsDefaults.parse(FILE, with("fullscreen.default", "false")).fullscreen);
+        assertTrue(SettingsDefaults.parse(FILE, with("view_bob.default", "true")).viewBob);
+        assertTrue(SettingsDefaults.parse(FILE, with("minimap.default", "true")).minimap);
     }
 
+    /** Whatever the shipped file holds, it loads, and settings made with no defaults of their own start there. */
     @Test
     void newSettingsStartAtTheShippedDefaults() {
+        SettingsDefaults shipped = SettingsDefaults.load();
+        for (SettingsDefaults.Range range : new SettingsDefaults.Range[] {
+            shipped.sensitivity, shipped.fov, shipped.volume}) {
+            assertTrue(range.min <= range.initial && range.initial <= range.max && range.step > 0f);
+        }
         for (GameSettings settings : new GameSettings[] {
-            new GameSettings(), new GameSettings(SettingsDefaults.load()),
-            GameSettings.load(null, SettingsDefaults.load()),
-            GameSettings.load(new MapKeyValueStore(), SettingsDefaults.load())}) {
-            assertEquals(0.12f, settings.getMouseSensitivity(), 0f);
-            assertEquals(70f, settings.getFov(), 0f);
-            assertEquals(0.80f, settings.getMasterVolume(), 0f);
-            assertFalse(settings.isInvertY());
-            assertTrue(settings.isViewBob());
-            assertFalse(settings.isFullscreen());
-            assertTrue(settings.isMinimap());
+            new GameSettings(), new GameSettings(shipped), GameSettings.load(null, shipped),
+            GameSettings.load(new MapKeyValueStore(), shipped)}) {
+            assertEquals(shipped.sensitivity.initial, settings.getMouseSensitivity(), 0f);
+            assertEquals(shipped.fov.initial, settings.getFov(), 0f);
+            assertEquals(shipped.volume.initial, settings.getMasterVolume(), 0f);
+            assertEquals(shipped.invertY, settings.isInvertY());
+            assertEquals(shipped.viewBob, settings.isViewBob());
+            assertEquals(shipped.fullscreen, settings.isFullscreen());
+            assertEquals(shipped.minimap, settings.isMinimap());
         }
     }
 
@@ -151,7 +168,7 @@ class SettingsDefaultsTest {
     @Test
     void aStoredValueOutsideANarrowedRangeIsClampedOnLoad() {
         MapKeyValueStore store = new MapKeyValueStore();
-        GameSettings wide = new GameSettings();
+        GameSettings wide = TestTuning.settings();
         wide.setFov(110f);
         wide.setMouseSensitivity(0.03f);
         wide.setMasterVolume(1f);

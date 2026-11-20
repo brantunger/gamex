@@ -1,0 +1,29 @@
+// Colours of the Rail Lance viewmodel (assets/models/viewmodel-raillance.obj).
+// material.<name>: red, green, blue, gloss - one line for each material the game knows for this model, by the
+// name the model file uses in its usemtl lines. A material the model file does not use still needs its line.
+// accent.<name>: red, green, blue, gloss - the colours of the "# @accent rail_core" capacitor ribs by charge state.
+// Every number is from 0 to 1; gloss runs from 0 (matt) to 1 (polished). The weapons reuse material names with
+// their own colours, so each weapon has its own file; a line that repeats another file's colour says so.
+material.gunmetal: 0.22, 0.25, 0.31, 0.65
+material.gunmetal_top: 0.30, 0.33, 0.40, 1
+material.dark_metal: 0.08, 0.09, 0.12, 0.45
+material.steel: 0.62, 0.66, 0.72, 1
+// Same colour as material.bore in palette-pistol.txt and palette-scattergun.txt; each weapon is coloured on
+// its own.
+material.bore: 0.02, 0.02, 0.03, 0
+material.polymer: 0.22, 0.24, 0.28, 0.15
+material.polymer_dark: 0.13, 0.14, 0.17, 0.10
+material.stipple: 0.28, 0.30, 0.35, 0.10
+material.sight_dot: 0.32, 0.96, 1.00, 0.60
+material.optic_glass: 0.14, 0.68, 0.92, 0.95
+// Same colour as material.rail_copper in palette-world.txt: the pickup matches the weapon in hand.
+material.rail_copper: 0.88, 0.54, 0.22, 0.80
+// On "# @accent" surfaces the shaders draw the accent of the moment in place of this colour, so it does not
+// show there. It repeats accent.ready on purpose.
+// Also material.rail_core and accent.rail_ready in palette-world.txt: the pickup matches the weapon in hand.
+material.rail_core: 0.18, 0.94, 1.00, 0.98
+
+// Same colour as material.rail_core, and as accent.rail_ready in palette-world.txt.
+accent.ready: 0.18, 0.94, 1.00, 0.98
+accent.recharging: 1.00, 0.44, 0.14, 0.70
+accent.empty: 0.42, 0.14, 0.16, 0.35

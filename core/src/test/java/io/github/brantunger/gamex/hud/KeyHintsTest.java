@@ -9,10 +9,8 @@ import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.hud.MenuState.OptionId;
 import io.github.brantunger.gamex.input.KeyBindings;
-import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.SaveData;
-import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,7 +23,7 @@ import java.util.List;
 
 /**
  * Checks that every key name the menus, the HUD and the briefings show comes from
- * {@code assets/data/bindings.txt}: with the shipped file the text reads as it did while the names were fixed, and
+ * {@code assets/data/bindings.txt}: with the tests' own file the text shows the key names of that file, and
  * a file with other keys changes every line that names one.
  */
 class KeyHintsTest {
@@ -37,11 +35,11 @@ class KeyHintsTest {
         "quick_swap", "Tab", "fire", "Mouse-Middle", "alt_fire", "Mouse-Back", "minimap", "B", "menu_left", "Z",
         "menu_right", "C", "quit", "X"};
     private static final KeyBindings REBOUND = TestTuning.bindingsWith(OTHER_KEYS);
-    private static final UiStrings SHIPPED = TestTuning.STRINGS;
+    private static final UiStrings FROZEN = TestTuning.STRINGS;
     private static final UiStrings STRINGS = TestTuning.stringsFor(REBOUND);
 
     private static MenuState menu(UiStrings strings, SaveData save, MenuState.Screen screen) {
-        return new MenuState(new GameSettings(), save, screen, TestTuning.DIFFICULTY, TestTuning.WEAPONS, strings);
+        return new MenuState(TestTuning.settings(), save, screen, TestTuning.DIFFICULTY, TestTuning.WEAPONS, strings);
     }
 
     /** @return a line with a 1 for each value the game fills in */
@@ -51,37 +49,32 @@ class KeyHintsTest {
         return strings.format(text, values);
     }
 
-    /** @return the briefing the menus show for the Security Hub, whose last line names the alt fire key */
-    private static List<String> hubBriefing(UiStrings strings) {
-        SaveData save = new SaveData(new MapKeyValueStore());
-        int hub = 0;
-        while (!"03_security_hub".equals(Levels.campaign().get(hub).id)) hub++;
-        save.unlockStage(hub);
-        MenuState menu = menu(strings, save, MenuState.Screen.STAGE_SELECT);
-        assertTrue(menu.selectId(OptionId.STAGE, hub));
-        menu.confirm();
-        menu.confirm();
-        assertEquals(MenuState.Screen.BRIEFING, menu.getScreen(), "past Select Difficulty");
-        assertEquals("03_security_hub", menu.getActiveStage().id);
-        return menu.getActiveBriefing();
+    /** A briefing line of the test's own, as a stage file holds it: it names a key and quotes a tuning value. */
+    private static final String BRIEFING_LINE =
+        "HOLD {key:alt_fire} FOR THE {rail.zoom_factor}X ZOOM OPTIC AND BREACH TO EXTRACTION.";
+
+    /** @return the briefing the menus show for the stage a new game opens on */
+    private static List<String> shownBriefing(UiStrings strings) {
+        return menu(strings, new SaveData(new MapKeyValueStore()), MenuState.Screen.BRIEFING).getActiveBriefing();
     }
 
     @Test
-    void theShippedBindingsShowTheKeyNamesTheTextSpelledOut() {
+    void theBindingsGiveTheTextItsKeyNames() {
         assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT  M: MAP",
-            SHIPPED.get(UiText.SCREEN_TITLE_FOOTER));
-        assertEquals("LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", SHIPPED.get(UiText.SCREEN_SETTINGS_HELP));
-        assertEquals("ENERGY [SHIFT: DASH]", SHIPPED.get(UiText.HUD_ENERGY));
-        assertEquals("1: PISTOL [INF]", SHIPPED.get(UiText.HUD_WEAPON_PISTOL));
-        assertEquals("2: SCATTERGUN [4/16]", SHIPPED.format(UiText.HUD_WEAPON_SCATTERGUN, "4", "16"));
-        assertEquals("3: RAIL LANCE [2/8]", SHIPPED.format(UiText.HUD_WEAPON_RAIL_LANCE, "2", "8"));
-        assertEquals("PRESS Q AGAIN TO QUIT", SHIPPED.get(UiText.MENU_QUIT_PROMPT));
-        assertEquals("RETRY STAGE (R)", SHIPPED.get(UiText.MENU_RETRY_STAGE));
-        assertEquals("[E] OVERRIDE LOCKDOWN", SHIPPED.prompt(GameSimulation.InteractionPrompt.OVERRIDE_CONSOLE));
-        assertEquals("[E] UNLOCK AMBER BULKHEAD", SHIPPED.prompt(GameSimulation.InteractionPrompt.UNLOCK_AMBER));
-        assertEquals("[E] UNLOCK CYAN BULKHEAD", SHIPPED.prompt(GameSimulation.InteractionPrompt.UNLOCK_CYAN));
-        assertEquals("[E] OPEN BULKHEAD", SHIPPED.prompt(GameSimulation.InteractionPrompt.OPEN_BULKHEAD));
-        assertEquals("HOLD RMB FOR THE 1.8X ZOOM OPTIC, THEN EXTRACT.", hubBriefing(SHIPPED).get(2));
+            FROZEN.get(UiText.SCREEN_TITLE_FOOTER));
+        assertEquals("LEFT/RIGHT OR CLICK TO ADJUST - ESC TO SAVE", FROZEN.get(UiText.SCREEN_SETTINGS_HELP));
+        assertEquals("ENERGY [SHIFT: DASH]", FROZEN.get(UiText.HUD_ENERGY));
+        assertEquals("1: PISTOL [INF]", FROZEN.get(UiText.HUD_WEAPON_PISTOL));
+        assertEquals("2: SCATTERGUN [4/16]", FROZEN.format(UiText.HUD_WEAPON_SCATTERGUN, "4", "16"));
+        assertEquals("3: RAIL LANCE [2/8]", FROZEN.format(UiText.HUD_WEAPON_RAIL_LANCE, "2", "8"));
+        assertEquals("PRESS Q AGAIN TO QUIT", FROZEN.get(UiText.MENU_QUIT_PROMPT));
+        assertEquals("RETRY STAGE (R)", FROZEN.get(UiText.MENU_RETRY_STAGE));
+        assertEquals("[E] OVERRIDE LOCKDOWN", FROZEN.prompt(GameSimulation.InteractionPrompt.OVERRIDE_CONSOLE));
+        assertEquals("[E] UNLOCK AMBER BULKHEAD", FROZEN.prompt(GameSimulation.InteractionPrompt.UNLOCK_AMBER));
+        assertEquals("[E] UNLOCK CYAN BULKHEAD", FROZEN.prompt(GameSimulation.InteractionPrompt.UNLOCK_CYAN));
+        assertEquals("[E] OPEN BULKHEAD", FROZEN.prompt(GameSimulation.InteractionPrompt.OPEN_BULKHEAD));
+        assertEquals("HOLD RMB FOR THE 1.8X ZOOM OPTIC AND BREACH TO EXTRACTION.",
+            FROZEN.fill(BRIEFING_LINE, "a briefing"));
     }
 
     @Test
@@ -108,15 +101,25 @@ class KeyHintsTest {
 
     @Test
     void anotherKeyInTheBindingsFileChangesTheBriefingThatNamesIt() {
-        List<String> shipped = hubBriefing(SHIPPED);
-        List<String> rebound = hubBriefing(STRINGS);
-        assertEquals("HOLD MB4 FOR THE 1.8X ZOOM OPTIC, THEN EXTRACT.", rebound.get(2));
-        assertEquals(shipped.subList(0, 2), rebound.subList(0, 2), "the lines that name no key");
+        assertEquals("HOLD MB4 FOR THE 1.8X ZOOM OPTIC AND BREACH TO EXTRACTION.",
+            STRINGS.fill(BRIEFING_LINE, "a briefing"));
+        assertEquals("GRAB THE SCATTERGUN.", STRINGS.fill("GRAB THE SCATTERGUN.", "a line that names no key"));
+
+        // Whatever the stage files say, the menus show each briefing line filled in with the bindings they are given.
+        List<String> raw = menu(STRINGS, new SaveData(new MapKeyValueStore()), MenuState.Screen.BRIEFING)
+            .getActiveStage().briefing;
+        List<String> frozen = shownBriefing(FROZEN);
+        List<String> rebound = shownBriefing(STRINGS);
+        assertEquals(raw.size(), rebound.size());
+        for (int i = 0; i < raw.size(); i++) {
+            assertEquals(FROZEN.fill(raw.get(i), "a briefing"), frozen.get(i));
+            assertEquals(STRINGS.fill(raw.get(i), "a briefing"), rebound.get(i));
+        }
     }
 
     @Test
     void everyLineThatNamesAKeyFollowsTheBindingsAndNoOtherLineChanges() {
-        List<String> lines = AssetText.splitLines(AssetText.read("data", UiStrings.PATH));
+        List<String> lines = AssetText.splitLines(TestTuning.text(UiStrings.PATH));
         int naming = 0;
         for (UiText text : UiText.values()) {
             String raw = null;
@@ -126,12 +129,12 @@ class KeyHintsTest {
             assertTrue(raw != null, text.key);
             if (raw.contains("{key:")) {
                 naming++;
-                assertNotEquals(shown(SHIPPED, text), shown(STRINGS, text), text.key + " names a key");
+                assertNotEquals(shown(FROZEN, text), shown(STRINGS, text), text.key + " names a key");
             } else {
-                assertEquals(shown(SHIPPED, text), shown(STRINGS, text), text.key + " names no key");
+                assertEquals(shown(FROZEN, text), shown(STRINGS, text), text.key + " names no key");
             }
         }
-        assertEquals(12, naming, "the lines of the shipped file that name a key");
+        assertEquals(12, naming, "the lines of the tests' own file that name a key");
     }
 
     /**
@@ -143,12 +146,16 @@ class KeyHintsTest {
         Files.createDirectories(temp.resolve("data"));
         Files.write(temp.resolve(KeyBindings.PATH),
             TestTuning.bindingsTextWith("retry", "T").getBytes(StandardCharsets.UTF_8));
+        Files.write(temp.resolve(UiStrings.PATH), TestTuning.text(UiStrings.PATH).getBytes(StandardCharsets.UTF_8));
+        Files.write(temp.resolve(PixelFont.PATH), TestTuning.text(PixelFont.PATH).getBytes(StandardCharsets.UTF_8));
         String previous = System.getProperty("gamex.assets");
         MenuState dead;
         try {
-            // Only the bindings are found here; every other file is read from the folders tried next.
+            // The bindings, the text and the font are found here; every other file is read from the folders tried
+            // next.
             System.setProperty("gamex.assets", temp.toString());
-            dead = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+            dead = new MenuState(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
+                MenuState.Screen.PLAYING);
         } finally {
             if (previous == null) {
                 System.clearProperty("gamex.assets");

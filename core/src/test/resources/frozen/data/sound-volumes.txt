@@ -1,0 +1,45 @@
+// Playback volume of each sound cue, before the master volume, the event's intensity and distance are applied.
+// The key is the cue's file name in assets/sounds/ without .wav. Every cue needs exactly one line; a gain is
+// zero or more, and the final volume is clamped to 1.
+// charge-hum.wav, the loop of a charging blast, is not a cue and has no line: its volume is set in code
+// (SoundManager).
+pistol-shot: 0.68
+scattergun-fire: 0.78
+scattergun-alt-fire: 0.88
+rail-fire: 0.86
+rail-zoom-in: 0.36
+rail-zoom-out: 0.36
+weapon-switch: 0.56
+weapon-dry-fire: 0.56
+wall-impact: 0.42
+blast-release: 0.72
+explosion: 0.90
+target-hit: 0.62
+target-destroyed: 0.80
+enemy-hit: 0.62
+enemy-destroyed: 0.80
+enemy-shoot: 0.72
+drone-lunge: 0.72
+hazard-zap: 0.72
+boss-slam: 0.88
+boss-overdrive: 0.90
+boss-destroyed: 0.95
+player-jump: 0.56
+player-land: 0.52
+player-dash: 0.72
+player-hurt: 0.80
+player-death: 0.80
+pickup-health: 0.65
+pickup-armor: 0.65
+pickup-energy: 0.65
+pickup-keycard: 0.68
+pickup-weapon: 0.74
+pickup-shells: 0.65
+pickup-slugs: 0.65
+low-energy: 0.58
+door-open: 0.72
+door-locked: 0.62
+console-activate: 0.75
+menu-move: 0.35
+menu-confirm: 0.50
+menu-back: 0.48

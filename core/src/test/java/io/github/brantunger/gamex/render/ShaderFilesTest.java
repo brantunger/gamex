@@ -43,133 +43,6 @@ class ShaderFilesTest {
     private static final Pattern DECLARATION =
         Pattern.compile("(?m)^\\s*(uniform|attribute)\\s+\\w+\\s+(\\w+)\\s*;");
 
-    // The shader text as it was written in WorldRenderer and ViewmodelRenderer before it moved into files (commit
-    // 10cd4a4), copied without a change. The files must say the same once their comments are taken out.
-    static final String BASE_WORLD_VERTEX =
-        "attribute vec3 a_position;\n"
-            + "attribute vec2 a_texCoord0;\n"
-            + "attribute float a_shade;\n"
-            + "uniform mat4 u_projViewTrans;\n"
-            + "uniform vec3 u_cameraPosition;\n"
-            + "uniform vec2 u_fogRange;\n"
-            + "varying vec2 v_texCoord;\n"
-            + "varying float v_shade;\n"
-            + "varying float v_fog;\n"
-            + "void main() {\n"
-            + "    v_texCoord = a_texCoord0;\n"
-            + "    v_shade = a_shade;\n"
-            + "    float range = length(a_position - u_cameraPosition);\n"
-            + "    v_fog = clamp((range - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
-            + "    gl_Position = u_projViewTrans * vec4(a_position, 1.0);\n"
-            + "}\n";
-
-    static final String BASE_WORLD_FRAGMENT =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "uniform sampler2D u_texture;\n"
-            + "uniform vec3 u_fogColour;\n"
-            + "uniform float u_light;\n"
-            + "varying vec2 v_texCoord;\n"
-            + "varying float v_shade;\n"
-            + "varying float v_fog;\n"
-            + "void main() {\n"
-            + "    vec3 colour = texture2D(u_texture, v_texCoord).rgb * v_shade * u_light;\n"
-            + "    gl_FragColor = vec4(mix(colour, u_fogColour, v_fog), 1.0);\n"
-            + "}\n";
-
-    static final String BASE_MODEL_VERTEX =
-        "attribute vec3 a_position;\n"
-            + "attribute vec3 a_normal;\n"
-            + "attribute vec3 a_colour;\n"
-            + "attribute float a_gloss;\n"
-            + "attribute float a_accent;\n"
-            + "uniform mat4 u_projViewTrans;\n"
-            + "uniform mat4 u_model;\n"
-            + "uniform mat3 u_normalMatrix;\n"
-            + "uniform vec4 u_accentColour;\n"
-            + "uniform vec3 u_cameraPosition;\n"
-            + "uniform vec2 u_fogRange;\n"
-            + "uniform vec3 u_fogColour;\n"
-            + "uniform float u_light;\n"
-            + "uniform float u_hitFlash;\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    vec4 worldPos = u_model * vec4(a_position, 1.0);\n"
-            + "    vec3 worldNormal = normalize(u_normalMatrix * a_normal);\n"
-            + "    vec3 weight = worldNormal * worldNormal;\n"
-            + "    float shade = weight.z + weight.x * 0.72 + weight.y * (worldNormal.y > 0.0 ? 0.9 : 0.62);\n"
-            + "    vec3 lightDir = normalize(vec3(-0.3, 0.9, 0.4));\n"
-            + "    float key = 0.65 + 0.55 * max(dot(worldNormal, lightDir), 0.0);\n"
-            + "    vec3 delta = u_cameraPosition - worldPos.xyz;\n"
-            + "    float range = length(delta);\n"
-            + "    vec3 toCamera = range > 1e-4 ? delta / range : vec3(0.0, 0.0, 1.0);\n"
-            + "    vec3 halfVec = normalize(lightDir + toCamera);\n"
-            + "    vec3 surfaceColour = mix(a_colour, u_accentColour.rgb, a_accent);\n"
-            + "    float surfaceGloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
-            + "    float sheen = surfaceGloss * pow(max(dot(worldNormal, halfVec), 0.0), 12.0) * 0.35;\n"
-            + "    float rim = pow(1.0 - max(dot(worldNormal, toCamera), 0.0), 2.5) * 0.12;\n"
-            + "    vec3 lit = (surfaceColour * shade * key + vec3(sheen + rim)) * u_light;\n"
-            + "    lit = mix(lit, vec3(1.0, 0.25, 0.25), u_hitFlash * 0.65);\n"
-            + "    float fog = clamp((range - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
-            + "    v_colour = mix(lit, u_fogColour, fog);\n"
-            + "    gl_Position = u_projViewTrans * worldPos;\n"
-            + "}\n";
-
-    static final String BASE_MODEL_FRAGMENT =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    gl_FragColor = vec4(v_colour, 1.0);\n"
-            + "}\n";
-
-    static final String BASE_VIEWMODEL_VERTEX =
-        "attribute vec3 a_position;\n"
-            + "attribute vec3 a_normal;\n"
-            + "attribute vec3 a_colour;\n"
-            + "attribute float a_gloss;\n"
-            + "attribute float a_accent;\n"
-            + "uniform mat4 u_projTrans;\n"
-            + "uniform mat4 u_model;\n"
-            + "uniform mat3 u_normalMatrix;\n"
-            + "uniform mat4 u_viewToWorld;\n"
-            + "uniform vec4 u_accentColour;\n"
-            + "uniform float u_light;\n"
-            + "uniform float u_charge;\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    vec3 viewNormal = normalize(u_normalMatrix * a_normal);\n"
-            + "    vec3 worldNormal = (u_viewToWorld * vec4(viewNormal, 0.0)).xyz;\n"
-            // The same shades as the world's faces: north-south 1.0, east-west 0.72, floor 0.9, ceiling 0.62.
-            + "    vec3 weight = worldNormal * worldNormal;\n"
-            + "    float shade = weight.z + weight.x * 0.72 + weight.y * (worldNormal.y > 0.0 ? 0.9 : 0.62);\n"
-            // A fixed light from above the left shoulder, so the form reads whichever way the player faces.
-            + "    float key = 0.5 + 0.75 * max(dot(viewNormal, normalize(vec3(-0.3, 0.9, 0.3))), 0.0);\n"
-            // The blast charge glows violet towards the muzzle, which is at negative z in gun space.
-            + "    float front = clamp((-a_position.z - 0.01) / 0.1, 0.0, 1.0);\n"
-            + "    vec3 baseColour = mix(a_colour, u_accentColour.rgb, a_accent);\n"
-            + "    float baseGloss = mix(a_gloss, u_accentColour.a, a_accent);\n"
-            // Glossy faces that sit halfway between the light and the eye pick up a sheen.
-            + "    float facing = max(dot(viewNormal, normalize(vec3(-0.3, 0.9, 1.3))), 0.0);\n"
-            + "    float sheen = baseGloss * pow(facing, 10.0) * 0.3;\n"
-            // Faces seen nearly edge-on catch a faint rim of light, which lifts dark shapes off a dark background.
-            + "    float rim = pow(1.0 - abs(viewNormal.z), 2.0) * 0.09;\n"
-            + "    v_colour = (baseColour * shade * key + vec3(sheen + rim)) * u_light\n"
-            + "        + vec3(0.5, 0.22, 1.0) * u_charge * front * 0.55;\n"
-            + "    gl_Position = u_projTrans * u_model * vec4(a_position, 1.0);\n"
-            + "}\n";
-
-    static final String BASE_VIEWMODEL_FRAGMENT =
-        "#ifdef GL_ES\n"
-            + "precision mediump float;\n"
-            + "#endif\n"
-            + "varying vec3 v_colour;\n"
-            + "void main() {\n"
-            + "    gl_FragColor = vec4(v_colour, 1.0);\n"
-            + "}\n";
-
     /**
      * Finds a file of the assets folder. The build passes the folder in as {@code gamex.assets}; a run from an IDE
      * finds it from the root project or the core project.
@@ -242,14 +115,41 @@ class ShaderFilesTest {
         }
     }
 
+    private static final Pattern VARYING = Pattern.compile("(?m)^\\s*varying\\s+(\\w+)\\s+(\\w+)\\s*;");
+
+    private static Set<String> varyings(String assetPath) {
+        Set<String> found = new TreeSet<>();
+        Matcher matcher = VARYING.matcher(withoutComments(readShaderFile(assetPath)));
+        while (matcher.find()) found.add(matcher.group(1) + " " + matcher.group(2));
+        return found;
+    }
+
+    /**
+     * Whatever arithmetic a shader file holds: a vertex shader sets the vertex position and hands its fragment
+     * shader exactly the varyings that one reads, with the same types, and the fragment shader sets the colour.
+     */
     @Test
-    void shaderFilesSayWhatTheInlineStringsSaidBeforeTheMove() {
-        assertEquals(BASE_WORLD_VERTEX, withoutComments(readShaderFile(WORLD_VERTEX)), WORLD_VERTEX);
-        assertEquals(BASE_WORLD_FRAGMENT, withoutComments(readShaderFile(WORLD_FRAGMENT)), WORLD_FRAGMENT);
-        assertEquals(BASE_MODEL_VERTEX, withoutComments(readShaderFile(MODEL_VERTEX)), MODEL_VERTEX);
-        assertEquals(BASE_MODEL_FRAGMENT, withoutComments(readShaderFile(MODEL_FRAGMENT)), MODEL_FRAGMENT);
-        assertEquals(BASE_VIEWMODEL_VERTEX, withoutComments(readShaderFile(VIEWMODEL_VERTEX)), VIEWMODEL_VERTEX);
-        assertEquals(BASE_VIEWMODEL_FRAGMENT, withoutComments(readShaderFile(VIEWMODEL_FRAGMENT)), VIEWMODEL_FRAGMENT);
+    void eachPairOfShaderFilesFitsTogether() {
+        String[][] pairs = {
+            {WORLD_VERTEX, WORLD_FRAGMENT}, {MODEL_VERTEX, MODEL_FRAGMENT}, {VIEWMODEL_VERTEX, VIEWMODEL_FRAGMENT}
+        };
+        for (String[] pair : pairs) {
+            String vertex = withoutComments(readShaderFile(pair[0]));
+            String fragment = withoutComments(readShaderFile(pair[1]));
+            assertTrue(vertex.contains("gl_Position ="), pair[0] + " sets no position");
+            assertTrue(fragment.contains("gl_FragColor ="), pair[1] + " sets no colour");
+            assertFalse(fragment.contains("attribute "), pair[1] + " declares an attribute");
+            assertEquals(varyings(pair[0]), varyings(pair[1]), pair[0] + " and " + pair[1] + " share their varyings");
+            assertFalse(varyings(pair[0]).isEmpty(), pair[0]);
+            assertEquals(count(vertex, '{'), count(vertex, '}'), pair[0] + " braces");
+            assertEquals(count(fragment, '{'), count(fragment, '}'), pair[1] + " braces");
+            assertEquals(count(vertex, '('), count(vertex, ')'), pair[0] + " brackets");
+            assertEquals(count(fragment, '('), count(fragment, ')'), pair[1] + " brackets");
+        }
+    }
+
+    private static long count(String text, char c) {
+        return text.chars().filter(x -> x == c).count();
     }
 
     /** The names are the contract between the files and the code that sets them: a renamed one must fail here. */

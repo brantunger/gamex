@@ -10,7 +10,6 @@ import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
 import io.github.brantunger.gamex.weapon.WeaponSlot;
-import io.github.brantunger.gamex.world.Levels;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,7 +19,7 @@ class GameSettingsAndSaveTest {
     @Test
     void settingsClampRangesAndRoundTripThroughStore() {
         MapKeyValueStore store = new MapKeyValueStore();
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         assertEquals(settings.defaults().volume.initial, settings.getMasterVolume(), 1e-4f);
         settings.setMouseSensitivity(9f);
         assertEquals(settings.defaults().sensitivity.max, settings.getMouseSensitivity(), 1e-4f);
@@ -41,7 +40,7 @@ class GameSettingsAndSaveTest {
         settings.setMinimap(false);
         settings.save(store);
 
-        GameSettings loaded = GameSettings.load(store, SettingsDefaults.load());
+        GameSettings loaded = GameSettings.load(store, TestTuning.SETTINGS);
         assertEquals(0.18f, loaded.getMouseSensitivity(), 1e-4f);
         assertEquals(95f, loaded.getFov(), 1e-4f);
         assertEquals(0.60f, loaded.getMasterVolume(), 1e-4f);
@@ -68,7 +67,7 @@ class GameSettingsAndSaveTest {
         assertEquals(9, save.getSavedLoadout().slugs);
         assertEquals(WeaponSlot.RAIL_LANCE, save.getSavedLoadout().activeWeapon);
 
-        PlayerLoadout s1 = PlayerLoadout.forStage(Levels.stage("01_outer_breach"), Difficulty.NORMAL,
+        PlayerLoadout s1 = PlayerLoadout.forStage(TestTuning.stageStartingWith(""), Difficulty.NORMAL,
             TestTuning.DIFFICULTY, TestTuning.WEAPONS);
         assertFalse(s1.hasScattergun);
         assertEquals(0, s1.shells);
@@ -76,21 +75,21 @@ class GameSettingsAndSaveTest {
         assertEquals(0, s1.slugs);
         assertEquals(WeaponSlot.PISTOL, s1.activeWeapon);
 
-        PlayerLoadout s2 = PlayerLoadout.forStage(Levels.stage("02_coolant_core"), Difficulty.NORMAL,
+        PlayerLoadout s2 = PlayerLoadout.forStage(TestTuning.stageStartingWith("scattergun"), Difficulty.NORMAL,
             TestTuning.DIFFICULTY, TestTuning.WEAPONS);
         assertTrue(s2.hasScattergun);
         assertEquals(8, s2.shells);
         assertFalse(s2.hasRailLance);
         assertEquals(WeaponSlot.SCATTERGUN, s2.activeWeapon);
 
-        PlayerLoadout s4 = PlayerLoadout.forStage(Levels.stage("04_lockdown_wing"), Difficulty.NORMAL,
-            TestTuning.DIFFICULTY, TestTuning.WEAPONS);
+        PlayerLoadout s4 = PlayerLoadout.forStage(TestTuning.stageStartingWith("scattergun, raillance"),
+            Difficulty.NORMAL, TestTuning.DIFFICULTY, TestTuning.WEAPONS);
         assertTrue(s4.hasScattergun);
         assertEquals(8, s4.shells);
         assertTrue(s4.hasRailLance);
         assertEquals(5, s4.slugs);
         assertEquals(WeaponSlot.SCATTERGUN, s4.activeWeapon,
-            "Stages 04-06 start with Scattergun in hand and Rail Lance unlocked in Slot 3");
+            "a stage that lists both starts with Scattergun in hand and Rail Lance unlocked in Slot 3");
 
         SaveData.CompletionSummary first = save.recordCompletion("01_outer_breach", Difficulty.HARD,
             52f, 40f, 8, 10, 25f);

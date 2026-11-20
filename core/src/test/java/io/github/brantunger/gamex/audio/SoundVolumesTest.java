@@ -2,12 +2,14 @@ package io.github.brantunger.gamex.audio;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Audio;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
@@ -24,8 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Verifies {@link SoundVolumes}: the shipped table holds the gains the game had in code, every mistake in a table
- * is reported, and {@link SoundManager} plays a cue at the gain its table gives.
+ * Verifies {@link SoundVolumes}: every cue takes the gain of its own line, the shipped table loads, every mistake
+ * in a table is reported, and {@link SoundManager} plays a cue at the gain its table gives.
  */
 class SoundVolumesTest {
 
@@ -48,50 +50,11 @@ class SoundVolumesTest {
         Gdx.files = previousFiles;
     }
 
-    /** @return the gains of {@code SoundManager.baseGain} as it was before the table moved to a file */
-    private static Map<SoundEvent.Type, Float> gainsBeforeTheMove() {
-        Map<SoundEvent.Type, Float> expected = new EnumMap<>(SoundEvent.Type.class);
-        expected.put(SoundEvent.Type.PISTOL_SHOT, 0.68f);
-        expected.put(SoundEvent.Type.SCATTERGUN_FIRE, 0.78f);
-        expected.put(SoundEvent.Type.SCATTERGUN_ALT_FIRE, 0.88f);
-        expected.put(SoundEvent.Type.RAIL_FIRE, 0.86f);
-        expected.put(SoundEvent.Type.RAIL_ZOOM_IN, 0.36f);
-        expected.put(SoundEvent.Type.RAIL_ZOOM_OUT, 0.36f);
-        expected.put(SoundEvent.Type.WEAPON_SWITCH, 0.56f);
-        expected.put(SoundEvent.Type.WEAPON_DRY_FIRE, 0.56f);
-        expected.put(SoundEvent.Type.WALL_IMPACT, 0.42f);
-        expected.put(SoundEvent.Type.BLAST_RELEASE, 0.72f);
-        expected.put(SoundEvent.Type.EXPLOSION, 0.90f);
-        expected.put(SoundEvent.Type.TARGET_HIT, 0.62f);
-        expected.put(SoundEvent.Type.TARGET_DESTROYED, 0.80f);
-        expected.put(SoundEvent.Type.ENEMY_HIT, 0.62f);
-        expected.put(SoundEvent.Type.ENEMY_DESTROYED, 0.80f);
-        expected.put(SoundEvent.Type.ENEMY_SHOOT, 0.72f);
-        expected.put(SoundEvent.Type.DRONE_LUNGE, 0.72f);
-        expected.put(SoundEvent.Type.HAZARD_ZAP, 0.72f);
-        expected.put(SoundEvent.Type.BOSS_SLAM, 0.88f);
-        expected.put(SoundEvent.Type.BOSS_OVERDRIVE, 0.90f);
-        expected.put(SoundEvent.Type.BOSS_DESTROYED, 0.95f);
-        expected.put(SoundEvent.Type.PLAYER_JUMP, 0.56f);
-        expected.put(SoundEvent.Type.PLAYER_LAND, 0.52f);
-        expected.put(SoundEvent.Type.PLAYER_DASH, 0.72f);
-        expected.put(SoundEvent.Type.PLAYER_HURT, 0.80f);
-        expected.put(SoundEvent.Type.PLAYER_DEATH, 0.80f);
-        expected.put(SoundEvent.Type.PICKUP_HEALTH, 0.65f);
-        expected.put(SoundEvent.Type.PICKUP_ARMOR, 0.65f);
-        expected.put(SoundEvent.Type.PICKUP_ENERGY, 0.65f);
-        expected.put(SoundEvent.Type.PICKUP_KEYCARD, 0.68f);
-        expected.put(SoundEvent.Type.PICKUP_WEAPON, 0.74f);
-        expected.put(SoundEvent.Type.PICKUP_SHELLS, 0.65f);
-        expected.put(SoundEvent.Type.PICKUP_SLUGS, 0.65f);
-        expected.put(SoundEvent.Type.LOW_ENERGY, 0.58f);
-        expected.put(SoundEvent.Type.DOOR_OPEN, 0.72f);
-        expected.put(SoundEvent.Type.DOOR_LOCKED, 0.62f);
-        expected.put(SoundEvent.Type.CONSOLE_ACTIVATE, 0.75f);
-        expected.put(SoundEvent.Type.MENU_MOVE, 0.35f);
-        expected.put(SoundEvent.Type.MENU_CONFIRM, 0.50f);
-        expected.put(SoundEvent.Type.MENU_BACK, 0.48f);
-        return expected;
+    /** @return a table built in code that gives every cue the gain 0.5 */
+    private static Map<SoundEvent.Type, Float> aGainForEveryCue() {
+        Map<SoundEvent.Type, Float> gains = new EnumMap<>(SoundEvent.Type.class);
+        for (SoundEvent.Type type : SoundEvent.Type.values()) gains.put(type, 0.5f);
+        return gains;
     }
 
     /** @return the text of a table giving every cue the gain 0.5 */
@@ -155,7 +118,7 @@ class SoundVolumesTest {
         playedVolumes.clear();
         // The menu reads the campaign, so it is built before the stubs, which serve no file contents, go in.
         restoreGlobals();
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         menu.moveSelection(1);
         installRecordingAudio();
         SoundManager manager = new SoundManager(false, volumes);
@@ -164,15 +127,28 @@ class SoundVolumesTest {
         return playedVolumes.getOrDefault(SoundManager.assetPath(SoundEvent.Type.MENU_MOVE), new ArrayList<>());
     }
 
+    /** A table in which no two cues have the same gain, so a cue that took another's line, or none, shows. */
     @Test
-    void theShippedTableHoldsTheGainEveryCueHadInCode() {
-        Map<SoundEvent.Type, Float> expected = gainsBeforeTheMove();
-        assertEquals(SoundEvent.Type.values().length, expected.size(), "the recorded table covers every cue");
+    void everyCueTakesTheGainOfItsOwnLine() {
+        Map<SoundEvent.Type, String> lines = new EnumMap<>(SoundEvent.Type.class);
+        for (SoundEvent.Type type : SoundEvent.Type.values()) {
+            lines.put(type, SoundVolumes.key(type) + ": " + (type.ordinal() + 1) / 128f);
+        }
 
+        SoundVolumes volumes = SoundVolumes.parse(FILE, table(lines));
+
+        for (SoundEvent.Type type : SoundEvent.Type.values()) {
+            assertEquals((type.ordinal() + 1) / 128f, volumes.gain(type), 0f, type.name());
+        }
+    }
+
+    /** Whatever gains the shipped table holds, it loads and gives every cue one. */
+    @Test
+    void theShippedTableLoads() {
         SoundVolumes shipped = SoundVolumes.load();
 
         for (SoundEvent.Type type : SoundEvent.Type.values()) {
-            assertEquals(expected.get(type).floatValue(), shipped.gain(type), 0f, type.name());
+            assertTrue(shipped.gain(type) >= 0f, type.name());
         }
     }
 
@@ -197,7 +173,7 @@ class SoundVolumesTest {
 
     @Test
     void theManagerPlaysACueAtTheGainOfItsTable() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         float master = settings.getMasterVolume();
         SoundVolumes quiet = SoundVolumes.parse(FILE, tableWith(SoundEvent.Type.MENU_MOVE, "menu-move: 0.125"));
         SoundVolumes loud = SoundVolumes.parse(FILE, tableWith(SoundEvent.Type.MENU_MOVE, "menu-move: 0.75"));
@@ -210,7 +186,7 @@ class SoundVolumesTest {
     void aGainOfZeroSilencesTheCue() {
         SoundVolumes silent = SoundVolumes.parse(FILE, tableWith(SoundEvent.Type.MENU_MOVE, "menu-move: 0"));
 
-        assertEquals(List.of(), playMenuMove(silent, new GameSettings()));
+        assertEquals(List.of(), playMenuMove(silent, TestTuning.settings()));
     }
 
     @Test
@@ -256,13 +232,13 @@ class SoundVolumesTest {
 
     @Test
     void theConstructorRejectsAMissingCueAndABadGain() {
-        Map<SoundEvent.Type, Float> gains = gainsBeforeTheMove();
+        Map<SoundEvent.Type, Float> gains = aGainForEveryCue();
         gains.remove(SoundEvent.Type.EXPLOSION);
         assertEquals("Missing sound volume for EXPLOSION",
             assertThrows(IllegalArgumentException.class, () -> new SoundVolumes(gains)).getMessage());
 
         for (float bad : new float[] {-0.5f, Float.NaN, Float.POSITIVE_INFINITY}) {
-            Map<SoundEvent.Type, Float> withBad = gainsBeforeTheMove();
+            Map<SoundEvent.Type, Float> withBad = aGainForEveryCue();
             withBad.put(SoundEvent.Type.EXPLOSION, bad);
             assertEquals("Sound volume for EXPLOSION must be finite and zero or more, got " + bad,
                 assertThrows(IllegalArgumentException.class, () -> new SoundVolumes(withBad)).getMessage());

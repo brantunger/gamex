@@ -11,6 +11,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.audio.SoundEvent;
 import io.github.brantunger.gamex.hud.HudRenderer;
 import io.github.brantunger.gamex.hud.MenuState;
@@ -124,7 +125,7 @@ class InputControllerTest {
 
     private static MenuState menuOn(MenuState.Screen screen) {
         if (screen == MenuState.Screen.STAGE_SELECT) {
-            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.TITLE);
             assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
             menu.confirm();
@@ -132,7 +133,7 @@ class InputControllerTest {
             return menu;
         }
         if (screen == MenuState.Screen.DIFFICULTY_SELECT) {
-            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.TITLE);
             assertTrue(menu.selectId(MenuState.OptionId.START_CAMPAIGN));
             menu.confirm();
@@ -140,14 +141,14 @@ class InputControllerTest {
             return menu;
         }
         if (screen == MenuState.Screen.BRIEFING) {
-            MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.TITLE);
             assertTrue(menu.selectId(MenuState.OptionId.TRAINING_RANGE));
             menu.confirm();
             assertEquals(screen, menu.getScreen());
             return menu;
         }
-        MenuState menu = new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         if (screen == MenuState.Screen.PAUSED) {
             menu.escape();
@@ -166,7 +167,7 @@ class InputControllerTest {
 
     /** @return a menu on the Settings screen, opened from the pause menu, with the FIELD OF VIEW row selected */
     private static MenuState settingsMenuOnFov(GameSettings settings) {
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         menu.escape();
         assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
@@ -236,7 +237,7 @@ class InputControllerTest {
     @Test
     void rRestartsTheStageFromThePauseMenu() {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.LAUNCH_STAGE, poll(controller, FRAME, Input.Keys.R));
         assertEquals(MenuState.Screen.PLAYING, menu.getScreen());
@@ -246,16 +247,16 @@ class InputControllerTest {
     void rRestartsTheStageInPlayAndOnTheDeathScreenButNotOnTheTitle() {
         MenuState playing = menuOn(MenuState.Screen.PLAYING);
         assertEquals(MenuState.Command.LAUNCH_STAGE,
-            poll(new InputController(playing, new GameSettings()), FRAME, Input.Keys.R));
+            poll(TestTuning.input(playing, TestTuning.settings()), FRAME, Input.Keys.R));
 
         MenuState dead = menuOn(MenuState.Screen.DEAD);
         assertEquals(MenuState.Command.LAUNCH_STAGE,
-            poll(new InputController(dead, new GameSettings()), FRAME, Input.Keys.R));
+            poll(TestTuning.input(dead, TestTuning.settings()), FRAME, Input.Keys.R));
         assertEquals(MenuState.Screen.PLAYING, dead.getScreen());
 
         MenuState title = menuOn(MenuState.Screen.TITLE);
         assertEquals(MenuState.Command.NONE,
-            poll(new InputController(title, new GameSettings()), FRAME, Input.Keys.R));
+            poll(TestTuning.input(title, TestTuning.settings()), FRAME, Input.Keys.R));
         assertEquals(MenuState.Screen.TITLE, title.getScreen());
     }
 
@@ -263,7 +264,7 @@ class InputControllerTest {
     void qQuitsOnlyOnASecondPressOnTitleAndPause() {
         for (MenuState.Screen screen : List.of(MenuState.Screen.TITLE, MenuState.Screen.PAUSED)) {
             MenuState menu = menuOn(screen);
-            InputController controller = new InputController(menu, new GameSettings());
+            InputController controller = TestTuning.input(menu, TestTuning.settings());
 
             assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q), "first Q on " + screen);
             assertEquals(screen, menu.getScreen());
@@ -276,7 +277,7 @@ class InputControllerTest {
     @Test
     void qPromptExpiresAfterAboutTwoSecondsAndThenNeedsTwoPressesAgain() {
         MenuState menu = menuOn(MenuState.Screen.TITLE);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q));
         assertEquals(MenuState.Command.NONE, poll(controller, 1.0f));
@@ -289,7 +290,7 @@ class InputControllerTest {
     @Test
     void leavingTheScreenCancelsThePendingQuit() {
         MenuState menu = menuOn(MenuState.Screen.TITLE);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q));
         assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
@@ -308,7 +309,7 @@ class InputControllerTest {
     void enterOnTheQuitRowQuitsAtOnce() {
         for (MenuState.Screen screen : List.of(MenuState.Screen.TITLE, MenuState.Screen.PAUSED)) {
             MenuState menu = menuOn(screen);
-            InputController controller = new InputController(menu, new GameSettings());
+            InputController controller = TestTuning.input(menu, TestTuning.settings());
             assertTrue(menu.selectId(MenuState.OptionId.QUIT));
 
             assertEquals(MenuState.Command.QUIT, poll(controller, FRAME, Input.Keys.ENTER), "QUIT row on " + screen);
@@ -318,7 +319,7 @@ class InputControllerTest {
     @Test
     void qInPlaySwapsWeaponsAndNeverQuits() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q));
         assertEquals(PlayerInput.WEAPON_QUICK_SWAP, out.weaponSlot);
@@ -330,7 +331,7 @@ class InputControllerTest {
     @Test
     void qStuckAsJustPressedWhileMinimisedNeitherShowsThePromptNorQuits() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
         minimiseWithKeyFlagged(controller, Input.Keys.Q);
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
 
@@ -350,7 +351,7 @@ class InputControllerTest {
     void rStuckAsJustPressedWhileMinimisedDoesNotRestartTheStage() {
         for (MenuState.Screen screen : List.of(MenuState.Screen.PLAYING, MenuState.Screen.DEAD)) {
             MenuState menu = menuOn(screen);
-            InputController controller = new InputController(menu, new GameSettings());
+            InputController controller = TestTuning.input(menu, TestTuning.settings());
             minimiseWithKeyFlagged(controller, Input.Keys.R);
             MenuState.Screen minimised = menu.getScreen();
             assertFalse(menu.isPlaying());
@@ -366,7 +367,7 @@ class InputControllerTest {
     @Test
     void escapeStuckAsJustPressedWhileMinimisedLeavesTheGamePaused() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
         minimiseWithKeyFlagged(controller, Input.Keys.ESCAPE);
 
         for (int frame = 1; frame <= 3; frame++) {
@@ -379,7 +380,7 @@ class InputControllerTest {
     void enterStuckAsJustPressedWhileMinimisedDoesNotConfirmResume() {
         for (int key : new int[] {Input.Keys.ENTER, Input.Keys.SPACE}) {
             MenuState menu = menuOn(MenuState.Screen.PLAYING);
-            InputController controller = new InputController(menu, new GameSettings());
+            InputController controller = TestTuning.input(menu, TestTuning.settings());
             minimiseWithKeyFlagged(controller, key);
             assertTrue(menu.selectId(MenuState.OptionId.RESUME));
 
@@ -394,7 +395,7 @@ class InputControllerTest {
     void selectionKeysStuckAsJustPressedWhileMinimisedDoNotMoveTheSelection() {
         for (int key : new int[] {Input.Keys.DOWN, Input.Keys.S, Input.Keys.UP, Input.Keys.W}) {
             MenuState menu = menuOn(MenuState.Screen.PLAYING);
-            InputController controller = new InputController(menu, new GameSettings());
+            InputController controller = TestTuning.input(menu, TestTuning.settings());
             minimiseWithKeyFlagged(controller, key);
             menu.setSelectedIndex(1);
 
@@ -408,9 +409,9 @@ class InputControllerTest {
     @Test
     void horizontalKeysStuckAsJustPressedWhileMinimisedDoNotAdjustTheSetting() {
         for (int key : new int[] {Input.Keys.LEFT, Input.Keys.A, Input.Keys.RIGHT, Input.Keys.D}) {
-            GameSettings settings = new GameSettings();
+            GameSettings settings = TestTuning.settings();
             MenuState menu = settingsMenuOnFov(settings);
-            InputController controller = new InputController(menu, settings);
+            InputController controller = TestTuning.input(menu, settings);
             minimiseWithKeyFlagged(controller, key);
             assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
             assertEquals(MenuState.OptionId.SET_FOV, menu.getSelectedOption().id);
@@ -418,7 +419,7 @@ class InputControllerTest {
             for (int frame = 1; frame <= 3; frame++) {
                 String at = "minimised frame " + frame + " with " + Input.Keys.toString(key);
                 assertEquals(MenuState.Command.NONE, pollMinimised(controller, FRAME), at);
-                assertEquals(new GameSettings().getFov(), settings.getFov(), at);
+                assertEquals(TestTuning.settings().getFov(), settings.getFov(), at);
             }
         }
     }
@@ -426,11 +427,11 @@ class InputControllerTest {
     @Test
     void aHorizontalKeyPressAdjustsTheSettingOnce() {
         for (int key : new int[] {Input.Keys.LEFT, Input.Keys.A, Input.Keys.RIGHT, Input.Keys.D}) {
-            GameSettings settings = new GameSettings();
+            GameSettings settings = TestTuning.settings();
             MenuState menu = settingsMenuOnFov(settings);
-            InputController controller = new InputController(menu, settings);
+            InputController controller = TestTuning.input(menu, settings);
             boolean lowers = key == Input.Keys.LEFT || key == Input.Keys.A;
-            GameSettings expected = new GameSettings();
+            GameSettings expected = TestTuning.settings();
             expected.adjustFov(lowers ? -1 : 1);
             float adjusted = expected.getFov();
             String name = Input.Keys.toString(key);
@@ -446,7 +447,7 @@ class InputControllerTest {
     @Test
     void leftClickStuckAsJustPressedWhileMinimisedDoesNotConfirmTheRowUnderTheCursor() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
         controller.pause();
         mouseX = 640;
         mouseY = rowY(menu, MenuState.OptionId.RESUME);
@@ -461,7 +462,7 @@ class InputControllerTest {
     @Test
     void leftClickOnAMenuRowConfirmsItOnce() {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
         int x = 640;
         int y = rowY(menu, MenuState.OptionId.QUIT);
 
@@ -475,7 +476,7 @@ class InputControllerTest {
     @Test
     void escapeStillPausesAndResumesWithOnePressEach() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ESCAPE));
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
@@ -488,7 +489,7 @@ class InputControllerTest {
     @Test
     void aKeyPressedInPlayDoesNotActOnTheMenuThatOpensLater() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.Q, Input.Keys.ENTER));
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ESCAPE));
@@ -502,7 +503,7 @@ class InputControllerTest {
     @Test
     void spaceHeldFromConfirmingResumeDoesNotJumpUntilItIsPressedAgain() {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
         assertTrue(menu.selectId(MenuState.OptionId.RESUME));
 
         held.add(Input.Keys.SPACE);
@@ -521,7 +522,7 @@ class InputControllerTest {
     @Test
     void buttonHeldFromClickingResumeDoesNotFireUntilItIsPressedAgain() {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         leftHeld = true;
         click(controller, 640, rowY(menu, MenuState.OptionId.RESUME), Input.Buttons.LEFT);
@@ -541,7 +542,7 @@ class InputControllerTest {
     void freshMouseButtonsFireAndChargeImmediatelyAfterKeyboardStartOrResume() {
         // Resuming from PAUSED via Esc with mouse buttons released must not swallow the first LMB/RMB press.
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ESCAPE));
         assertTrue(menu.isPlaying());
 
@@ -555,7 +556,7 @@ class InputControllerTest {
         leftHeld = false;
         rightHeld = false;
         MenuState directPlay = menuOn(MenuState.Screen.PLAYING);
-        InputController directController = new InputController(directPlay, new GameSettings());
+        InputController directController = TestTuning.input(directPlay, TestTuning.settings());
         leftHeld = true;
         rightHeld = true;
         poll(directController, FRAME);
@@ -566,7 +567,7 @@ class InputControllerTest {
     @Test
     void rightButtonHeldDuringResumeIsSwallowedUntilReleased() {
         MenuState menu = menuOn(MenuState.Screen.PAUSED);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         rightHeld = true;
         assertEquals(MenuState.Command.NONE, poll(controller, FRAME, Input.Keys.ESCAPE));
@@ -584,7 +585,7 @@ class InputControllerTest {
     @Test
     void quickRestartInPlayResetsHeldInputsLookDeltasAndScrollSwaps() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         // Accumulate mouse movement, scroll wheel swap, and held Space/LMB/RMB on the restart frame.
         processorOf(controller).mouseMoved(100, 100);
@@ -627,7 +628,7 @@ class InputControllerTest {
     @Test
     void quickRestartInPlayWithButtonsReleasedAllowsImmediateFreshFireAndJump() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         assertEquals(MenuState.Command.LAUNCH_STAGE, poll(controller, FRAME, Input.Keys.R));
         held.add(Input.Keys.SPACE);
@@ -645,7 +646,7 @@ class InputControllerTest {
             Input.Keys.SPACE, Input.Keys.ENTER, Input.Keys.ESCAPE, Input.Keys.R, Input.Keys.Q, Input.Keys.DOWN
         }) {
             MenuState menu = menuOn(MenuState.Screen.PLAYING);
-            InputController controller = new InputController(menu, new GameSettings());
+            InputController controller = TestTuning.input(menu, TestTuning.settings());
 
             // Simulate in-play events arriving in the same GLFW event batch right before focus loss / minimise.
             processorOf(controller).keyDown(key);
@@ -655,7 +656,7 @@ class InputControllerTest {
 
             // Also click test directly at the RESUME row coordinates before pause on a second pass.
             MenuState menuClick = menuOn(MenuState.Screen.PLAYING);
-            InputController clickController = new InputController(menuClick, new GameSettings());
+            InputController clickController = TestTuning.input(menuClick, TestTuning.settings());
             MenuState probePaused = menuOn(MenuState.Screen.PAUSED);
             click(clickController, 640, rowY(probePaused, MenuState.OptionId.RESUME), Input.Buttons.LEFT);
             clickController.pause();
@@ -693,19 +694,19 @@ class InputControllerTest {
 
                 // Same-frame Enter confirm with horizontal key pressed.
                 MenuState enterMenu = menuOn(screen);
-                InputController enterCtrl = new InputController(enterMenu, new GameSettings());
+                InputController enterCtrl = TestTuning.input(enterMenu, TestTuning.settings());
                 assertEquals(expectedCmd, poll(enterCtrl, FRAME, hKey, Input.Keys.ENTER), context + " + ENTER");
                 assertNotEquals(screen, enterMenu.getScreen(), context + " + ENTER must confirm");
 
                 // Same-frame Space confirm with horizontal key pressed.
                 MenuState spaceMenu = menuOn(screen);
-                InputController spaceCtrl = new InputController(spaceMenu, new GameSettings());
+                InputController spaceCtrl = TestTuning.input(spaceMenu, TestTuning.settings());
                 assertEquals(expectedCmd, poll(spaceCtrl, FRAME, hKey, Input.Keys.SPACE), context + " + SPACE");
                 assertNotEquals(screen, spaceMenu.getScreen(), context + " + SPACE must confirm");
 
                 // Same-frame left mouse click on default option row with horizontal key pressed.
                 MenuState clickMenu = menuOn(screen);
-                InputController clickCtrl = new InputController(clickMenu, new GameSettings());
+                InputController clickCtrl = TestTuning.input(clickMenu, TestTuning.settings());
                 click(clickCtrl, 640, rowY(clickMenu, clickMenu.getSelectedIndex()), Input.Buttons.LEFT);
                 assertEquals(expectedCmd, poll(clickCtrl, FRAME, hKey), context + " + click");
                 assertNotEquals(screen, clickMenu.getScreen(), context + " + click must confirm");
@@ -717,9 +718,9 @@ class InputControllerTest {
     void opposingVerticalMenuKeysCancelOutWithoutMovingSelectionOrQueueingMoveSounds() {
         for (MenuState.Screen screen : List.of(
             MenuState.Screen.TITLE, MenuState.Screen.PAUSED, MenuState.Screen.SETTINGS)) {
-            GameSettings settings = new GameSettings();
+            GameSettings settings = TestTuning.settings();
             MenuState menu = screen == MenuState.Screen.SETTINGS ? settingsMenuOnFov(settings) : menuOn(screen);
-            InputController controller = new InputController(menu, settings);
+            InputController controller = TestTuning.input(menu, settings);
             menu.setSelectedIndex(1);
             menu.drainSoundEvents();
 
@@ -754,12 +755,12 @@ class InputControllerTest {
 
     @Test
     void aClickOnASettingsRowChangesItsValueAndAClickOnAnyOtherRowConfirmsIt() {
-        int rows = settingsMenuOnFov(new GameSettings()).getMenuOptions().size();
+        int rows = settingsMenuOnFov(TestTuning.settings()).getMenuOptions().size();
         int settingRows = 0;
         for (int row = 0; row < rows; row++) {
-            GameSettings settings = new GameSettings();
+            GameSettings settings = TestTuning.settings();
             MenuState menu = settingsMenuOnFov(settings);
-            InputController controller = new InputController(menu, settings);
+            InputController controller = TestTuning.input(menu, settings);
             MenuState.Option option = menu.getMenuOptions().get(row);
             // Left of the centre: one step down for a slider, the other state for a switch.
             click(controller, 500, rowY(menu, row), Input.Buttons.LEFT);
@@ -770,7 +771,7 @@ class InputControllerTest {
                 assertEquals(option.id, menu.getSelectedOption().id);
                 assertNotEquals(option.label, menu.getSelectedOption().label, option.id + " shows a new value");
                 // A click steps the way its side of the row says; confirming the row would step up.
-                GameSettings start = new GameSettings();
+                GameSettings start = TestTuning.settings();
                 assertTrue(settings.getMouseSensitivity() <= start.getMouseSensitivity(), option.id.name());
                 assertTrue(settings.getFov() <= start.getFov(), option.id.name());
                 assertTrue(settings.getMasterVolume() <= start.getMasterVolume(), option.id.name());
@@ -787,9 +788,9 @@ class InputControllerTest {
 
     @Test
     void opposingHorizontalSettingsKeysCancelOutWithoutSteppingSlidersFlippingTogglesOrSwallowingConfirm() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         MenuState menu = settingsMenuOnFov(settings);
-        InputController controller = new InputController(menu, settings);
+        InputController controller = TestTuning.input(menu, settings);
         menu.drainSoundEvents();
 
         int[][] opposingHorizontal = {
@@ -800,7 +801,7 @@ class InputControllerTest {
         };
         for (int[] keys : opposingHorizontal) {
             assertEquals(MenuState.Command.NONE, poll(controller, FRAME, keys));
-            assertEquals(new GameSettings().getFov(), settings.getFov(), 1e-6f,
+            assertEquals(TestTuning.settings().getFov(), settings.getFov(), 1e-6f,
                 "opposing horizontal keys must not step FOV");
             assertTrue(menu.drainSoundEvents().isEmpty(),
                 "opposing horizontal keys must emit no sound");
@@ -825,7 +826,7 @@ class InputControllerTest {
             "cancelled A+D on Settings must fall through to same-frame Enter");
 
         MenuState clickSettings = settingsMenuOnFov(settings);
-        InputController clickCtrl = new InputController(clickSettings, settings);
+        InputController clickCtrl = TestTuning.input(clickSettings, settings);
         click(clickCtrl, 640, rowY(clickSettings, MenuState.OptionId.BACK), Input.Buttons.LEFT);
         assertEquals(MenuState.Command.NONE, poll(clickCtrl, FRAME, Input.Keys.LEFT, Input.Keys.RIGHT));
         assertEquals(MenuState.Screen.PAUSED, clickSettings.getScreen(),
@@ -835,7 +836,7 @@ class InputControllerTest {
     @Test
     void scrollCallbacksAccumulateNetVerticalDeltaPerFrameAndCancelOpposingScrolls() {
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
-        InputController controller = new InputController(menu, new GameSettings());
+        InputController controller = TestTuning.input(menu, TestTuning.settings());
 
         // Single positive and negative scroll detents map to NEXT and PREV once, then reset.
         assertTrue(processorOf(controller).scrolled(0f, 1f));
@@ -897,7 +898,7 @@ class InputControllerTest {
     void accumulatedScrollResetsOnWindowPauseEscapeMenuAndDirectWeaponKeys() {
         // Uncaptured scroll on menus returns false and does not leak on resume.
         MenuState paused = menuOn(MenuState.Screen.PAUSED);
-        InputController pausedCtrl = new InputController(paused, new GameSettings());
+        InputController pausedCtrl = TestTuning.input(paused, TestTuning.settings());
         assertFalse(processorOf(pausedCtrl).scrolled(0f, 1f));
         poll(pausedCtrl, FRAME, Input.Keys.ESCAPE);
         assertTrue(paused.isPlaying());
@@ -906,7 +907,7 @@ class InputControllerTest {
 
         // Scroll accumulated in play before window pause() is cleared.
         MenuState playing = menuOn(MenuState.Screen.PLAYING);
-        InputController ctrl = new InputController(playing, new GameSettings());
+        InputController ctrl = TestTuning.input(playing, TestTuning.settings());
         assertTrue(processorOf(ctrl).scrolled(0f, 1f));
         ctrl.pause();
         assertEquals(MenuState.Screen.PAUSED, playing.getScreen());
@@ -940,10 +941,10 @@ class InputControllerTest {
 
     @Test
     void minimapKeyTogglesPersistentSettingDuringPlayWithoutDroppingOtherInputs() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         assertTrue(settings.isMinimap());
-        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
-        InputController controller = new InputController(playing, settings);
+        MenuState playing = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        InputController controller = TestTuning.input(playing, settings);
 
         held.add(Input.Keys.W);
         leftHeld = true;
@@ -975,8 +976,8 @@ class InputControllerTest {
         assertTrue(playing.drainSoundEvents().isEmpty());
 
         MenuState playingMin = menuOn(MenuState.Screen.PLAYING);
-        GameSettings minSettings = new GameSettings();
-        InputController minController = new InputController(playingMin, minSettings);
+        GameSettings minSettings = TestTuning.settings();
+        InputController minController = TestTuning.input(playingMin, minSettings);
         minimiseWithKeyFlagged(minController, Input.Keys.M);
         for (int frame = 0; frame < 3; frame++) {
             assertEquals(MenuState.Command.NONE, pollMinimised(minController, FRAME));

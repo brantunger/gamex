@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
+import io.github.brantunger.gamex.weapon.WeaponTuning;
 import io.github.brantunger.gamex.world.WorldTuning.NoiseEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -14,63 +15,88 @@ import org.junit.jupiter.api.function.Executable;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Checks the world tuning file: what it ships with, what a changed value does, and its errors. */
+/**
+ * Checks the world tuning file: that each key sets its own value, that the shipped file loads, what a changed value
+ * does, and its errors.
+ */
 class WorldTuningTest {
 
     private static final WorldTuning G = TestTuning.WORLD;
 
-    private static void assertNoise(NoiseEvent event, float losRange, float muffledRange) {
-        assertEquals(losRange, G.noise(event).losRange, 0f, event + " line of sight");
-        assertEquals(muffledRange, G.noise(event).muffledRange, 0f, event + " muffled");
+    /** The tests' own files, in which every number differs from the shipped one and from every other. */
+    private static final String FIXTURE = "data-fixtures/world.txt";
+    private static final String WEAPONS_FIXTURE = "data-fixtures/weapons.txt";
+
+    private static void assertNoise(WorldTuning tuning, NoiseEvent event, float losRange, float muffledRange) {
+        assertEquals(losRange, tuning.noise(event).losRange, 0f, event + " line of sight");
+        assertEquals(muffledRange, tuning.noise(event).muffledRange, 0f, event + " muffled");
     }
 
-    /** The values are the constants and literals {@code Pickup.Kind} and the simulation held in commit 10cd4a4. */
+    /**
+     * The values on the right are those of the test's own file, where no two numbers are alike, so a key read into
+     * another key's field, or a value still held in code, shows.
+     */
     @Test
-    void theShippedFileHoldsTheValuesTheCodeHadBeforeIt() {
-        assertEquals(25f, G.pickupMedkit, 0f);
-        assertEquals(25f, G.pickupArmor, 0f);
-        assertEquals(35f, G.pickupEnergyCell, 0f);
+    void everyKeyOfAWorldFileSetsItsOwnValue() {
+        WorldTuning t = WorldTuning.parse(FIXTURE, AssetText.read("data", FIXTURE));
+        assertEquals(26f, t.pickupMedkit, 0f);
+        assertEquals(27f, t.pickupArmor, 0f);
+        assertEquals(36f, t.pickupEnergyCell, 0f);
 
-        assertEquals(2.2f, G.canisterBlastRadius, 0f);
-        assertEquals(80f, G.canisterBlastDamage, 0f);
-        assertEquals(0.5f, G.canisterSelfDamageScale, 0f);
+        assertEquals(2.244f, t.canisterBlastRadius, 0f);
+        assertEquals(81f, t.canisterBlastDamage, 0f);
+        assertEquals(0.515f, t.canisterSelfDamageScale, 0f);
 
-        assertEquals(8f, G.grateDamage, 0f);
-        assertEquals(0.35f, G.grateInterval, 0f);
-        assertEquals(0.06f, G.grateClearanceHeight, 0f);
+        assertEquals(9f, t.grateDamage, 0f);
+        assertEquals(0.364f, t.grateInterval, 0f);
+        assertEquals(0.063f, t.grateClearanceHeight, 0f);
 
-        assertEquals(0.16f, G.hitMarkerTime, 0f);
-        assertEquals(2.0f, G.toastTime, 0f);
-        assertEquals(12f, G.minimapRevealRadius, 0f);
+        assertEquals(0.1696f, t.hitMarkerTime, 0f);
+        assertEquals(2.14f, t.toastTime, 0f);
+        assertEquals(13.5f, t.minimapRevealRadius, 0f);
 
         assertEquals(10, NoiseEvent.values().length, "a new noise needs its line here");
-        assertNoise(NoiseEvent.BLAST_DETONATION, 11.0f, 5.5f);
-        assertNoise(NoiseEvent.CONSOLE_OVERRIDE, 12.0f, 7.0f);
-        assertNoise(NoiseEvent.PISTOL_SHOT, 9.0f, 4.5f);
-        assertNoise(NoiseEvent.PISTOL_HIT, 5.0f, 3.0f);
-        assertNoise(NoiseEvent.RAIL_SHOT, 15.0f, 7.5f);
-        assertNoise(NoiseEvent.RAIL_HIT, 7.0f, 4.0f);
-        assertNoise(NoiseEvent.SCATTERGUN_SHOT, 11.0f, 5.5f);
-        assertNoise(NoiseEvent.SCATTERGUN_DOUBLE_SHOT, 13.0f, 6.5f);
-        assertNoise(NoiseEvent.SCATTERGUN_HIT, 5.0f, 3.0f);
-        assertNoise(NoiseEvent.CANISTER_EXPLOSION, 11.0f, 5.5f);
+        assertNoise(t, NoiseEvent.BLAST_DETONATION, 12f, 5.94f);
+        assertNoise(t, NoiseEvent.CONSOLE_OVERRIDE, 13f, 8f);
+        assertNoise(t, NoiseEvent.PISTOL_SHOT, 10f, 4.905f);
+        assertNoise(t, NoiseEvent.PISTOL_HIT, 6f, 4f);
+        assertNoise(t, NoiseEvent.RAIL_SHOT, 16f, 8.25f);
+        assertNoise(t, NoiseEvent.RAIL_HIT, 11f, 5f);
+        assertNoise(t, NoiseEvent.SCATTERGUN_SHOT, 14f, 6.105f);
+        assertNoise(t, NoiseEvent.SCATTERGUN_DOUBLE_SHOT, 15f, 7.28f);
+        assertNoise(t, NoiseEvent.SCATTERGUN_HIT, 7f, 17f);
+        assertNoise(t, NoiseEvent.CANISTER_EXPLOSION, 18f, 6.215f);
     }
 
-    /** What each kind of pickup gave on Normal in commit 10cd4a4, where {@code Pickup.Kind} held the amounts. */
+    /** Each kind of pickup gives the amount of its own key, of the world file or of the weapon file. */
     @Test
-    void thePickupsGiveWhatTheirKindsHeldBeforeTheFile() {
-        assertEquals(25f, Pickup.baseAmount(Pickup.Kind.MEDKIT, G, TestTuning.WEAPONS), 0f);
-        assertEquals(25f, Pickup.baseAmount(Pickup.Kind.ARMOR, G, TestTuning.WEAPONS), 0f);
-        assertEquals(35f, Pickup.baseAmount(Pickup.Kind.ENERGY_CELL, G, TestTuning.WEAPONS), 0f);
-        assertEquals(0f, Pickup.baseAmount(Pickup.Kind.AMBER_KEYCARD, G, TestTuning.WEAPONS), 0f);
-        assertEquals(0f, Pickup.baseAmount(Pickup.Kind.CYAN_KEYCARD, G, TestTuning.WEAPONS), 0f);
-        assertEquals(8f, Pickup.baseAmount(Pickup.Kind.SCATTERGUN, G, TestTuning.WEAPONS), 0f);
-        assertEquals(6f, Pickup.baseAmount(Pickup.Kind.SHELLS, G, TestTuning.WEAPONS), 0f);
-        assertEquals(5f, Pickup.baseAmount(Pickup.Kind.RAIL_LANCE, G, TestTuning.WEAPONS), 0f);
-        assertEquals(3f, Pickup.baseAmount(Pickup.Kind.RAIL_SLUGS, G, TestTuning.WEAPONS), 0f);
+    void everyKindOfPickupGivesTheAmountOfItsOwnKey() {
+        WorldTuning world = WorldTuning.parse(FIXTURE, AssetText.read("data", FIXTURE));
+        WeaponTuning weapons = WeaponTuning.parse(WEAPONS_FIXTURE, AssetText.read("data", WEAPONS_FIXTURE));
+        assertEquals(26f, Pickup.baseAmount(Pickup.Kind.MEDKIT, world, weapons), 0f);
+        assertEquals(27f, Pickup.baseAmount(Pickup.Kind.ARMOR, world, weapons), 0f);
+        assertEquals(36f, Pickup.baseAmount(Pickup.Kind.ENERGY_CELL, world, weapons), 0f);
+        assertEquals(0f, Pickup.baseAmount(Pickup.Kind.AMBER_KEYCARD, world, weapons), 0f);
+        assertEquals(0f, Pickup.baseAmount(Pickup.Kind.CYAN_KEYCARD, world, weapons), 0f);
+        assertEquals(9f, Pickup.baseAmount(Pickup.Kind.SCATTERGUN, world, weapons), 0f);
+        assertEquals(7f, Pickup.baseAmount(Pickup.Kind.SHELLS, world, weapons), 0f);
+        assertEquals(12f, Pickup.baseAmount(Pickup.Kind.RAIL_LANCE, world, weapons), 0f);
+        assertEquals(4f, Pickup.baseAmount(Pickup.Kind.RAIL_SLUGS, world, weapons), 0f);
         assertEquals(9, Pickup.Kind.values().length, "a new kind needs its amount here");
         // The collision radius is geometry the models are sculpted to; it stays in code.
         assertEquals(0.22f, Pickup.RADIUS, 0f);
+    }
+
+    /** Whatever values the shipped file holds, it loads and gives every noise its two ranges. */
+    @Test
+    void theShippedFileLoads() {
+        WorldTuning shipped = WorldTuning.load();
+        for (NoiseEvent event : NoiseEvent.values()) {
+            assertTrue(shipped.noise(event).losRange >= 0f && shipped.noise(event).muffledRange >= 0f,
+                event.toString());
+        }
+        assertTrue(shipped.pickupMedkit >= 1f && shipped.pickupArmor >= 1f && shipped.pickupEnergyCell >= 1f);
+        assertTrue(shipped.minimapRevealRadius > 0f);
     }
 
     @Test
@@ -88,7 +114,7 @@ class WorldTuningTest {
     }
 
     private static String error(String key, String value) {
-        String text = TestTuning.withValue(AssetText.read("data", WorldTuning.PATH), key, value);
+        String text = TestTuning.withValue(TestTuning.text(WorldTuning.PATH), key, value);
         return assertThrows(IllegalArgumentException.class, () -> WorldTuning.parse(WorldTuning.PATH, text))
             .getMessage();
     }
@@ -119,7 +145,7 @@ class WorldTuningTest {
         assertEquals("Missing 'noise.pistol_hit' key in data/world.txt", error("noise.pistol_hit", null));
 
         String unknown = assertThrows(IllegalArgumentException.class, () -> WorldTuning.parse(
-            WorldTuning.PATH, "noise.footstep: 3, 1\n" + AssetText.read("data", WorldTuning.PATH))).getMessage();
+            WorldTuning.PATH, "noise.footstep: 3, 1\n" + TestTuning.text(WorldTuning.PATH))).getMessage();
         assertEquals("Unknown key 'noise.footstep' in data/world.txt at line 1", unknown);
 
         for (String[] bad : new String[][] {

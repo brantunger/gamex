@@ -1,0 +1,5 @@
+// The texture of each wall type: the character a map layout draws the wall with, then the .png file in
+// assets/textures/ that covers it. Every wall character the game knows (#, % and &) needs one line.
+#: brick.png
+%: panel.png
+&: stone.png

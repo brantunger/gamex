@@ -3,6 +3,7 @@ package io.github.brantunger.gamex.render;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,8 +17,6 @@ import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.model.ModelPalette;
 import io.github.brantunger.gamex.model.ModelVertices;
 import io.github.brantunger.gamex.model.ObjModel;
-import io.github.brantunger.gamex.settings.SettingsDefaults;
-import io.github.brantunger.gamex.settings.WindowDefaults;
 import io.github.brantunger.gamex.weapon.HandModel;
 import io.github.brantunger.gamex.weapon.PistolModel;
 import io.github.brantunger.gamex.weapon.RailLanceModel;
@@ -32,9 +31,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Verifies the palette files and {@code data/render.txt}: the shipped files hold the colours and settings the game
- * had in code, an edited value reaches the packed vertices and the renderer's arithmetic, and every mistake in a
- * file is reported with the file and the key.
+ * Verifies the palette files and {@code data/render.txt}: every key sets its own value, the shipped files load, an
+ * edited value reaches the packed vertices and the renderer's arithmetic, and every mistake in a file is reported
+ * with the file and the key.
  */
 class PalettesTest {
 
@@ -43,6 +42,8 @@ class PalettesTest {
 
     private static final String WORLD_FILE = "data/test-palette-world.txt";
     private static final String RENDER_FILE = "data/test-render.txt";
+    /** The test's own render settings, in which every value differs from the shipped one and from every other. */
+    private static final String RENDER_FIXTURE = "data-fixtures/render.txt";
 
     private static final Palettes PALETTES = TestTuning.PALETTES;
     private static final RenderSettings RENDER = TestTuning.RENDER;
@@ -51,148 +52,29 @@ class PalettesTest {
         return new float[] {red, green, blue, gloss};
     }
 
-    // The five tables below are the Material enums and ACCENT_ arrays of WorldModels, PistolModel, ScattergunModel,
-    // RailLanceModel and HandModel as they were at 10cd4a4, before the colours moved to assets/data/.
-
-    private static Map<String, float[]> worldBeforeTheMove() {
-        Map<String, float[]> expected = new LinkedHashMap<>();
-        expected.put("material.canister_body", rgbg(0.22f, 0.82f, 0.71f, 0.45f));
-        expected.put("material.canister_band", rgbg(0.16f, 0.27f, 0.30f, 0.3f));
-        expected.put("material.canister_cap", rgbg(0.50f, 0.53f, 0.55f, 0.8f));
-        expected.put("material.canister_emblem", rgbg(0.91f, 0.96f, 0.81f, 0.2f));
-        expected.put("material.board_foot", rgbg(0.36f, 0.35f, 0.33f, 0.2f));
-        expected.put("material.board_post", rgbg(0.47f, 0.45f, 0.42f, 0.3f));
-        expected.put("material.board_rim", rgbg(0.12f, 0.10f, 0.18f, 0.2f));
-        expected.put("material.board_white", rgbg(0.91f, 0.90f, 0.85f, 0.1f));
-        expected.put("material.board_violet", rgbg(0.41f, 0.27f, 0.77f, 0.2f));
-        expected.put("material.board_bullseye", rgbg(0.89f, 0.24f, 0.56f, 0.3f));
-        expected.put("material.orb_core", rgbg(0.95f, 0.85f, 1.00f, 1.0f));
-        expected.put("material.orb_shell", rgbg(0.62f, 0.32f, 1.00f, 0.8f));
-        expected.put("material.medkit_case", rgbg(0.90f, 0.92f, 0.90f, 0.35f));
-        expected.put("material.medkit_trim", rgbg(0.30f, 0.35f, 0.38f, 0.5f));
-        expected.put("material.medkit_cross", rgbg(0.92f, 0.20f, 0.26f, 0.4f));
-        expected.put("material.armor_plate", rgbg(0.18f, 0.52f, 0.86f, 0.65f));
-        expected.put("material.armor_trim", rgbg(0.42f, 0.48f, 0.56f, 0.75f));
-        expected.put("material.armor_core", rgbg(0.45f, 0.92f, 1.00f, 0.9f));
-        expected.put("material.cell_cap", rgbg(0.32f, 0.28f, 0.42f, 0.6f));
-        expected.put("material.cell_core", rgbg(0.76f, 0.42f, 1.00f, 0.95f));
-        expected.put("material.bot_armor", rgbg(0.34f, 0.37f, 0.43f, 0.65f));
-        expected.put("material.bot_dark", rgbg(0.15f, 0.17f, 0.21f, 0.40f));
-        expected.put("material.bot_trim", rgbg(0.52f, 0.56f, 0.63f, 0.80f));
-        expected.put("material.bot_visor", rgbg(1.00f, 0.22f, 0.28f, 0.95f));
-        expected.put("material.bot_core", rgbg(1.00f, 0.48f, 0.18f, 0.90f));
-        expected.put("material.bolt_core", rgbg(1.00f, 0.82f, 0.78f, 1.00f));
-        expected.put("material.bolt_shell", rgbg(1.00f, 0.22f, 0.26f, 0.85f));
-        expected.put("material.door_armor", rgbg(0.36f, 0.40f, 0.46f, 0.55f));
-        expected.put("material.door_trim", rgbg(0.22f, 0.25f, 0.30f, 0.65f));
-        expected.put("material.door_dark", rgbg(0.13f, 0.15f, 0.18f, 0.35f));
-        expected.put("material.door_status", rgbg(0.62f, 0.78f, 0.92f, 0.85f));
-        expected.put("material.keycard_body", rgbg(1.00f, 0.72f, 0.16f, 0.85f));
-        expected.put("material.keycard_trim", rgbg(0.22f, 0.25f, 0.30f, 0.70f));
-        expected.put("material.keycard_stripe", rgbg(0.12f, 0.14f, 0.18f, 0.50f));
-        expected.put("material.keycard_chip", rgbg(0.98f, 0.94f, 0.68f, 0.95f));
-        expected.put("material.console_dark", rgbg(0.16f, 0.19f, 0.23f, 0.45f));
-        expected.put("material.console_body", rgbg(0.30f, 0.34f, 0.40f, 0.60f));
-        expected.put("material.console_trim", rgbg(0.48f, 0.52f, 0.58f, 0.75f));
-        expected.put("material.console_keypad", rgbg(0.20f, 0.24f, 0.28f, 0.40f));
-        expected.put("material.console_screen", rgbg(0.98f, 0.28f, 0.22f, 0.95f));
-        expected.put("material.shotgun_metal", rgbg(0.25f, 0.28f, 0.33f, 0.70f));
-        expected.put("material.shotgun_dark", rgbg(0.11f, 0.13f, 0.16f, 0.45f));
-        expected.put("material.shotgun_polymer", rgbg(0.26f, 0.28f, 0.32f, 0.18f));
-        expected.put("material.shotgun_wood", rgbg(0.46f, 0.27f, 0.14f, 0.22f));
-        expected.put("material.shell_crimson", rgbg(0.88f, 0.17f, 0.20f, 0.45f));
-        expected.put("material.shell_brass", rgbg(0.96f, 0.72f, 0.22f, 0.80f));
-        expected.put("material.shell_crate", rgbg(0.20f, 0.26f, 0.22f, 0.30f));
-        expected.put("material.hazard_frame", rgbg(0.22f, 0.25f, 0.30f, 0.65f));
-        expected.put("material.hazard_dark", rgbg(0.08f, 0.10f, 0.12f, 0.30f));
-        expected.put("material.hazard_coil", rgbg(0.18f, 0.86f, 1.00f, 0.95f));
-        expected.put("material.rail_metal", rgbg(0.24f, 0.28f, 0.35f, 0.72f));
-        expected.put("material.rail_dark", rgbg(0.10f, 0.12f, 0.16f, 0.45f));
-        expected.put("material.rail_copper", rgbg(0.88f, 0.54f, 0.22f, 0.80f));
-        expected.put("material.rail_core", rgbg(0.18f, 0.94f, 1.00f, 0.98f));
-        expected.put("material.rail_beam", rgbg(0.36f, 0.96f, 1.00f, 1.00f));
-        expected.put("material.rail_beam_core", rgbg(0.88f, 0.98f, 1.00f, 1.00f));
-        expected.put("accent.door_unlocked", rgbg(0.62f, 0.78f, 0.92f, 0.85f));
-        expected.put("accent.door_amber", rgbg(1.00f, 0.72f, 0.16f, 0.95f));
-        expected.put("accent.door_cyan", rgbg(0.18f, 0.92f, 0.98f, 0.95f));
-        expected.put("accent.door_lockdown", rgbg(0.98f, 0.22f, 0.24f, 0.95f));
-        expected.put("accent.door_boss", rgbg(0.84f, 0.24f, 0.96f, 0.95f));
-        expected.put("accent.door_open", rgbg(0.24f, 0.96f, 0.48f, 0.95f));
-        expected.put("accent.keycard_amber", rgbg(1.00f, 0.72f, 0.16f, 0.85f));
-        expected.put("accent.keycard_cyan", rgbg(0.18f, 0.92f, 0.98f, 0.85f));
-        expected.put("accent.console_locked", rgbg(0.98f, 0.28f, 0.22f, 0.95f));
-        expected.put("accent.console_active", rgbg(0.24f, 0.96f, 0.48f, 0.95f));
-        expected.put("accent.warden_phase1", rgbg(1.00f, 0.30f, 0.14f, 0.96f));
-        expected.put("accent.warden_overdrive", rgbg(0.42f, 0.54f, 1.00f, 0.98f));
-        expected.put("accent.hazard_live", rgbg(0.18f, 0.86f, 1.00f, 0.95f));
-        expected.put("accent.rail_ready", rgbg(0.18f, 0.94f, 1.00f, 0.98f));
-        expected.put("accent.rail_beam", rgbg(0.36f, 0.96f, 1.00f, 1.00f));
-        return expected;
-    }
-
-    private static Map<String, float[]> pistolBeforeTheMove() {
-        Map<String, float[]> expected = new LinkedHashMap<>();
-        expected.put("material.gunmetal", rgbg(0.23f, 0.25f, 0.30f, 0.6f));
-        expected.put("material.gunmetal_top", rgbg(0.28f, 0.30f, 0.36f, 1f));
-        expected.put("material.dark_metal", rgbg(0.08f, 0.09f, 0.11f, 0.4f));
-        expected.put("material.steel", rgbg(0.60f, 0.62f, 0.68f, 1f));
-        expected.put("material.bore", rgbg(0.02f, 0.02f, 0.03f, 0f));
-        expected.put("material.brass", rgbg(0.95f, 0.66f, 0.20f, 0.6f));
-        expected.put("material.sight_dot", rgbg(0.88f, 0.90f, 0.86f, 0f));
-        expected.put("material.polymer", rgbg(0.34f, 0.29f, 0.21f, 0f));
-        expected.put("material.polymer_dark", rgbg(0.24f, 0.205f, 0.15f, 0f));
-        expected.put("material.stipple", rgbg(0.41f, 0.355f, 0.26f, 0f));
-        return expected;
-    }
-
-    private static Map<String, float[]> scattergunBeforeTheMove() {
-        Map<String, float[]> expected = new LinkedHashMap<>();
-        expected.put("material.gunmetal", rgbg(0.22f, 0.25f, 0.30f, 0.6f));
-        expected.put("material.gunmetal_top", rgbg(0.28f, 0.30f, 0.36f, 1f));
-        expected.put("material.dark_metal", rgbg(0.08f, 0.09f, 0.11f, 0.4f));
-        expected.put("material.steel", rgbg(0.60f, 0.62f, 0.68f, 1f));
-        expected.put("material.bore", rgbg(0.02f, 0.02f, 0.03f, 0f));
-        expected.put("material.brass", rgbg(0.95f, 0.68f, 0.22f, 0.7f));
-        expected.put("material.sight_dot", rgbg(0.88f, 0.90f, 0.86f, 0f));
-        expected.put("material.sight_amber", rgbg(1.00f, 0.66f, 0.14f, 0.3f));
-        expected.put("material.polymer", rgbg(0.24f, 0.26f, 0.30f, 0.15f));
-        expected.put("material.polymer_dark", rgbg(0.14f, 0.15f, 0.18f, 0.10f));
-        expected.put("material.stipple", rgbg(0.30f, 0.32f, 0.36f, 0.10f));
-        expected.put("material.shell_red", rgbg(0.84f, 0.16f, 0.20f, 0.45f));
-        expected.put("material.heatshield", rgbg(0.16f, 0.18f, 0.22f, 0.60f));
-        expected.put("material.wood", rgbg(0.46f, 0.27f, 0.14f, 0.22f));
-        expected.put("material.wood_dark", rgbg(0.31f, 0.17f, 0.09f, 0.15f));
-        return expected;
-    }
-
-    private static Map<String, float[]> railLanceBeforeTheMove() {
-        Map<String, float[]> expected = new LinkedHashMap<>();
-        expected.put("material.gunmetal", rgbg(0.22f, 0.25f, 0.31f, 0.65f));
-        expected.put("material.gunmetal_top", rgbg(0.30f, 0.33f, 0.40f, 1f));
-        expected.put("material.dark_metal", rgbg(0.08f, 0.09f, 0.12f, 0.45f));
-        expected.put("material.steel", rgbg(0.62f, 0.66f, 0.72f, 1f));
-        expected.put("material.bore", rgbg(0.02f, 0.02f, 0.03f, 0f));
-        expected.put("material.polymer", rgbg(0.22f, 0.24f, 0.28f, 0.15f));
-        expected.put("material.polymer_dark", rgbg(0.13f, 0.14f, 0.17f, 0.10f));
-        expected.put("material.stipple", rgbg(0.28f, 0.30f, 0.35f, 0.10f));
-        expected.put("material.sight_dot", rgbg(0.32f, 0.96f, 1.00f, 0.60f));
-        expected.put("material.optic_glass", rgbg(0.14f, 0.68f, 0.92f, 0.95f));
-        expected.put("material.rail_copper", rgbg(0.88f, 0.54f, 0.22f, 0.80f));
-        expected.put("material.rail_core", rgbg(0.18f, 0.94f, 1.00f, 0.98f));
-        expected.put("accent.ready", rgbg(0.18f, 0.94f, 1.00f, 0.98f));
-        expected.put("accent.recharging", rgbg(1.00f, 0.44f, 0.14f, 0.70f));
-        expected.put("accent.empty", rgbg(0.42f, 0.14f, 0.16f, 0.35f));
-        return expected;
-    }
-
-    private static Map<String, float[]> handBeforeTheMove() {
-        Map<String, float[]> expected = new LinkedHashMap<>();
-        expected.put("material.glove", rgbg(0.200f, 0.202f, 0.220f, 0f));
-        expected.put("material.pads", rgbg(0.250f, 0.252f, 0.272f, 0f));
-        expected.put("material.cuff", rgbg(0.270f, 0.270f, 0.295f, 0f));
-        expected.put("material.strap", rgbg(0.100f, 0.100f, 0.115f, 0f));
-        expected.put("material.sleeve", rgbg(0.330f, 0.370f, 0.220f, 0f));
-        return expected;
+    /**
+     * Gives every row of a palette file four numbers no other row has, so a material that took another's row, or a
+     * colour still held in code, shows.
+     * @param text the text of a palette file
+     * @param expected filled with the colour given to each key
+     * @return the text with every colour replaced
+     */
+    private static String withAColourOfItsOwnPerRow(String text, Map<String, float[]> expected) {
+        StringBuilder out = new StringBuilder();
+        for (String line : AssetText.splitLines(text)) {
+            int colon = line.indexOf(':');
+            if (AssetText.isComment(line.trim()) || colon < 0) {
+                out.append(line).append('\n');
+                continue;
+            }
+            int row = expected.size();
+            float[] colour = rgbg((4 * row + 1) / 1024f, (4 * row + 2) / 1024f, (4 * row + 3) / 1024f,
+                (4 * row + 4) / 1024f);
+            expected.put(line.substring(0, colon), colour);
+            out.append(line, 0, colon).append(": ").append(colour[0]).append(", ").append(colour[1]).append(", ")
+                .append(colour[2]).append(", ").append(colour[3]).append('\n');
+        }
+        return out.toString();
     }
 
     /** Compares every colour of a palette with the table, bit for bit, in both directions. */
@@ -222,15 +104,28 @@ class PalettesTest {
     }
 
     @Test
-    void shippedPalettesHoldEveryColourTheModelsHadInCode() {
+    void everyRowOfAPaletteFileSetsItsOwnColour() {
         // The enums fix which names a file must hold, so a table as long as its enum covers the whole file.
-        assertPalette(worldBeforeTheMove(), PALETTES.world, WorldModels.Material.values().length,
-            WorldModels.Accent.values().length);
-        assertPalette(pistolBeforeTheMove(), PALETTES.pistol, PistolModel.Material.values().length, 0);
-        assertPalette(scattergunBeforeTheMove(), PALETTES.scattergun, ScattergunModel.Material.values().length, 0);
-        assertPalette(railLanceBeforeTheMove(), PALETTES.railLance, RailLanceModel.Material.values().length,
-            RailLanceModel.Accent.values().length);
-        assertPalette(handBeforeTheMove(), PALETTES.hand, HandModel.Material.values().length, 0);
+        Map<String, float[]> world = new LinkedHashMap<>();
+        assertPalette(world, WorldModels.parsePalette(WorldModels.PALETTE_PATH,
+            withAColourOfItsOwnPerRow(TestTuning.text(WorldModels.PALETTE_PATH), world)),
+            WorldModels.Material.values().length, WorldModels.Accent.values().length);
+        Map<String, float[]> pistol = new LinkedHashMap<>();
+        assertPalette(pistol, PistolModel.parsePalette(PistolModel.PALETTE_PATH,
+            withAColourOfItsOwnPerRow(TestTuning.text(PistolModel.PALETTE_PATH), pistol)),
+            PistolModel.Material.values().length, 0);
+        Map<String, float[]> scattergun = new LinkedHashMap<>();
+        assertPalette(scattergun, ScattergunModel.parsePalette(ScattergunModel.PALETTE_PATH,
+            withAColourOfItsOwnPerRow(TestTuning.text(ScattergunModel.PALETTE_PATH), scattergun)),
+            ScattergunModel.Material.values().length, 0);
+        Map<String, float[]> railLance = new LinkedHashMap<>();
+        assertPalette(railLance, RailLanceModel.parsePalette(RailLanceModel.PALETTE_PATH,
+            withAColourOfItsOwnPerRow(TestTuning.text(RailLanceModel.PALETTE_PATH), railLance)),
+            RailLanceModel.Material.values().length, RailLanceModel.Accent.values().length);
+        Map<String, float[]> hand = new LinkedHashMap<>();
+        assertPalette(hand, HandModel.parsePalette(HandModel.PALETTE_PATH,
+            withAColourOfItsOwnPerRow(TestTuning.text(HandModel.PALETTE_PATH), hand)),
+            HandModel.Material.values().length, 0);
 
         assertEquals(56, WorldModels.Material.values().length);
         assertEquals(15, WorldModels.Accent.values().length);
@@ -241,28 +136,47 @@ class PalettesTest {
         assertEquals(5, HandModel.Material.values().length);
     }
 
+    /** Whatever colours and settings the shipped files hold, they load and name what the enums name. */
+    @Test
+    void theShippedPalettesAndRenderSettingsLoad() {
+        assertNamesTheMaterialsAndAccentsOfTheEnums(Palettes.load());
+
+        RenderSettings shipped = RenderSettings.load();
+        assertTrue(shipped.clipNear > 0f && shipped.clipNear < shipped.clipFar);
+        assertTrue(shipped.fogStart < shipped.fogEnd);
+        for (Pickup.Kind kind : Pickup.Kind.values()) {
+            assertEquals(ModelPalette.COMPONENTS, shipped.pickupHalo(kind).length, kind.name());
+        }
+        for (Door.LockKind lock : Door.LockKind.values()) assertNotNull(shipped.doorAccent(lock), lock.name());
+        assertNotNull(shipped.doorOpeningAccent);
+    }
+
     @Test
     void paletteFilesNameTheirMaterialsAndAccentsAsTheEnumsDo() {
+        assertNamesTheMaterialsAndAccentsOfTheEnums(PALETTES);
+    }
+
+    private static void assertNamesTheMaterialsAndAccentsOfTheEnums(Palettes palettes) {
         for (WorldModels.Material material : WorldModels.Material.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.world.colour(material.name).length, material.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.world.colour(material.name).length, material.name);
         }
         for (WorldModels.Accent accent : WorldModels.Accent.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.world.accent(accent.name).length, accent.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.world.accent(accent.name).length, accent.name);
         }
         for (PistolModel.Material material : PistolModel.Material.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.pistol.colour(material.name).length, material.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.pistol.colour(material.name).length, material.name);
         }
         for (ScattergunModel.Material material : ScattergunModel.Material.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.scattergun.colour(material.name).length, material.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.scattergun.colour(material.name).length, material.name);
         }
         for (RailLanceModel.Material material : RailLanceModel.Material.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.railLance.colour(material.name).length, material.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.railLance.colour(material.name).length, material.name);
         }
         for (RailLanceModel.Accent accent : RailLanceModel.Accent.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.railLance.accent(accent.name).length, accent.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.railLance.accent(accent.name).length, accent.name);
         }
         for (HandModel.Material material : HandModel.Material.values()) {
-            assertEquals(ModelPalette.COMPONENTS, PALETTES.hand.colour(material.name).length, material.name);
+            assertEquals(ModelPalette.COMPONENTS, palettes.hand.colour(material.name).length, material.name);
         }
     }
 
@@ -277,66 +191,57 @@ class PalettesTest {
         assertFalse(Arrays.equals(PALETTES.pistol.colour("sight_dot"), PALETTES.railLance.colour("sight_dot")));
     }
 
+    /**
+     * The values on the right are those of the test's own file, where no two numbers are alike and every accent
+     * differs from the shipped one, so a key read into another key's field, or a value still held in code, shows.
+     */
     @Test
-    void shippedRenderSettingsHoldTheValuesTheRendererHadInCode() {
-        assertEquals(0.1f, RENDER.clipNear, 0f);
-        assertEquals(60f, RENDER.clipFar, 0f);
-        assertEquals(0.035f, RENDER.fogRed, 0f);
-        assertEquals(0.035f, RENDER.fogGreen, 0f);
-        assertEquals(0.055f, RENDER.fogBlue, 0f);
-        assertEquals(3.5f, RENDER.fogStart, 0f);
-        assertEquals(20f, RENDER.fogEnd, 0f);
+    void everyKeyOfARenderFileSetsItsOwnValue() {
+        RenderSettings t = RenderSettings.parse(RENDER_FIXTURE, AssetText.read("data", RENDER_FIXTURE));
+        assertEquals(0.13f, t.clipNear, 0f);
+        assertEquals(61f, t.clipFar, 0f);
+        assertEquals(0.118f, t.fogRed, 0f);
+        assertEquals(0.135f, t.fogGreen, 0f);
+        assertEquals(0.152f, t.fogBlue, 0f);
+        assertEquals(3.7f, t.fogStart, 0f);
+        assertEquals(21f, t.fogEnd, 0f);
 
-        // WorldRenderer.addPickupGlows at 10cd4a4: one case per kind, ENERGY_CELL sharing the default.
-        assertEquals(0.42f, RENDER.pickupHaloSize, 0f);
+        assertEquals(0.169f, t.pickupHaloSize, 0f);
         Map<Pickup.Kind, float[]> halos = new LinkedHashMap<>();
-        halos.put(Pickup.Kind.MEDKIT, rgbg(1f, 0.35f, 0.4f, 0.4f));
-        halos.put(Pickup.Kind.ARMOR, rgbg(0.3f, 0.78f, 1f, 0.45f));
-        halos.put(Pickup.Kind.ENERGY_CELL, rgbg(0.75f, 0.42f, 1f, 0.48f));
-        halos.put(Pickup.Kind.AMBER_KEYCARD, rgbg(1f, 0.74f, 0.18f, 0.52f));
-        halos.put(Pickup.Kind.CYAN_KEYCARD, rgbg(0.2f, 0.92f, 1f, 0.52f));
-        halos.put(Pickup.Kind.SCATTERGUN, rgbg(1f, 0.56f, 0.20f, 0.54f));
-        halos.put(Pickup.Kind.SHELLS, rgbg(0.95f, 0.34f, 0.24f, 0.48f));
-        halos.put(Pickup.Kind.RAIL_LANCE, rgbg(0.22f, 0.94f, 1.00f, 0.56f));
-        halos.put(Pickup.Kind.RAIL_SLUGS, rgbg(0.18f, 0.80f, 1.00f, 0.48f));
+        halos.put(Pickup.Kind.MEDKIT, rgbg(0.186f, 0.203f, 0.220f, 0.237f));
+        halos.put(Pickup.Kind.ARMOR, rgbg(0.254f, 0.271f, 0.288f, 0.305f));
+        halos.put(Pickup.Kind.ENERGY_CELL, rgbg(0.322f, 0.339f, 0.356f, 0.373f));
+        halos.put(Pickup.Kind.AMBER_KEYCARD, rgbg(0.390f, 0.407f, 0.424f, 0.441f));
+        halos.put(Pickup.Kind.CYAN_KEYCARD, rgbg(0.458f, 0.475f, 0.492f, 0.509f));
+        halos.put(Pickup.Kind.SCATTERGUN, rgbg(0.526f, 0.543f, 0.560f, 0.577f));
+        halos.put(Pickup.Kind.SHELLS, rgbg(0.594f, 0.611f, 0.628f, 0.645f));
+        halos.put(Pickup.Kind.RAIL_LANCE, rgbg(0.662f, 0.679f, 0.696f, 0.713f));
+        halos.put(Pickup.Kind.RAIL_SLUGS, rgbg(0.730f, 0.747f, 0.764f, 0.781f));
         assertEquals(Pickup.Kind.values().length, halos.size(), "a halo for every kind of pickup");
         for (Map.Entry<Pickup.Kind, float[]> halo : halos.entrySet()) {
-            assertArrayEquals(halo.getValue(), RENDER.pickupHalo(halo.getKey()), 0f, halo.getKey().name());
+            assertArrayEquals(halo.getValue(), t.pickupHalo(halo.getKey()), 0f, halo.getKey().name());
         }
 
-        // WorldRenderer.pickupAccent at 10cd4a4: the keycards and the rail pickups, and no accent for the rest.
-        for (Pickup.Kind kind : Pickup.Kind.values()) {
-            WorldModels.Accent expected;
-            switch (kind) {
-                case AMBER_KEYCARD:
-                    expected = WorldModels.Accent.KEYCARD_AMBER;
-                    break;
-                case CYAN_KEYCARD:
-                    expected = WorldModels.Accent.KEYCARD_CYAN;
-                    break;
-                case RAIL_LANCE:
-                case RAIL_SLUGS:
-                    expected = WorldModels.Accent.RAIL_READY;
-                    break;
-                default:
-                    expected = null;
-                    break;
-            }
-            assertSame(expected, RENDER.pickupAccent(kind), kind.name());
-        }
+        assertSame(WorldModels.Accent.DOOR_OPEN, t.pickupAccent(Pickup.Kind.MEDKIT));
+        assertSame(WorldModels.Accent.DOOR_BOSS, t.pickupAccent(Pickup.Kind.ARMOR));
+        assertSame(WorldModels.Accent.DOOR_CYAN, t.pickupAccent(Pickup.Kind.ENERGY_CELL));
+        assertSame(WorldModels.Accent.KEYCARD_CYAN, t.pickupAccent(Pickup.Kind.AMBER_KEYCARD));
+        assertSame(WorldModels.Accent.KEYCARD_AMBER, t.pickupAccent(Pickup.Kind.CYAN_KEYCARD));
+        assertSame(WorldModels.Accent.RAIL_BEAM, t.pickupAccent(Pickup.Kind.SCATTERGUN));
+        assertSame(WorldModels.Accent.HAZARD_LIVE, t.pickupAccent(Pickup.Kind.SHELLS));
+        assertNull(t.pickupAccent(Pickup.Kind.RAIL_LANCE));
+        assertSame(WorldModels.Accent.CONSOLE_ACTIVE, t.pickupAccent(Pickup.Kind.RAIL_SLUGS));
 
-        // WorldRenderer.addConsoleGlows at 10cd4a4.
-        assertEquals(0.46f, RENDER.consoleHaloSize, 0f);
-        assertArrayEquals(rgbg(0.25f, 0.96f, 0.52f, 0.42f), RENDER.consoleHalo(true), 0f);
-        assertArrayEquals(rgbg(1f, 0.28f, 0.22f, 0.38f), RENDER.consoleHalo(false), 0f);
+        assertEquals(0.798f, t.consoleHaloSize, 0f);
+        assertArrayEquals(rgbg(0.815f, 0.832f, 0.849f, 0.866f), t.consoleHalo(true), 0f);
+        assertArrayEquals(rgbg(0.883f, 0.900f, 0.917f, 0.934f), t.consoleHalo(false), 0f);
 
-        // WorldRenderer.doorAccent at 10cd4a4.
-        assertSame(WorldModels.Accent.DOOR_OPEN, RENDER.doorOpeningAccent);
-        assertSame(WorldModels.Accent.DOOR_UNLOCKED, RENDER.doorAccent(Door.LockKind.NONE));
-        assertSame(WorldModels.Accent.DOOR_AMBER, RENDER.doorAccent(Door.LockKind.AMBER_KEY));
-        assertSame(WorldModels.Accent.DOOR_CYAN, RENDER.doorAccent(Door.LockKind.CYAN_KEY));
-        assertSame(WorldModels.Accent.DOOR_LOCKDOWN, RENDER.doorAccent(Door.LockKind.LOCKDOWN));
-        assertSame(WorldModels.Accent.DOOR_BOSS, RENDER.doorAccent(Door.LockKind.BOSS));
+        assertSame(WorldModels.Accent.WARDEN_PHASE1, t.doorOpeningAccent);
+        assertSame(WorldModels.Accent.DOOR_AMBER, t.doorAccent(Door.LockKind.NONE));
+        assertSame(WorldModels.Accent.DOOR_CYAN, t.doorAccent(Door.LockKind.AMBER_KEY));
+        assertSame(WorldModels.Accent.DOOR_LOCKDOWN, t.doorAccent(Door.LockKind.CYAN_KEY));
+        assertSame(WorldModels.Accent.DOOR_BOSS, t.doorAccent(Door.LockKind.LOCKDOWN));
+        assertSame(WorldModels.Accent.DOOR_UNLOCKED, t.doorAccent(Door.LockKind.BOSS));
         assertEquals(5, Door.LockKind.values().length, "an accent for every kind of lock");
     }
 
@@ -375,7 +280,7 @@ class PalettesTest {
         float[] expected = rgbg(0.5f, 0.25f, 0.125f, 1f);
 
         ModelPalette pistol = PistolModel.parsePalette(PistolModel.PALETTE_PATH, TestTuning.withValue(
-            AssetText.read("data", PistolModel.PALETTE_PATH), "material.gunmetal", "0.5, 0.25, 0.125, 1"));
+            TestTuning.text(PistolModel.PALETTE_PATH), "material.gunmetal", "0.5, 0.25, 0.125, 1"));
         assertArrayEquals(expected,
             Arrays.copyOfRange(ViewmodelRenderer.unpackPistol(weapon, pistol).body, COLOUR, COLOUR + 4), 0f);
         assertArrayEquals(expected,
@@ -386,19 +291,19 @@ class PalettesTest {
 
         String pumped = face.replace("g slide", "g pump");
         ModelPalette scattergun = ScattergunModel.parsePalette(ScattergunModel.PALETTE_PATH, TestTuning.withValue(
-            AssetText.read("data", ScattergunModel.PALETTE_PATH), "material.gunmetal", "0.5, 0.25, 0.125, 1"));
+            TestTuning.text(ScattergunModel.PALETTE_PATH), "material.gunmetal", "0.5, 0.25, 0.125, 1"));
         assertArrayEquals(expected, Arrays.copyOfRange(
             ViewmodelRenderer.unpackScattergun(ObjModel.parse(pumped), scattergun).body, COLOUR, COLOUR + 4), 0f);
 
         String bolted = face.replace("g slide", "g bolt");
         ModelPalette railLance = RailLanceModel.parsePalette(RailLanceModel.PALETTE_PATH, TestTuning.withValue(
-            AssetText.read("data", RailLanceModel.PALETTE_PATH), "material.gunmetal", "0.5, 0.25, 0.125, 1"));
+            TestTuning.text(RailLanceModel.PALETTE_PATH), "material.gunmetal", "0.5, 0.25, 0.125, 1"));
         assertArrayEquals(expected, Arrays.copyOfRange(
             ViewmodelRenderer.unpackRailLance(ObjModel.parse(bolted), railLance).body, COLOUR, COLOUR + 4), 0f);
 
         ObjModel sleeve = ObjModel.parse("v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl sleeve\nf 1 2 3\n");
         ModelPalette hand = HandModel.parsePalette(HandModel.PALETTE_PATH, TestTuning.withValue(
-            AssetText.read("data", HandModel.PALETTE_PATH), "material.sleeve", "0.5, 0.25, 0.125, 1"));
+            TestTuning.text(HandModel.PALETTE_PATH), "material.sleeve", "0.5, 0.25, 0.125, 1"));
         assertArrayEquals(expected, Arrays.copyOfRange(HandModel.vertices(sleeve, hand), COLOUR, COLOUR + 4), 0f);
         assertArrayEquals(expected,
             Arrays.copyOfRange(ViewmodelRenderer.unpackHand(sleeve, hand).vertices, COLOUR, COLOUR + 4), 0f);
@@ -413,18 +318,18 @@ class PalettesTest {
         Color shippedGlow = WardenModel.glow(PALETTES.world.accent(WorldModels.Accent.WARDEN_PHASE1.name), false, 0f,
             0f, 0f, new Color());
         Color editedGlow = WardenModel.glow(accent, false, 0f, 0f, 0f, new Color());
-        assertTrue(shippedGlow.r > shippedGlow.g, "the shipped first phase glows red");
+        assertTrue(shippedGlow.r > shippedGlow.g, "the first phase of the tests' own palette glows red");
         assertEquals(0f, editedGlow.r, 0f);
         assertTrue(editedGlow.g > 0f, "the edited first phase glows green");
 
         ModelPalette rail = RailLanceModel.parsePalette(RailLanceModel.PALETTE_PATH, TestTuning.withValue(
-            AssetText.read("data", RailLanceModel.PALETTE_PATH), "accent.empty", "0.5, 0.5, 0.5, 0"));
+            TestTuning.text(RailLanceModel.PALETTE_PATH), "accent.empty", "0.5, 0.5, 0.5, 0"));
         assertArrayEquals(rgbg(0.5f, 0.5f, 0.5f, 0f), rail.accent(RailLanceModel.Accent.EMPTY.name), 0f);
     }
 
     @Test
     void editedRenderSettingsChangeTheFogTheCameraAndTheTables() {
-        // Shipped: nothing fogged up to 3.5, half at 11.75, everything from 20.
+        // The tests' own file: nothing fogged up to 3.5, half at 11.75, everything from 20.
         assertEquals(0f, RENDER.fogFactor(3.5f), 0f);
         assertEquals(0.5f, RENDER.fogFactor(11.75f), 1e-6f);
         assertEquals(1f, RENDER.fogFactor(20f), 0f);
@@ -486,16 +391,16 @@ class PalettesTest {
     }
 
     private static PerspectiveCamera worldCamera(RenderSettings settings) {
-        return WorldRenderer.createWorldCamera(null, settings, WindowDefaults.load(),
-            SettingsDefaults.load().fov.initial);
+        return WorldRenderer.createWorldCamera(null, settings, TestTuning.WINDOW,
+            TestTuning.SETTINGS.fov.initial);
     }
 
     private static String worldText() {
-        return AssetText.read("data", WorldModels.PALETTE_PATH);
+        return TestTuning.text(WorldModels.PALETTE_PATH);
     }
 
     private static String renderText() {
-        return AssetText.read("data", RenderSettings.PATH);
+        return TestTuning.text(RenderSettings.PATH);
     }
 
     private static IllegalArgumentException paletteError(String text) {
@@ -540,20 +445,20 @@ class PalettesTest {
         assertTrue(twice.getMessage().contains("Duplicate"), twice.getMessage());
 
         // Every family checks its own names the same way.
-        String pistol = AssetText.read("data", PistolModel.PALETTE_PATH);
+        String pistol = TestTuning.text(PistolModel.PALETTE_PATH);
         assertNames(assertThrows(IllegalArgumentException.class,
             () -> PistolModel.parsePalette("data/p.txt", pistol + "material.wood: 0.4, 0.3, 0.1, 0.2\n")),
             "data/p.txt", "material.wood");
         assertNames(assertThrows(IllegalArgumentException.class,
             () -> PistolModel.parsePalette("data/p.txt", TestTuning.withValue(pistol, "material.brass", null))),
             "data/p.txt", "material.brass");
-        String scattergun = AssetText.read("data", ScattergunModel.PALETTE_PATH);
+        String scattergun = TestTuning.text(ScattergunModel.PALETTE_PATH);
         assertNames(assertThrows(IllegalArgumentException.class, () -> ScattergunModel.parsePalette("data/s.txt",
             TestTuning.withValue(scattergun, "material.wood", null))), "data/s.txt", "material.wood");
-        String rail = AssetText.read("data", RailLanceModel.PALETTE_PATH);
+        String rail = TestTuning.text(RailLanceModel.PALETTE_PATH);
         assertNames(assertThrows(IllegalArgumentException.class, () -> RailLanceModel.parsePalette("data/r.txt",
             TestTuning.withValue(rail, "accent.recharging", null))), "data/r.txt", "accent.recharging");
-        String hand = AssetText.read("data", HandModel.PALETTE_PATH);
+        String hand = TestTuning.text(HandModel.PALETTE_PATH);
         assertNames(assertThrows(IllegalArgumentException.class, () -> HandModel.parsePalette("data/h.txt",
             TestTuning.withValue(hand, "material.glove", null))), "data/h.txt", "material.glove");
     }

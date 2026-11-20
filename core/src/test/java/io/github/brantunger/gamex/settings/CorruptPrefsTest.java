@@ -9,6 +9,7 @@ import ch.qos.logback.classic.Level;
 import com.badlogic.gdx.Preferences;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.LogCapture;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.Player;
@@ -66,7 +67,7 @@ class CorruptPrefsTest {
         store.putFloat("fov", Float.NaN);
         store.putFloat("masterVolume", Float.NaN);
 
-        GameSettings settings = GameSettings.load(store, SettingsDefaults.load());
+        GameSettings settings = GameSettings.load(store, TestTuning.SETTINGS);
 
         assertEquals(settings.defaults().sensitivity.initial, settings.getMouseSensitivity(), 1e-4f, "sensitivity");
         assertEquals(settings.defaults().fov.initial, settings.getFov(), 1e-4f, "field of view");
@@ -81,7 +82,7 @@ class CorruptPrefsTest {
             store.putFloat("fov", stored);
             store.putFloat("masterVolume", stored);
 
-            GameSettings settings = GameSettings.load(store, SettingsDefaults.load());
+            GameSettings settings = GameSettings.load(store, TestTuning.SETTINGS);
 
             assertEquals(settings.defaults().sensitivity.initial, settings.getMouseSensitivity(), 1e-4f,
                 "sens " + stored);
@@ -103,7 +104,7 @@ class CorruptPrefsTest {
         assertEquals(0f, loadout.armor, 1e-4f, "armor");
 
         Levels.Stage stage = Levels.campaign().get(0);
-        GameSimulation simulation = new GameSimulation(stage.map, loadout, stage.completeOnAllTargets);
+        GameSimulation simulation = TestTuning.simulation(stage.map, loadout, stage.completeOnAllTargets);
         assertEquals(Player.MAX_HEALTH, simulation.player.getHealth(), 1e-4f);
         simulation.player.damage(500f);
         assertTrue(simulation.player.isDead(), "500 damage kills a player loaded from a damaged save");
@@ -163,7 +164,7 @@ class CorruptPrefsTest {
         values.put("fullscreen", "true");
 
         GameSettings settings = GameSettings.load(new GdxPreferencesStore(textPreferences(values)),
-            SettingsDefaults.load());
+            TestTuning.SETTINGS);
 
         assertEquals(settings.defaults().sensitivity.initial, settings.getMouseSensitivity(), 1e-4f);
         assertEquals(settings.defaults().fov.initial, settings.getFov(), 1e-4f);
@@ -182,7 +183,7 @@ class CorruptPrefsTest {
         values.put("run.slugs", "1e3");
         values.put("campaign.unlockedStage", "all");
         SaveData save = new SaveData(new GdxPreferencesStore(textPreferences(values)));
-        MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.TITLE);
 
         assertEquals(MenuState.OptionId.CONTINUE, menu.getMenuOptions().get(0).id);
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm());
@@ -261,7 +262,7 @@ class CorruptPrefsTest {
             assertEquals('-', save.getBestOverallRank("01_outer_breach"));
             assertEquals('-', save.getBestRank("02_coolant_core", Difficulty.NORMAL));
             // Repeated frame-by-frame reads on Stage Select must not spam duplicate warnings.
-            MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.STAGE_SELECT);
+            MenuState menu = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.STAGE_SELECT);
             assertTrue(menu.getOptions().get(0).endsWith("[READY]"), menu.getOptions().get(0));
             menu.getOptions();
 

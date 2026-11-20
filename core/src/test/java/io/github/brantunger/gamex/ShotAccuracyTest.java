@@ -19,12 +19,12 @@ class ShotAccuracyTest {
 
     private static GameSimulation corridor(String row) {
         String wall = "#".repeat(row.length());
-        return new GameSimulation(GameMap.parse(wall, row, wall));
+        return TestTuning.simulation(GameMap.parse(wall, row, wall));
     }
 
     private static GameSimulation corridor(String row, PlayerLoadout loadout) {
         String wall = "#".repeat(row.length());
-        return new GameSimulation(GameMap.parse(wall, row, wall), loadout, false);
+        return TestTuning.simulation(GameMap.parse(wall, row, wall), loadout, false);
     }
 
     private static void assertShots(int fired, int hit, GameSimulation sim, String message) {
@@ -150,7 +150,7 @@ class ShotAccuracyTest {
 
     @Test
     void clearedRunHandsItsCountsToTheTally() {
-        GameSimulation sim = new GameSimulation(GameMap.parse("########", "#>+.o..#", "########"),
+        GameSimulation sim = TestTuning.simulation(GameMap.parse("########", "#>+.o..#", "########"),
             PlayerLoadout.fresh(), true);
         PlayerInput input = new PlayerInput();
         input.fire = true;

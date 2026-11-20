@@ -56,8 +56,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -67,8 +69,8 @@ class RendererSupportTest {
     private static final Palettes PALETTES = TestTuning.PALETTES;
     private static final ModelPalette WORLD = PALETTES.world;
     private static final RenderSettings RENDER = TestTuning.RENDER;
-    private static final WindowDefaults WINDOW = WindowDefaults.load();
-    private static final SettingsDefaults DEFAULTS = SettingsDefaults.load();
+    private static final WindowDefaults WINDOW = TestTuning.WINDOW;
+    private static final SettingsDefaults DEFAULTS = TestTuning.SETTINGS;
 
     private static final float EPSILON = 1e-5f;
     private static final float FRAME = 1f / 60f;
@@ -182,7 +184,7 @@ class RendererSupportTest {
 
     @Test
     void initialViewportDimensionsFallBackToTheWindowDefaultsOnNullZeroOrNegativeGraphics() {
-        // The shipped assets/data/window.txt holds 1280x720, as the renderers held before the size moved there.
+        // The tests' own window.txt holds 1280x720.
         assertEquals(1280, WINDOW.width);
         assertEquals(720, WINDOW.height);
         WindowDefaults other = WindowDefaults.parse("window.txt", "window.width: 1024\nwindow.height: 768\n");
@@ -357,7 +359,7 @@ class RendererSupportTest {
 
     @Test
     void backdropUsesPreviewTimeToAnimateGratesPickupsAndDronesWhileSimulationTimeStaysZero() {
-        GameSimulation unstepped = new GameSimulation(GameMap.parse(
+        GameSimulation unstepped = TestTuning.simulation(GameMap.parse(
             "########",
             "#>~+D.X#",
             "########"));
@@ -385,7 +387,7 @@ class RendererSupportTest {
             "################");
         PlayerLoadout armed = new PlayerLoadout(
             100f, 50f, Difficulty.NORMAL, true, 8, true, 6, WeaponSlot.PISTOL);
-        GameSimulation simulation = new GameSimulation(corridor, armed, false);
+        GameSimulation simulation = TestTuning.simulation(corridor, armed, false);
 
         // Charge and release a pistol energy blast so simulation.projectiles has a live orb in flight.
         PlayerInput input = new PlayerInput();
@@ -913,12 +915,9 @@ class RendererSupportTest {
             "all remaining predecoded pixmaps must be disposed on partial texture failure");
     }
 
-    /**
-     * The renderers hand their backends the text of the shader files, and that text says what the strings in the
-     * code said before they moved into files: the game must look the same.
-     */
+    /** The renderers hand their backends the text of the shader files, each file to the shader it is named for. */
     @Test
-    void renderersCompileTheShaderFilesWhoseTextIsWhatTheInlineStringsWere() {
+    void renderersCompileTheTextOfTheShaderFiles() {
         Map<String, String> objCache = new HashMap<>();
         GameMap room = GameMap.parse(
             "#####",
@@ -927,21 +926,33 @@ class RendererSupportTest {
 
         HeadlessWorldBackend worldBackend = new HeadlessWorldBackend(objCache);
         new WorldRenderer(room, graphicsStub(1280, 720), null, WORLD, RENDER, WINDOW, DEFAULTS, worldBackend).dispose();
-        assertEquals(ShaderFilesTest.BASE_WORLD_VERTEX,
+        assertEquals(shaderFile(ShaderFilesTest.WORLD_VERTEX),
             ShaderFilesTest.withoutComments(worldBackend.worldVertexSource));
-        assertEquals(ShaderFilesTest.BASE_WORLD_FRAGMENT,
+        assertEquals(shaderFile(ShaderFilesTest.WORLD_FRAGMENT),
             ShaderFilesTest.withoutComments(worldBackend.worldFragmentSource));
-        assertEquals(ShaderFilesTest.BASE_MODEL_VERTEX,
+        assertEquals(shaderFile(ShaderFilesTest.MODEL_VERTEX),
             ShaderFilesTest.withoutComments(worldBackend.modelVertexSource));
-        assertEquals(ShaderFilesTest.BASE_MODEL_FRAGMENT,
+        assertEquals(shaderFile(ShaderFilesTest.MODEL_FRAGMENT),
             ShaderFilesTest.withoutComments(worldBackend.modelFragmentSource));
 
         HeadlessViewmodelBackend viewmodelBackend = new HeadlessViewmodelBackend(objCache);
         new ViewmodelRenderer(graphicsStub(1280, 720), null, PALETTES, WINDOW, viewmodelBackend).dispose();
-        assertEquals(ShaderFilesTest.BASE_VIEWMODEL_VERTEX,
+        assertEquals(shaderFile(ShaderFilesTest.VIEWMODEL_VERTEX),
             ShaderFilesTest.withoutComments(viewmodelBackend.vertexSource));
-        assertEquals(ShaderFilesTest.BASE_VIEWMODEL_FRAGMENT,
+        assertEquals(shaderFile(ShaderFilesTest.VIEWMODEL_FRAGMENT),
             ShaderFilesTest.withoutComments(viewmodelBackend.fragmentSource));
+
+        // The three vertex shaders differ, so a renderer that handed one shader another's file would show above.
+        Set<String> texts = new HashSet<>();
+        for (String file : new String[] {ShaderFilesTest.WORLD_VERTEX, ShaderFilesTest.MODEL_VERTEX,
+            ShaderFilesTest.VIEWMODEL_VERTEX, ShaderFilesTest.WORLD_FRAGMENT}) {
+            assertTrue(texts.add(shaderFile(file)), file + " repeats another shader file");
+        }
+    }
+
+    /** @return the code of a shader file of the assets folder, without its comments */
+    private static String shaderFile(String assetPath) {
+        return ShaderFilesTest.withoutComments(ShaderFilesTest.readShaderFile(assetPath));
     }
 
     /** A shader that does not compile at launch must say which files it was read from. */

@@ -10,7 +10,6 @@ import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.KeyValueStore;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.Medal;
@@ -33,7 +32,7 @@ class StageRecordsDisplayTest {
     private static final UiStrings STRINGS = TestTuning.STRINGS;
 
     private static MenuState stageSelect(SaveData save) {
-        MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.TITLE);
         assertTrue(menu.selectId(MenuState.OptionId.SELECT_STAGE));
         menu.confirm();
         assertEquals(MenuState.Screen.STAGE_SELECT, menu.getScreen());
@@ -271,7 +270,7 @@ class StageRecordsDisplayTest {
 
     @Test
     void tallyShowsTheDamageOfFiveShockGrateHitsOnEasyWithArmor() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#####",
             "#>.~#",
             "#####"), new PlayerLoadout(100f, 30f, Difficulty.EASY), false);
@@ -311,19 +310,21 @@ class StageRecordsDisplayTest {
     void trainingRangeClearRecordsNoMedalsAndTheTallySaysSo() {
         MapKeyValueStore store = new MapKeyValueStore();
         SaveData save = new SaveData(store);
-        MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.TITLE);
         assertTrue(menu.selectId(MenuState.OptionId.TRAINING_RANGE));
         menu.confirm();
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.confirm());
         assertEquals("range", menu.getActiveStage().id);
 
-        menu.onStageCleared(PlayerLoadout.fresh(), new RunStats(30f, 11, 11, 0f, 4, 12, 10, 10));
+        // Half the par the stage file gives, whatever that is: under par, so the rank is S.
+        float clearTime = menu.getActiveStage().parSeconds * 0.5f;
+        menu.onStageCleared(PlayerLoadout.fresh(), new RunStats(clearTime, 11, 11, 0f, 4, 12, 10, 10));
 
         SaveData.CompletionSummary summary = menu.getLastSummary();
         assertFalse(summary.medalsRecorded);
         assertEquals("TRAINING RUN - NO MEDALS", HudRenderer.tallyMedalLine(STRINGS, summary));
         assertTrue(save.getMedals("range", Difficulty.NORMAL).isEmpty());
-        assertEquals("BEST (NORMAL): 00:30.0  *NEW BEST!*",
+        assertEquals("BEST (NORMAL): " + TextFormat.stopwatch(clearTime) + "  *NEW BEST!*",
             HudRenderer.tallyBestLine(STRINGS, summary, Difficulty.NORMAL));
         assertEquals("DAMAGE TAKEN: 0   PICKUPS: 4/12   ACCURACY: 100%", HudRenderer.tallyStatsLine(STRINGS, summary));
         assertEquals('S', summary.rank);
@@ -332,10 +333,12 @@ class StageRecordsDisplayTest {
     @Test
     void campaignClearThroughTheMenuRecordsMedalsForTheDifficultyPlayed() {
         SaveData save = new SaveData(new MapKeyValueStore());
-        MenuState menu = new MenuState(new GameSettings(), save, MenuState.Screen.PLAYING);
+        MenuState menu = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.PLAYING);
         assertEquals(STAGE, menu.getActiveStage().id);
 
-        menu.onStageCleared(PlayerLoadout.fresh(), new RunStats(40f, 9, 9, 0f, 3, 9, 10, 6));
+        // Half the par the stage file gives, whatever that is, so the run is under par.
+        menu.onStageCleared(PlayerLoadout.fresh(),
+            new RunStats(menu.getActiveStage().parSeconds * 0.5f, 9, 9, 0f, 3, 9, 10, 6));
 
         SaveData.CompletionSummary summary = menu.getLastSummary();
         assertTrue(summary.medalsRecorded);
@@ -407,7 +410,7 @@ class StageRecordsDisplayTest {
     @Test
     void theWidestToastBoxFitsTheRoomKeptAroundTheCentre() {
         String widest = widestToast(STRINGS);
-        assertEquals("WARDEN DESTROYED - EXTRACTION UNSEALED", widest, "the widest toast of the shipped text");
+        assertEquals("WARDEN DESTROYED - EXTRACTION UNSEALED", widest, "the widest toast of the tests' own text");
         float box = PixelFont.width(widest, HudRenderer.TOAST_PIXEL) + 2f * HudRenderer.TOAST_PAD_X;
         assertEquals(450.8f, box, 0.01f);
         assertTrue(box <= 2f * HudRenderer.CENTRE_HALF_WIDTH, widest + " makes a box " + box + " wide");
@@ -423,7 +426,7 @@ class StageRecordsDisplayTest {
 
     @Test
     void everyObjectiveLineStaysLeftOfTheCentredToastAndBossBar() {
-        // On a 1280x720 window the screen is 1280 HUD units wide. The widest toast box of the shipped text,
+        // On a 1280x720 window the screen is 1280 HUD units wide. The widest toast box of the tests' own text,
         // around "WARDEN DESTROYED - EXTRACTION UNSEALED", starts 414.6 units in; the boss bar's panel starts at 438.
         float widestToast = PixelFont.width(widestToast(STRINGS), HudRenderer.TOAST_PIXEL)
             + 2f * HudRenderer.TOAST_PAD_X;
@@ -436,7 +439,7 @@ class StageRecordsDisplayTest {
             assertTrue(right <= toastLeft, line + " ends at " + right + ", the toast starts at " + toastLeft);
             longest = Math.max(longest, right);
         }
-        assertEquals(409.6f, longest, 0.01f, "where the longest objective line of the shipped text ends");
+        assertEquals(409.6f, longest, 0.01f, "where the longest objective line of the tests' own text ends");
     }
 
     @Test

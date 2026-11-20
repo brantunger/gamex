@@ -64,7 +64,7 @@ class MenuStateFlowTest {
     }
 
     private MenuState titleMenu(MapKeyValueStore store) {
-        return newMenu(new GameSettings(), new SaveData(store), MenuState.Screen.TITLE);
+        return newMenu(TestTuning.settings(), new SaveData(store), MenuState.Screen.TITLE);
     }
 
     private static MapKeyValueStore storeWithOldRun() {
@@ -111,9 +111,11 @@ class MenuStateFlowTest {
 
         menu.onStageCleared((PlayerLoadout) null, 50f, 8, 8, 0f);
 
-        PlayerLoadout next = PlayerLoadout.forStage(Levels.stage("04_lockdown_wing"), Difficulty.HARD,
-            TestTuning.DIFFICULTY, TestTuning.WEAPONS);
-        assertTrue(next.hasRailLance, "Stage 04 lists the Rail Lance, which Stage 03 does not");
+        // Whatever Stage 04's file lists, it is that stage's own loadout, with no weapon carried over.
+        Levels.Stage lockdownWing = Levels.stage("04_lockdown_wing");
+        PlayerLoadout next = PlayerLoadout.forStage(lockdownWing, Difficulty.HARD, TestTuning.DIFFICULTY,
+            TestTuning.WEAPONS);
+        assertEquals(lockdownWing.startingWeapons.contains(WeaponSlot.RAIL_LANCE), next.hasRailLance);
         assertSavedRun(store, 3, next, "after clearing Stage 03 with no carry-over");
         assertLoadout(next, menu.getActiveLoadout(), "the loadout for NEXT STAGE");
     }
@@ -443,7 +445,7 @@ class MenuStateFlowTest {
 
     @Test
     void pauseMenuResumesRestartsAndReturnsToTitle() {
-        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
 
         menu.escape();
@@ -465,7 +467,7 @@ class MenuStateFlowTest {
     @Test
     void deathScreenReturnsToTitleByItsRowAndByEscape() {
         for (boolean byEscape : new boolean[] {false, true}) {
-            MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
+            MenuState menu = newMenu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
                 MenuState.Screen.PLAYING);
             menu.onPlayerDied();
             assertEquals(MenuState.Screen.DEAD, menu.getScreen());
@@ -480,7 +482,7 @@ class MenuStateFlowTest {
 
     @Test
     void quickRestartWorksInPlayOnPauseAndOnDeathOnly() {
-        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         assertEquals(MenuState.Command.LAUNCH_STAGE, menu.quickRestart());
 
@@ -504,7 +506,7 @@ class MenuStateFlowTest {
 
     @Test
     void onWindowPausedPausesPlayAndLeavesMenusAlone() {
-        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         menu.onWindowPaused();
         assertEquals(MenuState.Screen.PAUSED, menu.getScreen());
@@ -519,7 +521,7 @@ class MenuStateFlowTest {
 
     @Test
     void fullscreenToggleReturnsApplyDisplayAndOtherSettingsDoNot() {
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         MenuState menu = newMenu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         choose(menu, OptionId.SETTINGS);
         assertEquals(MenuState.Screen.SETTINGS, menu.getScreen());
@@ -562,7 +564,7 @@ class MenuStateFlowTest {
         MenuState title = titleMenu(new MapKeyValueStore());
         assertEquals(MenuState.Command.QUIT, choose(title, OptionId.QUIT));
 
-        MenuState paused = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState paused = newMenu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         paused.escape();
         assertEquals(MenuState.Command.QUIT, choose(paused, OptionId.QUIT));
@@ -636,7 +638,7 @@ class MenuStateFlowTest {
 
     @Test
     void quitKeyWorksOnPauseAndNotInPlayOrOnOtherScreens() {
-        MenuState menu = newMenu(new GameSettings(), new SaveData(new MapKeyValueStore()),
+        MenuState menu = newMenu(TestTuning.settings(), new SaveData(new MapKeyValueStore()),
             MenuState.Screen.PLAYING);
         assertEquals(MenuState.Command.NONE, menu.requestQuit());
         assertEquals(MenuState.Command.NONE, menu.requestQuit(), "no quit key in play");

@@ -19,7 +19,7 @@ import java.util.List;
 
 class BlastProjectileTest {
 
-    /** The shipped weapon balance. */
+    /** The tests' own weapon balance. */
     private static final WeaponTuning W = TestTuning.WEAPONS;
 
     private static final float EPSILON = 1e-3f;

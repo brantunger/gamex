@@ -36,7 +36,7 @@ class EnemyMovementTest {
 
     /** Builds a simulation in which only {@code subject} is alive, every door is open and the subject is alert. */
     private static GameSimulation soloSim(GameMap map, Enemy.Kind kind, float spawnX, float spawnZ) {
-        GameSimulation sim = new GameSimulation(map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
+        GameSimulation sim = TestTuning.simulation(map, PlayerLoadout.fresh(Difficulty.NORMAL), false);
         Enemy subject = null;
         for (Enemy enemy : sim.enemies) {
             if (enemy.getKind() == kind && Math.abs(enemy.getX() - spawnX) < 0.01f
@@ -234,7 +234,7 @@ class EnemyMovementTest {
 
     @Test
     void droneGoesRoundATurretStandingBetweenItAndThePlayer() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#########",
             "#.......#",
             "#D.T...>#",
@@ -358,7 +358,7 @@ class EnemyMovementTest {
 
     @Test
     void droneBlockedBehindCanisterWhileDoorIsClosedGoesRoundItOnceDoorOpens() {
-        GameSimulation sim = new GameSimulation(GameMap.parse(
+        GameSimulation sim = TestTuning.simulation(GameMap.parse(
             "#######",
             "###D###",
             "###o=##",
@@ -455,7 +455,7 @@ class EnemyMovementTest {
             "#...#G#",
             "#.....#",
             "#######");
-        GameSimulation loopSim = new GameSimulation(
+        GameSimulation loopSim = TestTuning.simulation(
             grateGoalLoop, new PlayerLoadout(100f, 100f, Difficulty.EASY), false);
         Enemy loopGuard = subject(loopSim);
         loopGuard.alert();

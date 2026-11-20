@@ -76,12 +76,12 @@ class HudRendererTest {
     }
 
     private static MenuState menuOn(MenuState.Screen screen) {
-        return new MenuState(new GameSettings(), new SaveData(new MapKeyValueStore()), screen);
+        return TestTuning.menu(TestTuning.settings(), new SaveData(new MapKeyValueStore()), screen);
     }
 
     @Test
     void settingsOpenedFromTheTitleShowsNoCombatHud() {
-        GameSimulation simulation = new GameSimulation(Levels.first());
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
         MenuState menu = menuOn(MenuState.Screen.TITLE);
         assertTrue(menu.selectId(MenuState.OptionId.SETTINGS));
         menu.confirm();
@@ -92,7 +92,7 @@ class HudRendererTest {
 
     @Test
     void settingsOpenedFromPauseKeepsTheCombatHud() {
-        GameSimulation simulation = new GameSimulation(Levels.first());
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
         MenuState menu = menuOn(MenuState.Screen.PLAYING);
         menu.escape();
         assertTrue(HudRenderer.showsCombatHud(menu, simulation), "Pause");
@@ -106,7 +106,7 @@ class HudRendererTest {
 
     @Test
     void combatHudShowsInPlayOnPauseAndOnDeathOnly() {
-        GameSimulation simulation = new GameSimulation(Levels.first());
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
         for (MenuState.Screen screen : MenuState.Screen.values()) {
             if (screen == MenuState.Screen.SETTINGS) continue;
             boolean expected = screen == MenuState.Screen.PLAYING || screen == MenuState.Screen.PAUSED
@@ -117,9 +117,9 @@ class HudRendererTest {
 
     @Test
     void minimapShowsWithCombatHudOnlyWhenMinimapSettingIsEnabled() {
-        GameSimulation simulation = new GameSimulation(Levels.first());
-        GameSettings settings = new GameSettings();
-        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
+        GameSettings settings = TestTuning.settings();
+        MenuState playing = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         assertTrue(HudRenderer.showsMinimap(playing, simulation));
         assertFalse(HudRenderer.showsMinimap(playing, null));
 
@@ -166,7 +166,7 @@ class HudRendererTest {
     @Test
     void constructorAndResizeGuardZeroAndNegativeDimensionsWithoutNaNProjection() {
         Gdx.graphics = graphicsStub(0, 0);
-        HudRenderer hud = new HudRenderer(null, null, TestTuning.STRINGS, WindowDefaults.load(), null);
+        HudRenderer hud = new HudRenderer(null, null, TestTuning.STRINGS, TestTuning.WINDOW, null);
         assertEquals(1280f, hud.getWidth(), 1e-4f);
         assertEquals(720f, hud.getHeight(), 1e-4f);
         assertEquals(1f, hud.getUnit(), 1e-6f);
@@ -225,7 +225,7 @@ class HudRendererTest {
         // Half-screen and portrait windows clamp unit by width / 720f so 705-unit Title footer and 660-unit Briefing fit.
         String titleFooter = TestTuning.STRINGS.get(UiText.SCREEN_TITLE_FOOTER);
         assertEquals("WASD: MOVE  SPACE: JUMP  SHIFT: DASH  E: USE  1-3/Q/SCROLL: WEAPON  LMB/RMB: FIRE/ALT"
-            + "  M: MAP", titleFooter, "the shipped footer with the key names of the shipped bindings");
+            + "  M: MAP", titleFooter, "the tests' own footer with the key names of the tests' own bindings");
         for (int[] size : new int[][] {{960, 1080}, {1080, 1920}, {480, 720}, {680, 720}, {160, 320}}) {
             float w = size[0];
             float h = size[1];
@@ -240,7 +240,8 @@ class HudRendererTest {
 
     /** @return the Title footer as loaded with the key names {@code keys} gives */
     private static String titleFooter(KeyLabels keys) {
-        return UiStrings.load(TestTuning.FONT, keys, TestTuning.TEXT_VALUES).get(UiText.SCREEN_TITLE_FOOTER);
+        return UiStrings.parse(UiStrings.PATH, TestTuning.text(UiStrings.PATH), TestTuning.FONT, keys,
+            TestTuning.TEXT_VALUES).get(UiText.SCREEN_TITLE_FOOTER);
     }
 
     /** @return whether the Title footer, one centred line, stays inside a window of each 4:3 size */
@@ -255,22 +256,22 @@ class HudRendererTest {
     }
 
     @Test
-    void titleFooterOfTheLoadedTextFitsAFourByThreeWindowWithAnyShippedInputAsTheHint() {
-        // The hint of an action is the first input of its line. The widest footer the shipped bindings can give is
+    void titleFooterOfTheLoadedTextFitsAFourByThreeWindowWithAnyBoundInputAsTheHint() {
+        // The hint of an action is the first input of its line. The widest footer the bindings can give is
         // the one that names, for each action, the input of its line with the longest name.
-        KeyBindings shipped = TestTuning.BINDINGS;
+        KeyBindings bindings = TestTuning.BINDINGS;
         KeyLabels widest = id -> {
-            String longest = shipped.hint(id);
-            for (BoundInput input : shipped.inputs(Action.byId(id))) {
+            String longest = bindings.hint(id);
+            for (BoundInput input : bindings.inputs(Action.byId(id))) {
                 String name = KeyNames.display(input);
                 if (name.length() > longest.length()) longest = name;
             }
             return longest;
         };
-        String shippedFooter = TestTuning.STRINGS.get(UiText.SCREEN_TITLE_FOOTER);
+        String ownFooter = TestTuning.STRINGS.get(UiText.SCREEN_TITLE_FOOTER);
         String widestFooter = titleFooter(widest);
-        assertTrue(widestFooter.length() >= shippedFooter.length(), widestFooter);
-        assertTrue(footerFitsFourByThree(shippedFooter), shippedFooter);
+        assertTrue(widestFooter.length() >= ownFooter.length(), widestFooter);
+        assertTrue(footerFitsFourByThree(ownFooter), ownFooter);
         assertTrue(footerFitsFourByThree(widestFooter), widestFooter);
 
         // A 4:3 window is 960 HUD units wide, which is room for 126 characters of the footer's size.
@@ -396,7 +397,7 @@ class HudRendererTest {
                 || prompt == GameSimulation.InteractionPrompt.UNLOCK_CYAN
                 || prompt == GameSimulation.InteractionPrompt.OPEN_BULKHEAD;
             assertArrayEquals(acts ? usable : blocked, HudRenderer.promptColour(prompt), 0f, prompt.name());
-            // With the shipped text that is the colour the first characters of the words used to pick.
+            // With the tests' own text that is the colour the first characters of the words used to pick.
             assertEquals(TestTuning.STRINGS.prompt(prompt).startsWith("[E]"), acts, prompt.name());
         }
         // The words are no part of the choice: a prompt reworded without its key keeps its colour.
@@ -416,7 +417,7 @@ class HudRendererTest {
             "#######");
         PlayerLoadout railLoadout = new PlayerLoadout(
             Player.MAX_HEALTH, 0f, Difficulty.NORMAL, true, 8, true, 5, WeaponSlot.RAIL_LANCE);
-        GameSimulation sim = new GameSimulation(doorMap, railLoadout, false);
+        GameSimulation sim = TestTuning.simulation(doorMap, railLoadout, false);
         sim.player.position.set(2.4f, 1.5f);
         sim.player.look(90f - sim.player.getYaw(), 0f);
         assertEquals(GameSimulation.InteractionPrompt.OPEN_BULKHEAD, sim.getInteractionPrompt());

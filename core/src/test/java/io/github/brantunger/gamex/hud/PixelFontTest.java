@@ -13,7 +13,6 @@ import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.data.AssetText;
 import io.github.brantunger.gamex.player.Difficulty;
 import io.github.brantunger.gamex.player.PlayerLoadout;
-import io.github.brantunger.gamex.settings.GameSettings;
 import io.github.brantunger.gamex.settings.MapKeyValueStore;
 import io.github.brantunger.gamex.settings.Medal;
 import io.github.brantunger.gamex.settings.RunStats;
@@ -39,11 +38,30 @@ class PixelFontTest {
 
     @Test
     void everySupportedCharacterHasAValidThreeByFiveGlyph() {
-        String chars = FONT.supportedCharacters();
-        assertTrue(chars.length() >= 50);
+        assertEveryGlyphIsThreeByFiveAndLit(FONT);
+    }
+
+    /** Whatever glyphs the shipped file holds, it loads, and it draws every letter and digit. */
+    @Test
+    void theShippedFontLoads() {
+        com.badlogic.gdx.Files previousFiles = Gdx.files;
+        try {
+            Gdx.files = null;
+            PixelFont shipped = PixelFont.load();
+            assertEveryGlyphIsThreeByFiveAndLit(shipped);
+            for (char c = 'A'; c <= 'Z'; c++) assertTrue(shipped.hasGlyph(c), "glyph " + c);
+            for (char c = '0'; c <= '9'; c++) assertTrue(shipped.hasGlyph(c), "glyph " + c);
+        } finally {
+            Gdx.files = previousFiles;
+        }
+    }
+
+    private static void assertEveryGlyphIsThreeByFiveAndLit(PixelFont font) {
+        String chars = font.supportedCharacters();
+        assertTrue(chars.length() >= 36);
         for (int i = 0; i < chars.length(); i++) {
             char c = chars.charAt(i);
-            String glyph = FONT.glyphFor(c);
+            String glyph = font.glyphFor(c);
             assertNotNull(glyph, "missing glyph for " + c);
             assertEquals(15, glyph.length(), "glyph length for " + c);
             boolean anyLit = false;
@@ -80,7 +98,7 @@ class PixelFontTest {
         SaveData save = new SaveData(new MapKeyValueStore());
         save.saveCampaignRun(0, PlayerLoadout.fresh());
         for (MenuState.Screen screen : MenuState.Screen.values()) {
-            texts.addAll(new MenuState(new GameSettings(), save, screen).getOptions());
+            texts.addAll(TestTuning.menu(TestTuning.settings(), save, screen).getOptions());
         }
         for (String text : texts) {
             for (int i = 0; i < text.length(); i++) {
@@ -121,7 +139,7 @@ class PixelFontTest {
         }
         texts.add(HudRenderer.tallyMedalLine(STRINGS, save.recordCompletion("range", Difficulty.NORMAL, 45f,
             new RunStats(30f, 11, 11, 0f, 0, 0, 5, 5), false)));
-        MenuState stageSelect = new MenuState(new GameSettings(), save, MenuState.Screen.STAGE_SELECT);
+        MenuState stageSelect = TestTuning.menu(TestTuning.settings(), save, MenuState.Screen.STAGE_SELECT);
         texts.addAll(stageSelect.getOptions());
         assertTrue(stageSelect.getOptions().get(0).contains("(EASY)"), "the seeded save shows a best time");
         texts.add(stageSelect.getStageSelectDetail());
@@ -141,36 +159,26 @@ class PixelFontTest {
         assertEquals("000011110000000", FONT.glyphFor('~'), "a tilde two rows high, in the upper half");
     }
 
+    /** A block's rows are read top row first, a lit cell as 1, into the glyph of the character its header names. */
     @Test
-    void shippedGlyphsAreTheBitStringsTheFontHeldInCode() {
-        // The table PixelFont held before its glyphs moved to data/pixel-font.txt, copied unchanged.
-        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-:.,%+!?()<>[]'*~";
-        String[] glyphs = {
-            "010101111101101", "110101110101110", "011100100100011", "110101101101110", "111100110100111",
-            "111100110100100", "011100101101011", "101101111101101", "111010010010111", "001001001101010",
-            "101101110101101", "100100100100111", "101111111101101", "110101101101101", "010101101101010",
-            "110101110100100", "010101101110011", "110101110101101", "011100010001110", "111010010010010",
-            "101101101101111", "101101101101010", "101101111111101", "101101010101101", "101101010010010",
-            "111001010100111", "111101101101111", "010110010010111", "110001010100111", "110001010001110",
-            "101101111001001", "111100110001110", "011100111101111", "111001010010010", "111101111101111",
-            "111101111001110", "001001010100100", "000000111000000", "000010000010000",
-            "000000000000010", "000000000010100", "101001010100101", "000010111010000", "010010010000010",
-            "110001010000010", "001010010010001", "100010010010100", "001010100010001", "100010001010100",
-            "110100100100110", "011001001001011", "010010000000000", "101010111010101",
-            "000011110000000"
-        };
-        assertEquals(54, glyphs.length);
-        assertEquals(characters, FONT.supportedCharacters());
-        for (int i = 0; i < glyphs.length; i++) {
-            assertEquals(glyphs[i], FONT.glyphFor(characters.charAt(i)), "glyph " + characters.charAt(i));
-        }
+    void everyBlockOfAGlyphFileIsTheGlyphOfItsOwnCharacter() {
+        PixelFont font = PixelFont.parse("data/test-font.txt",
+            "glyph A\n#..\n...\n...\n...\n...\n"
+                + "glyph B\n...\n.#.\n...\n...\n...\n"
+                + "glyph 7\n...\n...\n..#\n...\n...\n"
+                + "glyph ?\n...\n...\n...\n#..\n..#\n");
+        assertEquals("AB7?", font.supportedCharacters());
+        assertEquals("100000000000000", font.glyphFor('A'));
+        assertEquals("000010000000000", font.glyphFor('B'));
+        assertEquals("000000001000000", font.glyphFor('7'));
+        assertEquals("000000000100001", font.glyphFor('?'));
     }
 
     @Test
     void anAlteredGlyphFileChangesWhatIsDrawn() {
         String shipped = shippedText();
         String block = "glyph A\n.#.\n#.#\n###\n#.#\n#.#\n";
-        assertTrue(shipped.contains(block), "the shipped A");
+        assertTrue(shipped.contains(block), "the A of the tests' own file");
         PixelFont altered = PixelFont.parse(PixelFont.PATH,
             shipped.replace(block, "glyph A\n###\n#.#\n###\n#.#\n#.#\n"));
 
@@ -267,7 +275,7 @@ class PixelFontTest {
         String previousAssets = System.getProperty("gamex.assets");
         try {
             Gdx.files = null;
-            assertEquals(FONT.supportedCharacters(), PixelFont.load().supportedCharacters());
+            assertFalse(PixelFont.load().supportedCharacters().isEmpty());
 
             // No class is recompiled between the two loads: an edited file is all a new glyph takes.
             Path file = Files.createDirectories(temp.resolve("data")).resolve("pixel-font.txt");
@@ -291,9 +299,9 @@ class PixelFontTest {
         }
     }
 
-    /** @return the text of the shipped glyph file, with LF line ends whatever the checkout gave it */
+    /** @return the text of the tests' own glyph file, with LF line ends whatever the checkout gave it */
     private static String shippedText() {
-        return String.join("\n", AssetText.splitLines(AssetText.read("data", PixelFont.PATH))) + "\n";
+        return String.join("\n", AssetText.splitLines(TestTuning.text(PixelFont.PATH))) + "\n";
     }
 
     private static void assertBroken(String message, String text) {

@@ -1,0 +1,117 @@
+// Weapon balance: the pistol, the scattergun, the Rail Lance, the charged blast and the energy meter. Read once
+// when the game starts; change a value, start the game again and it is there. Every key must be present.
+// Distances are in world units (one map cell is 1), times in seconds, angles in degrees.
+// A recoil_kick is how hard a shot throws the first-person weapon back, as a multiple of the base kick: 1 is the
+// kick the pistol ships with. Each weapon's kick is set on its own.
+// What stays in code: the blast ball's flight speed, size and self-damage share (BlastProjectile), and the curves
+// of the viewmodel's kick, bob and sway (ViewmodelAnimation).
+
+// Pistol: unlimited ammunition, limited by its fire rate.
+//   fire_interval  shortest time between two shots
+//   damage         damage of one shot
+//   range          how far a shot reaches; a blast is aimed at the point this far away when nothing is nearer
+//   flash_time     how long the muzzle flash shows
+pistol.fire_interval: 0.3
+pistol.damage: 20
+pistol.range: 60
+pistol.flash_time: 0.07
+pistol.recoil_kick: 1
+
+// Scattergun. Primary fire spends 1 shell, alternate fire 2 (a double-blast).
+//   max_shells            most shells carried
+//   weapon_pickup_shells  shells that come with the Scattergun pickup, and with a stage that starts with it
+//   box_pickup_shells     shells in a Shell Box
+// Both pickup counts are for Normal and at least 1; difficulty.txt scales them.
+scattergun.max_shells: 24
+scattergun.weapon_pickup_shells: 8
+scattergun.box_pickup_shells: 6
+
+// The pellet pattern. Every shot fires one pellet straight down the aim line; each ring row adds a ring round it:
+//   ring: pellets, cone angle, twist
+// The pellets of a ring are spread evenly, each at the cone angle from the aim line. With a twist of 0 the first
+// pellet is straight to the right; the twist turns the whole ring. A shot has one or more rings, and its pellet
+// count is 1 plus the pellets of its rings: there is no separate count to keep in step.
+//   interval    shortest time from this shot to the next
+//   pump_delay  wait from the shot to the start of the pump rack
+//   pump_time   how long the pump rack takes
+scattergun.primary.ring: 7, 4.2, 0
+scattergun.primary.interval: 0.75
+scattergun.primary.recoil_kick: 1.6
+scattergun.primary.pump_delay: 0.08
+scattergun.primary.pump_time: 0.48
+
+scattergun.alt.ring: 5, 3.4, 0
+scattergun.alt.ring: 10, 6.8, 18
+scattergun.alt.interval: 1.15
+scattergun.alt.recoil_kick: 2.4
+scattergun.alt.pump_delay: 0.12
+scattergun.alt.pump_time: 0.68
+
+//   pellet_damage      damage of one pellet up to falloff_start
+//   falloff_start      distance at which the damage starts to taper, in a straight line
+//   range              how far a pellet reaches; must be above falloff_start
+//   min_falloff_scale  share of pellet_damage left at range, from 0 to 1
+//   flash_time         how long the muzzle flash shows
+//   pump_pull_share    share of a pump rack spent pulling the forend back, above 0 and below 1
+scattergun.pellet_damage: 12
+scattergun.falloff_start: 7
+scattergun.range: 26
+scattergun.min_falloff_scale: 0.35
+scattergun.flash_time: 0.09
+scattergun.pump_pull_share: 0.35
+
+// Rail Lance: a piercing beam on primary fire (1 slug), a zoom optic on alternate fire.
+//   max_slugs            most slugs carried
+//   weapon_pickup_slugs  slugs that come with the Rail Lance pickup, and with a stage that starts with it
+//   pack_pickup_slugs    slugs in a Slug Pack
+//   damage               damage to a target; an enemy takes this times its rail_damage_scale in enemies.txt
+//   fire_interval        capacitor recharge time between two shots
+//   range                how far the beam reaches
+//   flash_time           how long the muzzle flash shows
+//   bolt_delay           wait from the shot to the start of the breech bolt's cycle
+//   bolt_time            how long the bolt's cycle takes
+//   bolt_pull_share      share of the cycle spent recoiling, above 0 and below 1
+//   zoom_factor          magnification at full zoom, at least 1. The briefing of
+//                        assets/levels/03-security-hub.map quotes it as {rail.zoom_factor}, so it follows a
+//                        value changed here.
+//   zoom_speed           full zooms per second
+// Both pickup counts are for Normal and at least 1; difficulty.txt scales them.
+rail.max_slugs: 15
+rail.weapon_pickup_slugs: 5
+rail.pack_pickup_slugs: 3
+rail.damage: 120
+rail.range: 60
+rail.fire_interval: 1.10
+rail.flash_time: 0.10
+rail.bolt_delay: 0.04
+rail.bolt_time: 0.68
+rail.bolt_pull_share: 0.25
+rail.zoom_factor: 1.8
+rail.zoom_speed: 7.5
+rail.recoil_kick: 2.6
+
+// Charged blast: hold to charge from 0 to 1, release to fire.
+//   full_charge_time  time a full charge takes
+//   min_charge        smallest charge that fires, above 0 and below 1; a smaller one fizzles at no cost
+//   min_cost          energy a blast at min_charge costs
+//   max_cost          energy a full charge costs; must be above min_cost
+// The explosion grows in a straight line with the charge. The min values are those of a charge of 0, which never
+// fires: the smallest blast, at min_charge 0.25, has a radius of 1.5 and a damage of 55.
+//   min_radius, max_radius  explosion radius at a charge of 0 and of 1
+//   min_damage, max_damage  damage at the centre of the explosion at a charge of 0 and of 1
+blast.full_charge_time: 1.2
+blast.min_charge: 0.25
+blast.min_cost: 20
+blast.max_cost: 60
+blast.min_radius: 1
+blast.max_radius: 3
+blast.min_damage: 30
+blast.max_damage: 130
+blast.recoil_kick: 1
+
+// Energy meter: pays for blasts and dashes.
+//   capacity  most energy held; the player starts a level full. At least the 25 a dash costs (in code,
+//             Player.DASH_COST) and at least blast.min_cost, so that a full meter pays for either
+//   regen     energy refilled per second
+energy.capacity: 100
+energy.regen: 14

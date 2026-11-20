@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import ch.qos.logback.classic.Level;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.LogCapture;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.player.PlayerInput;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +55,7 @@ class MapExplorationTest {
             "#.>.=.X.#",
             "#...#...#",
             "#########");
-        GameSimulation sim = new GameSimulation(map);
+        GameSimulation sim = TestTuning.simulation(map);
 
         assertEquals(12f, MapExploration.DEFAULT_REVEAL_RADIUS, 0f);
         // Door at (4, 2) and its north/south jamb walls (4, 1) and (4, 3) are visible from spawn (2.5, 2.5).
@@ -111,7 +112,7 @@ class MapExplorationTest {
             "##############",
             "#>..........=#",
             "##############");
-        GameSimulation sim = new GameSimulation(longHall);
+        GameSimulation sim = TestTuning.simulation(longHall);
         assertTrue(sim.exploration.isExplored(12, 1), "far closed door 10.85 cells away is revealed at default 12f");
         assertTrue(sim.exploration.isExplored(12, 0), "door north flank wall is revealed");
         assertTrue(sim.exploration.isExplored(12, 2), "door south flank wall is revealed");
@@ -125,7 +126,7 @@ class MapExplorationTest {
             "#.#.#..#..#",
             "#...=.D#..#",
             "###########");
-        GameSimulation sim = new GameSimulation(map);
+        GameSimulation sim = TestTuning.simulation(map);
         List<Door> doors = sim.doors;
         assertEquals(1, doors.size());
         Door door = doors.get(0); // SPAN_Z at col 4, row 3
@@ -162,7 +163,7 @@ class MapExplorationTest {
             "#####",
             "#>..#",
             "#####");
-        GameSimulation sim = new GameSimulation(map);
+        GameSimulation sim = TestTuning.simulation(map);
         assertTrue(sim.exploration.getExploredCount() > 0);
 
         assertFalse(sim.exploration.isExplored(-1, 0));

@@ -13,6 +13,7 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.github.brantunger.gamex.GameSimulation;
 import io.github.brantunger.gamex.LogCapture;
+import io.github.brantunger.gamex.TestTuning;
 import io.github.brantunger.gamex.hud.MenuState;
 import io.github.brantunger.gamex.player.PlayerInput;
 import io.github.brantunger.gamex.settings.GameSettings;
@@ -129,7 +130,7 @@ class SoundManagerPartialLoadTest {
 
     /** @return a Title menu holding one MENU_MOVE and one MENU_CONFIRM event */
     private static MenuState menuWithMoveAndConfirm(GameSettings settings) {
-        MenuState menu = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
+        MenuState menu = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.TITLE);
         menu.moveSelection(1);
         menu.confirm();
         return menu;
@@ -137,7 +138,7 @@ class SoundManagerPartialLoadTest {
 
     /** @return a simulation in which the blast is charging, so the charge loop should sound */
     private static GameSimulation chargingSimulation() {
-        GameSimulation simulation = new GameSimulation(Levels.first());
+        GameSimulation simulation = TestTuning.simulation(Levels.first());
         PlayerInput input = new PlayerInput();
         input.charge = true;
         for (int i = 0; i < 6; i++) simulation.update(1f / 60f, input);
@@ -150,9 +151,9 @@ class SoundManagerPartialLoadTest {
         String moveCue = SoundManager.assetPath(SoundEvent.Type.MENU_MOVE);
         String confirmCue = SoundManager.assetPath(SoundEvent.Type.MENU_CONFIRM);
         failing.add(moveCue);
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
 
-        SoundManager manager = new SoundManager(false, SoundVolumes.load());
+        SoundManager manager = new SoundManager(false, TestTuning.SOUNDS);
         assertEquals(0, totalCalls("dispose"), "a failed cue disposes none of the loaded sounds");
         manager.update(null, menuWithMoveAndConfirm(settings), settings);
 
@@ -168,7 +169,7 @@ class SoundManagerPartialLoadTest {
         int all = SoundEvent.Type.values().length + 1;
 
         try (LogCapture capture = LogCapture.of(SoundManager.class, Level.DEBUG)) {
-            new SoundManager(false, SoundVolumes.load()).dispose();
+            new SoundManager(false, TestTuning.SOUNDS).dispose();
 
             assertEquals(List.of(
                 "Sound " + moveCue + " failed to load; continuing without it: Error reading WAV file: " + moveCue,
@@ -185,7 +186,7 @@ class SoundManagerPartialLoadTest {
     void aFullLoadLogsOneSummaryAtInfoAndNoWarning() {
         int all = SoundEvent.Type.values().length + 1;
         try (LogCapture capture = LogCapture.of(SoundManager.class, Level.INFO)) {
-            new SoundManager(false, SoundVolumes.load()).dispose();
+            new SoundManager(false, TestTuning.SOUNDS).dispose();
 
             assertEquals(List.of("Loaded " + all + " sounds from sounds/"), capture.messages(Level.INFO));
             assertEquals(List.of(), capture.messages(Level.WARN));
@@ -195,11 +196,11 @@ class SoundManagerPartialLoadTest {
     @Test
     void aFailedChargeHumKeepsTheCuesAndAChargingUpdateDoesNotFail() {
         failing.add(SoundManager.CHARGE_HUM_PATH);
-        GameSettings settings = new GameSettings();
-        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        GameSettings settings = TestTuning.settings();
+        MenuState playing = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         GameSimulation simulation = chargingSimulation();
 
-        SoundManager manager = new SoundManager(false, SoundVolumes.load());
+        SoundManager manager = new SoundManager(false, TestTuning.SOUNDS);
         manager.update(null, menuWithMoveAndConfirm(settings), settings);
         assertEquals(2, totalCalls("play"), "both menu cues play without the charge hum");
 
@@ -211,11 +212,11 @@ class SoundManagerPartialLoadTest {
 
     @Test
     void everyCueLoadsPlaysLoopsAndIsDisposedWhenNothingFails() {
-        GameSettings settings = new GameSettings();
-        MenuState playing = new MenuState(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
+        GameSettings settings = TestTuning.settings();
+        MenuState playing = TestTuning.menu(settings, new SaveData(new MapKeyValueStore()), MenuState.Screen.PLAYING);
         GameSimulation simulation = chargingSimulation();
 
-        SoundManager manager = new SoundManager(false, SoundVolumes.load());
+        SoundManager manager = new SoundManager(false, TestTuning.SOUNDS);
         manager.update(null, menuWithMoveAndConfirm(settings), settings);
         assertEquals(1, calls(SoundManager.assetPath(SoundEvent.Type.MENU_MOVE), "play"));
         assertEquals(1, calls(SoundManager.assetPath(SoundEvent.Type.MENU_CONFIRM), "play"));
@@ -234,10 +235,10 @@ class SoundManagerPartialLoadTest {
     void everyCueFailingLeavesASilentManagerThatStillDrainsEvents() {
         for (SoundEvent.Type type : SoundEvent.Type.values()) failing.add(SoundManager.assetPath(type));
         failing.add(SoundManager.CHARGE_HUM_PATH);
-        GameSettings settings = new GameSettings();
+        GameSettings settings = TestTuning.settings();
         MenuState menu = menuWithMoveAndConfirm(settings);
 
-        SoundManager manager = new SoundManager(false, SoundVolumes.load());
+        SoundManager manager = new SoundManager(false, TestTuning.SOUNDS);
         manager.update(null, menu, settings);
 
         assertTrue(menu.drainSoundEvents().isEmpty(), "menu events are drained");
